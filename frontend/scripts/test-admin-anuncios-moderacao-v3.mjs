@@ -56,7 +56,7 @@ const paginationBlock = uniqueSourceBlock(
   'export async function listAdminAdMedia',
 )
 const uploadAdapter = api.slice(
-  api.indexOf('export function uploadAdminAdMedia'),
+  api.indexOf('export async function uploadAdminAdMedia'),
   api.indexOf('export async function listAdminAdHistory'),
 )
 const uploadSubmit = uploader.slice(
@@ -399,10 +399,10 @@ assert.ok(uploader.includes('const [arquivo, setArquivo] = useState<File | null>
 assert.ok(uploader.includes('setIdempotencyKey(selected ? crypto.randomUUID() : null)'), 'Selecionar outro arquivo deve iniciar nova tentativa logica.')
 assert.ok(uploadSubmit.indexOf('await uploadAdminAdMedia') < uploadSubmit.indexOf('await onReload()') && uploadSubmit.indexOf('await onReload()') < uploadSubmit.indexOf('setArquivo(null)') && uploadSubmit.indexOf('setArquivo(null)') < uploadSubmit.indexOf("setSuccess('Foto enviada"), 'Arquivo e chave so podem ser limpos apos 2xx e recarga bem-sucedida.')
 assert.ok(!uploadFailure.includes('setArquivo(null)') && !uploadFailure.includes('setIdempotencyKey(null)') && uploadFailure.includes('setError(normalizeApiError(uploadError))'), 'Falha deve preservar arquivo e Idempotency-Key para retry.')
-assert.ok(uploader.includes("error ? 'Tentar novamente' : 'Enviar foto'"), 'Uploader deve oferecer retry explicito sem nova selecao.')
+assert.ok(uploader.includes("error?.retryable ? 'Tentar novamente' : 'Enviar foto'"), 'Uploader deve oferecer retry explicito somente para falha transitória.')
 assert.ok(uploader.includes('error.code') && uploader.includes('error.requestId'), 'Falha de upload deve exibir code e requestId.')
 assert.ok(apiContract.includes('const requestId = bodyRequestId || response.headers.get(\'X-Request-Id\')'), 'requestId do corpo deve preceder o cabecalho.')
-assert.ok(apiContract.includes('UNSUPPORTED_PHOTO_UPLOAD_MESSAGE') && apiContract.includes('Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.'), 'Fallback 415 deve permanecer exato.')
+assert.ok(apiContract.includes('UNSUPPORTED_PHOTO_UPLOAD_MESSAGE') && apiContract.includes('Não conseguimos enviar esta foto. Abra a imagem em um editor e salve uma nova cópia em JPG ou PNG. Depois, selecione essa cópia.'), 'Fallback 415 deve orientar uma nova cópia sem acusar o arquivo.')
 assert.ok(apiContract.includes("'formato de arquivo nao permitido'") && apiContract.includes("'unsupported media type'"), 'Resolver 415 deve reconhecer as mensagens genericas conhecidas independentemente de caixa e acentos.')
 assert.ok(apiContract.includes('resolveUnsupportedPhotoUploadMessage(serverMessage)'), 'Erro HTTP administrativo 415 deve usar o resolver central.')
 assert.ok(apiContract.includes('? UNSUPPORTED_PHOTO_UPLOAD_MESSAGE\n    : candidate'), 'Mensagem 415 especifica deve ser preservada.')

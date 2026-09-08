@@ -35,10 +35,10 @@ const mediaTab = detail.slice(
   detail.indexOf('<TabsContent value="midias"'),
   detail.indexOf('<TabsContent value="documentos"'),
 )
-const uploadAdapter = api.slice(
-  api.indexOf('export function uploadAdminAdMedia'),
-  api.indexOf('export async function listAdminAdHistory'),
-)
+const uploadAdapterStart = api.indexOf('export async function uploadAdminAdMedia')
+const uploadAdapterEnd = api.indexOf('export async function listAdminAdHistory', uploadAdapterStart)
+assert.ok(uploadAdapterStart >= 0 && uploadAdapterEnd > uploadAdapterStart, 'O recorte deve alcançar o corpo real do adapter assíncrono de upload.')
+const uploadAdapter = api.slice(uploadAdapterStart, uploadAdapterEnd)
 const uploadSubmit = uploader.slice(
   uploader.indexOf('async function submit'),
   uploader.indexOf('\n  return ('),

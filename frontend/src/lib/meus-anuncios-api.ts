@@ -1,4 +1,5 @@
 import { publicApiUrl, resolveUnsupportedPhotoUploadMessage } from '@/lib/api-contract'
+import { isSupportedUploadVideo, validatePhotoUpload } from '@/lib/photo-upload-validation'
 import {
   parseVisualizacoesCanonicas,
   type VisualizacoesCanonicas,
@@ -149,7 +150,8 @@ export class MeusAnunciosApiError extends Error {
     message: string,
     readonly status: number,
     readonly code: string | null = null,
-    readonly requestId: string | null = null
+    readonly requestId: string | null = null,
+    readonly unsupportedPhotoUpload = false,
   ) {
     super(message)
     this.name = 'MeusAnunciosApiError'
@@ -180,17 +182,43 @@ function parseErrorEnvelope(value: string): MeusAnunciosErrorEnvelope | null {
 }
 
 const PHOTO_UPLOAD_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp'])
+const OTHER_VIDEO_EXTENSIONS = new Set(['avi', 'mkv', 'webm', 'm4v', 'mpeg', 'mpg', '3gp', '3g2', 'ogv', 'wmv', 'flv', 'mts', 'm2ts'])
+
+function isVideoUploadFile(file: Pick<File, 'name' | 'type'>) {
+  const extension = file.name.trim().toLowerCase().match(/\.([^.]+)$/)?.[1]
+  if (extension && PHOTO_UPLOAD_EXTENSIONS.has(extension)) return false
+  // The generic media adapter retains the backend's video validation. This
+  // classification does not add a supported format or trust MIME for photos.
+  return isSupportedUploadVideo(file)
+    || Boolean(extension && OTHER_VIDEO_EXTENSIONS.has(extension))
+}
 
 function isPhotoUploadFile(file: Pick<File, 'name' | 'type'>) {
+  if (isVideoUploadFile(file)) return false
   const mimeType = file.type.trim().toLowerCase()
-  if (mimeType) return mimeType.startsWith('image/')
-
   const extension = file.name.trim().toLowerCase().match(/\.([^.]+)$/)?.[1]
-  return extension ? PHOTO_UPLOAD_EXTENSIONS.has(extension) : false
+  return Boolean(extension && PHOTO_UPLOAD_EXTENSIONS.has(extension)) || mimeType.startsWith('image/')
 }
 
 function containsOnlyPhotoUploads(files: readonly Pick<File, 'name' | 'type'>[]) {
   return files.length > 0 && files.every(isPhotoUploadFile)
+}
+
+async function validateMediaUploadPhotos(files: readonly File[]) {
+  const results = await Promise.all(files.map(async (file) => {
+    if (isVideoUploadFile(file)) return null
+    const extension = file.name.trim().toLowerCase().match(/\.([^.]+)$/)?.[1]
+    if (file.type.trim().toLowerCase().startsWith('video/')
+      && (!extension || !PHOTO_UPLOAD_EXTENSIONS.has(extension))) {
+      return `${file.name}: O formato e o nome deste arquivo não são compatíveis com o envio. Selecione outro arquivo no formato original.`
+    }
+    const result = await validatePhotoUpload(file)
+    return result.valid ? null : `${file.name}: ${result.message}`
+  }))
+  const failures = results.filter((message): message is string => message !== null)
+  if (failures.length) {
+    throw new MeusAnunciosApiError(failures.join('\n'), 400, 'PHOTO_UPLOAD_LOCAL_INVALID')
+  }
 }
 
 function uploadErrorFromXhr(
@@ -211,6 +239,7 @@ function uploadErrorFromXhr(
     xhr.status,
     nonBlankString(envelope?.code),
     nonBlankString(envelope?.requestId) || xhr.getResponseHeader('X-Request-Id'),
+    xhr.status === 415 && unsupportedPhotoUpload,
   )
 }
 
@@ -218,6 +247,7 @@ export function meusAnunciosErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof MeusAnunciosApiError)) {
     return error instanceof Error && error.message ? error.message : fallback
   }
+  if (error.status === 415 && error.unsupportedPhotoUpload) return error.message || fallback
   return [
     error.message || fallback,
     error.code ? `Código: ${error.code}` : null,
@@ -526,6 +556,7 @@ export async function enviarMinhaMidia(
   arquivo: File,
   onProgress?: (percentual: number) => void
 ) {
+  await validateMediaUploadPhotos([arquivo])
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
   const unsupportedPhotoUpload = containsOnlyPhotoUploads([arquivo])
   return new Promise<MinhasMidiasResponse>((resolve, reject) => {
@@ -571,10 +602,18 @@ export async function enviarMinhaMidia(
 }
 
 const mediaBatchIdempotencyKeys = new Map<string, string>()
+const mediaBatchFileIds = new WeakMap<File, string>()
 
 function mediaBatchSignature(files: File[]) {
   return files
-    .map((file) => `${file.name}:${file.size}:${file.lastModified}:${file.type}`)
+    .map((file) => {
+      let identity = mediaBatchFileIds.get(file)
+      if (!identity) {
+        identity = crypto.randomUUID()
+        mediaBatchFileIds.set(file, identity)
+      }
+      return identity
+    })
     .join('|')
 }
 
@@ -584,6 +623,7 @@ export async function enviarMinhasMidiasEmLote(
   onProgress?: (percentual: number) => void
 ) {
   if (!arquivos.length) throw new MeusAnunciosApiError('Selecione ao menos um arquivo.', 400)
+  await validateMediaUploadPhotos(arquivos)
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
   const signature = mediaBatchSignature(arquivos)
   const idempotencyKey = mediaBatchIdempotencyKeys.get(signature) || crypto.randomUUID()

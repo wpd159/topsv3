@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useLocalidades } from '@/hooks/useLocalidades'
 import { isoToBirthDate } from '@/lib/date/birth-date'
 import { cn } from '@/lib/utils'
+import { validatePhotoUpload, type PhotoUploadValidationResult } from '@/lib/photo-upload-validation'
 import {
   atualizarMeuAnuncio,
   buscarMeuAnuncio,
@@ -159,6 +160,19 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [previewHintDismissed, setPreviewHintDismissed] = useState(false)
   const [createMediaProgress, setCreateMediaProgress] = useState<Record<string, number>>({})
   const [createMediaErrors, setCreateMediaErrors] = useState<Record<string, string>>({})
+  const [serverRejectedPhotos, setServerRejectedPhotos] = useState<File[]>([])
+  const [photoValidation, setPhotoValidation] = useState<{
+    files: File[]
+    results: PhotoUploadValidationResult[]
+  }>({ files: [], results: [] })
+  const photoSelectionRef = useRef(state.fotos)
+  photoSelectionRef.current = state.fotos
+  const photoValidationMatches = photoValidation.files.length === state.fotos.length
+    && photoValidation.files.every((file, index) => file === state.fotos[index])
+  const photoValidationPending = !isEdit && state.fotos.length > 0 && !photoValidationMatches
+  const invalidPhotos = !isEdit && photoValidationMatches && photoValidation.results.some((result) => !result.valid)
+  const hasServerRejectedPhotos = !isEdit && state.fotos.some((file) => serverRejectedPhotos.includes(file))
+  const photoSelectionBlocked = photoValidationPending || invalidPhotos || hasServerRejectedPhotos || (!isEdit && state.fotos.length > 4)
   const wizardTopRef = useRef<HTMLDivElement | null>(null)
   const publishLockRef = useRef(false)
   const stepDidMountRef = useRef(false)
@@ -169,6 +183,30 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const createdAnuncioIdRef = useRef<string | null>(null)
   const createdDetailsSyncedRef = useRef(false)
   const kycLoadedUserRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    let current = true
+    const files = state.fotos
+    void Promise.all(files.map(validatePhotoUpload)).then((results) => {
+      if (current) setPhotoValidation({ files, results })
+    })
+    return () => { current = false }
+  }, [state.fotos])
+
+  const handlePhotoChange = (files: File[]) => {
+    if (publishLockRef.current) return
+    photoSelectionRef.current = files
+    setFotos(files)
+    setServerRejectedPhotos((current) => current.filter((file) => files.includes(file)))
+    setCreateMediaErrors({})
+    setCreateMediaProgress({})
+  }
+
+  const photoSelectionMessage = photoValidationPending
+    ? 'Verificando foto…'
+    : state.fotos.length > 4
+      ? 'Você pode adicionar até 4 fotos gratuitamente. Remova o excedente para continuar.'
+      : 'Remova ou substitua as fotos recusadas antes de continuar.'
 
   const idade = calculateAge(kycStatus?.dataNascimento || (usuario as any)?.dataNascimento)
   const hasExistingKyc = Boolean(kycStatus?.prontoParaEnviarAnuncio)
@@ -489,6 +527,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }
 
   const validateCurrentStep = () => {
+    if (currentStep.id === 'fotos' && photoSelectionBlocked) {
+      toast.warning(photoSelectionMessage)
+      return false
+    }
     const message = validateWizardStep(wizardState, currentStep.id, mode)
     if (message) {
       toast.warning(message)
@@ -500,6 +542,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const canMoveToStep = (targetIndex: number) => {
     if (targetIndex <= currentIndex) return true
     for (let i = 0; i < targetIndex; i += 1) {
+      if (wizardSteps[i].id === 'fotos' && photoSelectionBlocked) {
+        toast.warning(photoSelectionMessage)
+        return false
+      }
       const message = validateWizardStep(wizardState, wizardSteps[i].id, mode)
       if (message) {
         toast.warning(message)
@@ -573,6 +619,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           ))
         })
       } catch (error) {
+        if (error instanceof MeusAnunciosApiError && error.unsupportedPhotoUpload) {
+          // A photo-only 415 does not identify the offending part of the batch.
+          // Keep its File identities blocked until removed or replaced.
+          setServerRejectedPhotos(state.fotos)
+        }
         setCreateMediaErrors(Object.fromEntries(
           arquivos.map((file) => [
             uploadFileKey(file),
@@ -638,6 +689,22 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     publishLockRef.current = true
     try {
       setPublishing(true)
+      // Complete the photo check before KYC submission or advertisement creation.
+      // The snapshot guard also rejects a selection changed by a stale callback.
+      if (!isEdit) {
+        const files = state.fotos
+        const results = await Promise.all(files.map(validatePhotoUpload))
+        const changed = files.length !== photoSelectionRef.current.length
+          || files.some((file, index) => file !== photoSelectionRef.current[index])
+        const invalidIndex = results.findIndex((result) => !result.valid)
+        if (changed || files.length > 4 || invalidIndex >= 0 || files.some((file) => serverRejectedPhotos.includes(file))) {
+          setStep('fotos')
+          const result = results[invalidIndex]
+          throw new Error(result && !result.valid
+            ? `${files[invalidIndex].name}: ${result.message}`
+            : 'Revise a seleção de fotos antes de continuar.')
+        }
+      }
       await ensureKycReady()
       if (isEdit) await submitEdit()
       else await submitAnuncio()
@@ -657,6 +724,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
 
   const requestPublish = () => {
     if (publishing || publishLockRef.current) return
+    if (photoSelectionBlocked) {
+      setStep('fotos')
+      toast.warning(photoSelectionMessage)
+      return
+    }
     if (!hydrated) {
       toast.warning('Aguarde o formulário terminar de carregar.')
       return
@@ -736,7 +808,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           slug={isEdit ? slug : undefined}
           initialFiles={state.fotos}
           fotoNomes={state.fotoNomes}
-          onChange={setFotos}
+          onChange={handlePhotoChange}
+          photoValidation={photoValidationMatches ? photoValidation.results.map((result, index) => serverRejectedPhotos.includes(state.fotos[index])
+            ? { valid: false, message: 'O servidor recusou este lote de fotos. Remova ou substitua o arquivo por uma nova cópia em JPG ou PNG.' }
+            : result) : []}
+          photoValidationPending={photoValidationPending}
+          disabled={publishing}
           videosNovos={state.videos}
           onChangeVideosNovos={setVideos}
           createProgress={createMediaProgress}
@@ -931,7 +1008,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
               </Button>
 
               {currentStep.id === 'kyc' ? (
-                <Button type="button" onClick={requestPublish} disabled={publishing}>
+                <Button type="button" onClick={requestPublish} disabled={publishing || photoSelectionBlocked}>
                   {publishing
                     ? isEdit
                       ? 'Salvando…'
@@ -942,7 +1019,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button type="button" onClick={goNext} disabled={publishing}>
+                <Button type="button" onClick={goNext} disabled={publishing || (currentStep.id === 'fotos' && photoSelectionBlocked)}>
                   Continuar
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
