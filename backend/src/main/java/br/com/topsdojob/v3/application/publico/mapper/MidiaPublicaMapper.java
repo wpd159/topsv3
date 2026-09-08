@@ -91,6 +91,41 @@ public class MidiaPublicaMapper {
                 .sorted(ORDEM_DTO_GALERIA).toList();
     }
 
+    /** Resolve previews only after the original card policy chooses what is displayed. */
+    public List<MidiaPublicaDto> publicasParaCard(
+            List<AnuncioMidiaEntity> vinculos, Map<UUID, ArquivoMidiaEntity> arquivosPorId,
+            int maxFotos, boolean videoPermitido, boolean carrosselAtivo,
+            MidiaPublicaSeguraPolicy policy) {
+        var originais = new java.util.IdentityHashMap<MidiaVinculoLeitura, AnuncioMidiaEntity>();
+        var leituras = vinculos.stream().map(item -> {
+            var leitura = MidiaVinculoLeitura.de(item);
+            originais.put(leitura, item);
+            return leitura;
+        }).toList();
+        var previews = new java.util.IdentityHashMap<MidiaPublicaDto,
+                java.util.function.Supplier<MidiaPublicaDto>>();
+        List<MidiaPublicaDto> candidatas = SelecaoMidiasPublicas
+                .selecionar(leituras, maxFotos, videoPermitido).stream()
+                .map(vinculo -> {
+                    var arquivo = arquivosPorId.get(vinculo.arquivoMidiaId());
+                    var leitura = ArquivoPublicoLeitura.de(arquivo);
+                    java.util.function.Supplier<ResultadoUrlPublica> original =
+                            () -> urlService.resolver(originais.get(vinculo), arquivo);
+                    // Card ordering depends on authorization/type/order/id, never on
+                    // preview availability. Invalid files still consumed their slot.
+                    var candidata = toDto(vinculo, leitura, false, () -> null, original);
+                    if (candidata != null && vinculo.tipo() == TipoAnuncioMidia.FOTO
+                            && vinculo.visibilidadeMidia() == VisibilidadeMidia.RESTRITA_18) {
+                        previews.put(candidata, () -> toDto(vinculo, leitura, false,
+                                () -> urlService.resolverPreviewRestrita(arquivo), original));
+                    }
+                    return candidata;
+                }).filter(java.util.Objects::nonNull).toList();
+        return policy.paraCard(candidatas, carrosselAtivo, videoPermitido).stream()
+                .map(midia -> previews.containsKey(midia) ? previews.get(midia).get() : midia)
+                .toList();
+    }
+
     /**
      * Only inputs that can count as photos in anonymous locality eligibility. Position
      * selection remains shared with the gallery and precedes file/visibility filtering.

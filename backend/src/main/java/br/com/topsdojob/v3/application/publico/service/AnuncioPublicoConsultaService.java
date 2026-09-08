@@ -261,6 +261,19 @@ public class AnuncioPublicoConsultaService {
     Map<UUID, List<MidiaPublicaDto>> midiasPorAnuncios(
             List<UUID> anuncioIds,
             Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+        return midiasPorAnuncios(anuncioIds, premiumPorAnuncio, false);
+    }
+
+    Map<UUID, List<MidiaPublicaDto>> midiasParaCardsPorAnuncios(
+            List<UUID> anuncioIds,
+            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+        return midiasPorAnuncios(anuncioIds, premiumPorAnuncio, true);
+    }
+
+    private Map<UUID, List<MidiaPublicaDto>> midiasPorAnuncios(
+            List<UUID> anuncioIds,
+            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio,
+            boolean paraCards) {
         if (anuncioIds == null || anuncioIds.isEmpty()) {
             return Map.of();
         }
@@ -281,6 +294,11 @@ public class AnuncioPublicoConsultaService {
                             ? PremiumPublicoFlagsDto.vazio()
                             : premiumPorAnuncio.getOrDefault(anuncioId, PremiumPublicoFlagsDto.vazio());
                     int maxFotos = premium.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
+                    if (paraCards) {
+                        return midiaMapper.publicasParaCard(
+                                vinculosPorAnuncio.getOrDefault(anuncioId, List.of()), arquivos,
+                                maxFotos, premium.videoAtivo(), premium.carrosselFotosAtivo(), midiaSeguraPolicy);
+                    }
                     return midiaMapper.publicas(
                             vinculosPorAnuncio.getOrDefault(anuncioId, List.of()),
                             arquivos,

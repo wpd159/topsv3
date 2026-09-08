@@ -83,6 +83,10 @@ public class MidiaRestritaDerivacaoService {
     if (operacao != null) {
       return operacao.resolver(this, id, checksum);
     }
+    return resolverPreviewGeral(id, checksum);
+  }
+
+  private ResultadoPreview resolverPreviewGeral(java.util.UUID id, String checksum) {
     String key = chavePublicaOuNula(id, checksum);
     ObjectStorage storage = storage();
     if (key == null || storage == null) {
@@ -98,6 +102,39 @@ public class MidiaRestritaDerivacaoService {
           .orElseGet(() -> pendente(id, "url_publica"));
     } catch (RuntimeException exception) {
       return pendente(id, "storage");
+    }
+  }
+
+  /**
+   * Cards collect only displayed previews. Keep the existing HEAD/cache/pending
+   * contract, but perform that I/O between two independent database reads.
+   * No completed DTO or new cross-request cache is retained by this operation.
+   */
+  public static <T> T comPreviewsParaCards(Supplier<T> leituraTransacional) {
+    if (PREVIEWS_LOCALIDADES.get() != null
+        || TransactionSynchronizationManager.isActualTransactionActive()) {
+      throw indisponivelLocalidades("consulta de cards exige operacao sem transacao externa");
+    }
+    PreviewsLocalidades operacao = new PreviewsLocalidades(true);
+    PREVIEWS_LOCALIDADES.set(operacao);
+    try {
+      T inicial = leituraTransacional.get();
+      if (TransactionSynchronizationManager.isActualTransactionActive()) {
+        throw indisponivelLocalidades("verificacao remota exige transacao encerrada");
+      }
+      if (operacao.pedidos.isEmpty()) return inicial;
+      operacao.fase = FasePreviewsLocalidades.VERIFICACAO_REMOTA;
+      for (var pedido : operacao.identidades.entrySet()) {
+        var identidade = pedido.getValue();
+        operacao.verificados.put(pedido.getKey(), operacao.responsavel.resolverPreviewGeral(
+            identidade.id(), identidade.checksum()));
+      }
+      operacao.fase = FasePreviewsLocalidades.FINAL;
+      // Re-read selection, visibility, owners, benefits and file identities. A new
+      // unverified preview fails explicitly rather than triggering I/O inside JDBC.
+      return leituraTransacional.get();
+    } finally {
+      PREVIEWS_LOCALIDADES.remove();
     }
   }
 
@@ -185,14 +222,20 @@ public class MidiaRestritaDerivacaoService {
   private enum FasePreviewsLocalidades { COLETA, VERIFICACAO_REMOTA, FINAL }
 
   private static final class PreviewsLocalidades {
+    private final boolean cards;
     private FasePreviewsLocalidades fase = FasePreviewsLocalidades.COLETA;
     private MidiaRestritaDerivacaoService responsavel;
     private final Set<String> pedidos = new LinkedHashSet<>();
     private final Map<String, ResultadoPreview> verificados = new LinkedHashMap<>();
+    private final Map<String, IdentidadePreview> identidades = new LinkedHashMap<>();
+
+    private PreviewsLocalidades() { this(false); }
+    private PreviewsLocalidades(boolean cards) { this.cards = cards; }
 
     private ResultadoPreview resolver(MidiaRestritaDerivacaoService service, java.util.UUID id, String checksum) {
       conferirOrcamentoLocalidades();
       String key = service.chavePublicaOuNula(id, checksum);
+      if (key == null && cards) return service.pendente(id, "configuracao");
       if (key == null) throw indisponivelLocalidades("preview sem identidade canonica");
       if (responsavel != null && responsavel != service) {
         throw indisponivelLocalidades("origem de preview alterada durante consulta de localidades");
@@ -204,16 +247,21 @@ public class MidiaRestritaDerivacaoService {
             throw indisponivelLocalidades("limite de previews por consulta excedido");
           }
           pedidos.add(key);
+          if (cards) identidades.put(key, new IdentidadePreview(id, checksum));
         }
         // Legacy callers may still request an intermediate result; collection needs none.
         return PREVIEW_PENDENTE;
       }
       if (fase != FasePreviewsLocalidades.FINAL || !verificados.containsKey(key)) {
-        throw indisponivelLocalidades("preview alterado durante consulta de localidades");
+        throw indisponivelLocalidades(cards
+            ? "preview alterado durante consulta de cards"
+            : "preview alterado durante consulta de localidades");
       }
       return verificados.get(key);
     }
   }
+
+  private record IdentidadePreview(java.util.UUID id, String checksum) { }
 
   public ResultadoGeracao garantir(ArquivoMidiaEntity arquivo) {
     if (!fotoR2Elegivel(arquivo)) {

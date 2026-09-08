@@ -77,7 +77,7 @@ public class SitemapPublicoConsultaService {
                     anuncio.getId(),
                     localizacao(localizacoes.get(anuncio.getId()), estados, cidades, bairros));
         }
-        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliar(
+        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliarLocalidades(
                 anuncios,
                 localizacoesPublicas);
 
