@@ -28,7 +28,23 @@ class AdminAnuncioMidiaFrontendContractTest {
     @Test
     void adapterEnviaUmaParteArquivoComIdempotenciaECsrfSemContentTypeManual() throws Exception {
         String api = Files.readString(FRONTEND.resolve(Path.of("features", "admin-anuncios", "api.ts")));
-        String upload = recorte(api, "export function uploadAdminAdMedia", "export async function listAdminAdHistory");
+        String upload = recorte(api, "export async function uploadAdminAdMedia", "export async function listAdminAdHistory");
+        String validacao = recorte(upload, "const validation = await validatePhotoUpload(arquivo)", "const form = new FormData()");
+
+        assertOrdem(upload,
+                "const validation = await validatePhotoUpload(arquivo)",
+                "if (!validation.valid) {",
+                "throw new ApiContractError(",
+                "'INVALID_REQUEST',",
+                "null,",
+                "false,",
+                "'PHOTO_UPLOAD_LOCAL_INVALID',",
+                "const form = new FormData()",
+                "form.append('arquivo', arquivo)",
+                "return request<AdminAdMediaUploadResponse>(");
+        assertThat(validacao)
+                .contains("`${arquivo.name}: ${validation.message}`")
+                .doesNotContain("new FormData(", "request<", "fetch(", "csrfHeaders(");
 
         assertThat(upload)
                 .contains("const form = new FormData()")
@@ -75,20 +91,61 @@ class AdminAnuncioMidiaFrontendContractTest {
                 "features", "admin-anuncios", "admin-anuncio-midia-uploader.tsx")));
         String moderacao = Files.readString(FRONTEND.resolve(Path.of(
                 "features", "admin-anuncios", "admin-anuncio-moderacao.tsx")));
+        String validacaoFotos = Files.readString(FRONTEND.resolve(Path.of("lib", "photo-upload-validation.ts")));
+        String selecao = recorte(uploader, "function selectArquivo(files: File[]) {", "function removeArquivo() {");
+        String remocao = recorte(uploader, "function removeArquivo() {", "async function submit() {");
+        String submit = recorte(uploader, "async function submit() {", "  return (");
+        String bloqueio = recorte(submit, "async function submit() {", "uploadLock.current = true");
         String catchUpload = recorte(uploader, "} catch (uploadError) {", "} finally {");
 
-        int upload = uploader.indexOf("await uploadAdminAdMedia(anuncioId, arquivo, idempotencyKey)");
-        int reload = uploader.indexOf("await onReload()", upload);
-        int limparArquivo = uploader.indexOf("setArquivo(null)", reload);
-        int sucesso = uploader.indexOf("setSuccess('Foto enviada", limparArquivo);
-        assertThat(upload).isGreaterThanOrEqualTo(0);
-        assertThat(reload).isGreaterThan(upload);
-        assertThat(limparArquivo).isGreaterThan(reload);
-        assertThat(sucesso).isGreaterThan(limparArquivo);
+        assertOrdem(submit,
+                "uploadLock.current = true",
+                "await uploadAdminAdMedia(anuncioId, arquivo, idempotencyKey)",
+                "await onReload()",
+                "selectionVersion.current += 1",
+                "selectedFile.current = null",
+                "validatedFile.current = null",
+                "setArquivo(null)",
+                "setIdempotencyKey(null)",
+                "setValidation(null)",
+                "setSuccess('Foto enviada");
+        assertThat(bloqueio)
+                .contains("uploadLock.current || busy || disabled || !arquivo || !idempotencyKey")
+                .contains("selectedFile.current !== arquivo")
+                .contains("validatedFile.current !== arquivo")
+                .contains("validation?.status !== 'valid'")
+                .contains("(error && !error.retryable)) return");
+        assertThat(submit).doesNotContain("crypto.randomUUID()");
+
+        assertOrdem(selecao,
+                "if (uploadLock.current || busy || disabled) return",
+                "const version = ++selectionVersion.current",
+                "selectedFile.current = selected",
+                "validatedFile.current = null",
+                "setArquivo(selected)",
+                "setIdempotencyKey(selected ? crypto.randomUUID() : null)",
+                "setError(null)",
+                "setValidation(selected ? { status: 'checking' } : null)",
+                "void validatePhotoUpload(selected).then((result) => {",
+                "if (version !== selectionVersion.current || selectedFile.current !== selected) return",
+                "validatedFile.current = result.valid ? selected : null",
+                "setValidation(result.valid ? { status: 'valid' } : { status: 'invalid', message: result.message })");
+        assertThat(selecao).doesNotContain("uploadAdminAdMedia(", "submit(", "fetch(", "new FormData(");
+        assertOrdem(remocao,
+                "if (uploadLock.current || busy || disabled) return",
+                "selectionVersion.current += 1",
+                "selectedFile.current = null",
+                "validatedFile.current = null",
+                "setArquivo(null)",
+                "setIdempotencyKey(null)",
+                "setValidation(null)",
+                "setError(null)");
+        assertThat(remocao).doesNotContain("uploadAdminAdMedia(", "submit(", "fetch(", "new FormData(");
 
         assertThat(catchUpload)
                 .contains("setError(normalizeApiError(uploadError))")
-                .doesNotContain("setArquivo(null)", "setIdempotencyKey(null)", "setSuccess(");
+                .doesNotContain("setArquivo(", "setIdempotencyKey(", "setSuccess(",
+                        "selectedFile.current =", "validatedFile.current =", "setValidation(");
         assertThat(uploader)
                 .contains("const [arquivo, setArquivo] = useState<File | null>(null)")
                 .contains("const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)")
@@ -96,8 +153,19 @@ class AdminAnuncioMidiaFrontendContractTest {
                 .contains("error.message")
                 .contains("error.code")
                 .contains("error.requestId")
-                .contains("error ? 'Tentar novamente' : 'Enviar foto'")
-                .contains("accept={ALLOWED_IMAGE_ACCEPT}");
+                .contains("error?.retryable ? 'Tentar novamente' : 'Enviar foto'")
+                .contains("validation?.status !== 'valid' || Boolean(error && !error.retryable)")
+                .contains("!error.retryable ? <p")
+                .contains("Remova ou substitua o arquivo para continuar.")
+                .contains("Verificando foto…")
+                .contains("accept={PHOTO_UPLOAD_ACCEPT}")
+                .contains("{PHOTO_UPLOAD_GUIDANCE}")
+                .contains("onSelect={selectArquivo}")
+                .contains("onRemove={removeArquivo}")
+                .contains("onClick={() => void submit()}")
+                .doesNotContain("error ? 'Tentar novamente' : 'Enviar foto'");
+        assertThat(validacaoFotos)
+                .contains("PHOTO_UPLOAD_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'");
         assertThat(moderacao)
                 .contains("<AdminAnuncioMidiaUploader")
                 .contains("anuncioId={ad.id}")
@@ -110,6 +178,15 @@ class AdminAnuncioMidiaFrontendContractTest {
         assertThat(inicioIndex).as("inicio do contrato").isGreaterThanOrEqualTo(0);
         assertThat(fimIndex).as("fim do contrato").isGreaterThan(inicioIndex);
         return conteudo.substring(inicioIndex, fimIndex);
+    }
+
+    private static void assertOrdem(String conteudo, String... trechos) {
+        int proximoInicio = 0;
+        for (String trecho : trechos) {
+            int indice = conteudo.indexOf(trecho, proximoInicio);
+            assertThat(indice).as("contrato em ordem: %s", trecho).isGreaterThanOrEqualTo(proximoInicio);
+            proximoInicio = indice + trecho.length();
+        }
     }
 
     private static int contarOcorrencias(String conteudo, String trecho) {

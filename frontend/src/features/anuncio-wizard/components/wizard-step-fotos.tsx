@@ -1,15 +1,22 @@
 'use client'
 
 import { ArrowDown, ArrowUp, Camera, Loader2, PlayCircle, Trash2 } from 'lucide-react'
-import { GaleriaFotos } from '@/components/anuncios/galeria-fotos'
 import { VideoUploader } from '@/components/anuncios/editar/video-uploader'
 import { FilePicker } from '@/components/forms/file-picker'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  PHOTO_UPLOAD_ACCEPT,
+  PHOTO_UPLOAD_GUIDANCE,
+  isSupportedUploadVideo,
+  validatePhotoUpload,
+  type PhotoUploadValidationResult,
+} from '@/lib/photo-upload-validation'
 import {
   buscarMeuAnuncio,
   enviarMinhasMidiasEmLote,
   listarMinhasMidias,
   meusAnunciosErrorMessage,
+  MeusAnunciosApiError,
   removerMinhaMidia,
   reordenarMinhasMidias,
   type MinhaMidiaGestao,
@@ -31,11 +38,21 @@ type WizardStepFotosProps = {
   onChangeVideosNovos: (payload: File[]) => void
   createProgress?: Record<string, number>
   createErrors?: Record<string, string>
+  photoValidation?: PhotoUploadValidationResult[]
+  photoValidationPending?: boolean
+  disabled?: boolean
   onAddBenefit?: () => void
 }
 
 function fileKey(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`
+}
+
+function validateSelectedMedia(file: File, photo: boolean): Promise<PhotoUploadValidationResult> {
+  if (photo) return validatePhotoUpload(file)
+  return Promise.resolve(isSupportedUploadVideo(file)
+    ? { valid: true }
+    : { valid: false, message: 'Formato de vídeo não aceito. Selecione um vídeo MP4 ou MOV.' })
 }
 
 function mensagemStatus(midia: MinhaMidiaGestao) {
@@ -55,6 +72,9 @@ export function WizardStepFotos({
   onChangeVideosNovos,
   createProgress = {},
   createErrors = {},
+  photoValidation = [],
+  photoValidationPending = false,
+  disabled = false,
   onAddBenefit,
 }: WizardStepFotosProps) {
   const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(null)
@@ -63,6 +83,28 @@ export function WizardStepFotos({
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pendingPersistedFiles, setPendingPersistedFiles] = useState<File[]>([])
+  const [persistedValidation, setPersistedValidation] = useState<{
+    files: File[]
+    results: PhotoUploadValidationResult[]
+  }>({ files: [], results: [] })
+  const [retryable, setRetryable] = useState(false)
+  const pendingFilesRef = useRef(pendingPersistedFiles)
+  const uploadLockRef = useRef(false)
+  const selectionVersionRef = useRef(0)
+  const photoFilesRef = useRef(new WeakSet<File>())
+  const validationReady = persistedValidation.files === pendingPersistedFiles
+  const validationPending = pendingPersistedFiles.length > 0 && !validationReady
+  const invalidSelection = validationReady && persistedValidation.results.some((result) => !result.valid)
+
+  useEffect(() => {
+    let current = true
+    const files = pendingPersistedFiles
+    void Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))
+      .then((results) => {
+        if (current) setPersistedValidation({ files, results })
+      })
+    return () => { current = false }
+  }, [pendingPersistedFiles])
 
   const refresh = useCallback(async () => {
     if (!slug) return
@@ -107,9 +149,10 @@ export function WizardStepFotos({
   }, [slug])
 
   const uploadPersisted = async (files: File[]) => {
-    if (!slug || !files.length || busy) return
-    const fotosNovas = files.filter((file) => file.type.startsWith('image/')).length
-    const videosNovos = files.filter((file) => file.type.startsWith('video/')).length
+    if (!slug || !files.length || disabled || busy || uploadLockRef.current || !validationReady || invalidSelection
+      || files !== pendingFilesRef.current || (errors.lote && !retryable)) return
+    const fotosNovas = files.filter((file) => photoFilesRef.current.has(file)).length
+    const videosNovos = files.length - fotosNovas
     if (persisted && fotosNovas > persisted.limites.fotosDisponiveis) {
       setErrors({ lote: 'Você atingiu o limite de fotos deste anúncio.' })
       return
@@ -122,9 +165,13 @@ export function WizardStepFotos({
       })
       return
     }
+    const version = selectionVersionRef.current
+    uploadLockRef.current = true
     setBusy(true)
     setErrors({})
     try {
+      const results = await Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))
+      if (version !== selectionVersionRef.current || files !== pendingFilesRef.current || results.some((result) => !result.valid)) return
       const latest = await enviarMinhasMidiasEmLote(slug, files, (value) => {
         setProgress((current) => Object.fromEntries([
           ...Object.entries(current),
@@ -132,28 +179,45 @@ export function WizardStepFotos({
         ]))
       })
       setPersisted(latest)
-      setPendingPersistedFiles([])
+      updatePendingFiles([])
     } catch (error) {
+      setRetryable(error instanceof TypeError || (error instanceof MeusAnunciosApiError
+        && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)))
       setErrors({
         lote: meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.'),
       })
     } finally {
+      uploadLockRef.current = false
       setBusy(false)
     }
   }
 
-  const pendingPersistedPhotos = pendingPersistedFiles.filter((file) => file.type.startsWith('image/'))
-  const pendingPersistedVideos = pendingPersistedFiles.filter((file) => file.type.startsWith('video/'))
+  const pendingPersistedPhotos = pendingPersistedFiles.filter((file) => photoFilesRef.current.has(file))
+  const pendingPersistedVideos = pendingPersistedFiles.filter((file) => !photoFilesRef.current.has(file))
 
-  function selectPersistedFiles(files: File[]) {
+  function updatePendingFiles(files: File[]) {
+    selectionVersionRef.current += 1
+    pendingFilesRef.current = files
     setPendingPersistedFiles(files)
-    void uploadPersisted(files)
+    setErrors({})
+    setProgress({})
+    setRetryable(false)
+  }
+
+  function selectPersistedFiles(files: File[], photos = true) {
+    if (busy || uploadLockRef.current || disabled) return
+    if (photos) {
+      files.forEach((file) => photoFilesRef.current.add(file))
+      updatePendingFiles([...pendingFilesRef.current, ...files])
+    } else {
+      updatePendingFiles([...pendingFilesRef.current.filter((file) => photoFilesRef.current.has(file)), ...files])
+    }
   }
 
   function removePendingPersistedFile(file: File) {
-    if (busy) return
-    setPendingPersistedFiles((current) => current.filter((item) => item !== file))
-    setErrors({})
+    if (busy || uploadLockRef.current || disabled) return
+    photoFilesRef.current.delete(file)
+    updatePendingFiles(pendingFilesRef.current.filter((item) => item !== file))
   }
 
   const move = async (index: number, direction: -1 | 1) => {
@@ -201,14 +265,26 @@ export function WizardStepFotos({
               <h3 className="text-lg font-semibold text-zinc-950">Fotos do anúncio</h3>
             </div>
           </header>
-          <GaleriaFotos
-            initialFiles={initialFiles}
-            onChange={onChange}
-            maxCount={4}
-            variant="wizard"
-            showLimit
-            enforceLimit
+          <p className="text-sm text-zinc-600">{PHOTO_UPLOAD_GUIDANCE}</p>
+          <FilePicker
+            ariaLabel="Selecionar fotos do anúncio"
+            buttonLabel="Selecionar fotos"
+            accept={PHOTO_UPLOAD_ACCEPT}
+            files={initialFiles}
+            multiple
+            disabled={disabled}
+            onSelect={(files) => onChange([...initialFiles, ...files])}
+            onRemove={(index) => onChange(initialFiles.filter((_, fileIndex) => fileIndex !== index))}
           />
+          {initialFiles.map((file, index) => {
+            const result = photoValidation[index]
+            return (
+              <p key={`${fileKey(file)}:${index}`} role={!photoValidationPending && result && !result.valid ? 'alert' : 'status'} className="text-sm text-zinc-700">
+                {file.name}: {photoValidationPending || !result ? 'Verificando foto…' : result.valid ? 'Foto pronta para envio.' : result.message}
+              </p>
+            )
+          })}
+          {initialFiles.length > 4 ? <p role="alert" className="text-sm text-red-700">Você pode adicionar até 4 fotos gratuitamente. Remova o excedente para continuar.</p> : null}
           <p className="text-sm text-zinc-600">
             Você pode adicionar até 4 fotos gratuitamente.
           </p>
@@ -280,18 +356,19 @@ export function WizardStepFotos({
           ) : null}
         </header>
 
+        <p className="text-sm text-zinc-600">{PHOTO_UPLOAD_GUIDANCE}</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <FilePicker
             ariaLabel="Selecionar fotos do anúncio"
             buttonLabel="Selecionar foto"
-            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            accept={PHOTO_UPLOAD_ACCEPT}
             files={pendingPersistedPhotos}
             multiple
-            disabled={busy || !persisted || persisted.limites.fotosDisponiveis === 0}
+            disabled={disabled || busy || !persisted || (persisted.limites.fotosDisponiveis === 0 && !pendingPersistedPhotos.length)}
             helperText={persisted?.limites.fotosExtrasAtivo
               ? 'Seu anúncio permite até 10 fotos com o benefício de fotos extras.'
               : 'Você pode adicionar até 4 fotos gratuitamente.'}
-            onSelect={selectPersistedFiles}
+            onSelect={(files) => selectPersistedFiles(files)}
             onRemove={(index) => removePendingPersistedFile(pendingPersistedPhotos[index])}
           />
           {persisted?.limites.videoAtivo ? (
@@ -300,9 +377,9 @@ export function WizardStepFotos({
               buttonLabel="Selecionar vídeo"
               accept="video/mp4,video/quicktime,.mp4,.mov"
               files={pendingPersistedVideos}
-              disabled={busy || persisted.limites.videosDisponiveis === 0}
+              disabled={disabled || busy || (persisted.limites.videosDisponiveis === 0 && !pendingPersistedVideos.length)}
               helperText="Você pode adicionar 1 vídeo em MP4 ou MOV."
-              onSelect={(files) => selectPersistedFiles(files.slice(0, 1))}
+              onSelect={(files) => selectPersistedFiles(files.slice(0, 1), false)}
               onRemove={(index) => removePendingPersistedFile(pendingPersistedVideos[index])}
             />
           ) : (
@@ -317,6 +394,15 @@ export function WizardStepFotos({
             </div>
           )}
         </div>
+
+        {pendingPersistedFiles.map((file, index) => {
+          const result = validationReady ? persistedValidation.results[index] : undefined
+          return (
+            <p key={`${fileKey(file)}:${index}`} role={result && !result.valid ? 'alert' : 'status'} className="text-sm text-zinc-700">
+              {file.name}: {!result ? photoFilesRef.current.has(file) ? 'Verificando foto…' : 'Verificando vídeo…' : result.valid ? 'Arquivo pronto para envio.' : result.message}
+            </p>
+          )
+        })}
 
         {Object.keys(progress).length ? (
           <div className="space-y-2 text-xs text-zinc-600">
@@ -333,14 +419,14 @@ export function WizardStepFotos({
           <p key={key} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">{message}</p>
         ))}
 
-        {errors.lote && pendingPersistedFiles.length ? (
+        {pendingPersistedFiles.length ? (
           <button
             type="button"
-            disabled={busy}
+            disabled={disabled || busy || !persisted || validationPending || invalidSelection || Boolean(errors.lote && !retryable)}
             onClick={() => void uploadPersisted(pendingPersistedFiles)}
             className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 disabled:opacity-50"
           >
-            {busy ? 'Enviando novamente...' : 'Tentar enviar novamente'}
+            {busy ? 'Enviando...' : validationPending ? pendingPersistedVideos.length ? 'Verificando arquivos…' : 'Verificando foto…' : errors.lote && retryable ? 'Tentar enviar novamente' : 'Enviar arquivos'}
           </button>
         ) : null}
 

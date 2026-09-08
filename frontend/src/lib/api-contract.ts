@@ -33,11 +33,12 @@ export class ApiContractError extends Error {
 }
 
 export const UNSUPPORTED_PHOTO_UPLOAD_MESSAGE =
-  'Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.'
+  'Não conseguimos enviar esta foto. Abra a imagem em um editor e salve uma nova cópia em JPG ou PNG. Depois, selecione essa cópia.'
 
 const GENERIC_UNSUPPORTED_PHOTO_MESSAGES = new Set([
   'formato de arquivo nao permitido',
   'unsupported media type',
+  'imagem corrompida ou nao suportada',
 ])
 
 function normalizeUnsupportedPhotoMessage(message: string) {

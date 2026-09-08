@@ -177,6 +177,17 @@ class MeusAnunciosFrontendContractTest {
                 fotos,
                 "const uploadPersisted = async (files: File[]) => {",
                 "const pendingPersistedPhotos");
+        String atualizarSelecao = recorte(fotos, "function updatePendingFiles(files: File[]) {",
+                "function selectPersistedFiles(");
+        String selecionarERemover = recorte(fotos, "function selectPersistedFiles(", "const move = async");
+        String validarSelecao = recorte(fotos, "useEffect(() => {", "const refresh = useCallback");
+        String assinaturaLote = recorte(adapter, "function mediaBatchSignature(files: File[]) {",
+                "export async function enviarMinhasMidiasEmLote(");
+        String wizard = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "anuncio-wizard", "anuncio-wizard.tsx")));
+        String fluxoFinal = recorte(wizard, "const runFinalFlow = async () => {", "const requestPublish = () => {");
+        String criarAnuncio = recorte(wizard, "const submitAnuncio = async () => {", "const ensureKycReady = async () => {");
+        String validador = Files.readString(FRONTEND.resolve(Path.of("lib", "photo-upload-validation.ts")));
 
         assertThat(adapter)
                 .contains("type MeusAnunciosErrorEnvelope")
@@ -188,6 +199,7 @@ class MeusAnunciosFrontendContractTest {
                 .contains("xhr.status === 415 && unsupportedPhotoUpload")
                 .contains("resolveUnsupportedPhotoUploadMessage(candidateMessage)");
         assertThat(unitario)
+                .contains("await validateMediaUploadPhotos([arquivo])")
                 .contains("parseErrorEnvelope(xhr.responseText)")
                 .contains("const unsupportedPhotoUpload = containsOnlyPhotoUploads([arquivo])")
                 .contains("mediaUploadIdempotencyKey(arquivo)")
@@ -196,7 +208,10 @@ class MeusAnunciosFrontendContractTest {
                 .doesNotContain("setRequestHeader('Content-Type'");
         assertThat(unitario.indexOf("mediaUploadIdempotencyKeys.delete(arquivo)"))
                 .isGreaterThan(unitario.indexOf("if (xhr.status < 200 || xhr.status >= 300)"));
+        apareceAntes(unitario, "await validateMediaUploadPhotos([arquivo])", "const csrfValue =");
+        apareceAntes(unitario, "await validateMediaUploadPhotos([arquivo])", "const xhr = new XMLHttpRequest()");
         assertThat(lote)
+                .contains("await validateMediaUploadPhotos(arquivos)")
                 .contains("parseErrorEnvelope(xhr.responseText)")
                 .contains("const unsupportedPhotoUpload = containsOnlyPhotoUploads(arquivos)")
                 .contains("mediaBatchIdempotencyKeys.set(signature, idempotencyKey)")
@@ -205,18 +220,79 @@ class MeusAnunciosFrontendContractTest {
                 .doesNotContain("setRequestHeader('Content-Type'");
         assertThat(lote.indexOf("mediaBatchIdempotencyKeys.delete(signature)"))
                 .isGreaterThan(lote.indexOf("if (xhr.status < 200 || xhr.status >= 300)"));
+        apareceAntes(lote, "await validateMediaUploadPhotos(arquivos)", "const csrfValue =");
+        apareceAntes(lote, "await validateMediaUploadPhotos(arquivos)", "const xhr = new XMLHttpRequest()");
+        assertThat(adapter).contains("const mediaBatchFileIds = new WeakMap<File, string>()");
+        assertThat(assinaturaLote)
+                .contains("mediaBatchFileIds.get(file)")
+                .contains("identity = crypto.randomUUID()")
+                .contains("mediaBatchFileIds.set(file, identity)")
+                .contains("return identity")
+                .contains(".join('|')")
+                .doesNotContain("file.name", "file.size", "file.lastModified", "file.type");
 
         assertThat(uploadPersistido)
-                .contains("setPendingPersistedFiles([])")
+                .contains("!validationReady || invalidSelection")
+                .contains("files !== pendingFilesRef.current || (errors.lote && !retryable)")
+                .contains("const version = selectionVersionRef.current")
+                .contains("const results = await Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))")
+                .contains("if (version !== selectionVersionRef.current || files !== pendingFilesRef.current || results.some((result) => !result.valid)) return")
+                .contains("updatePendingFiles([])")
                 .contains("meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.')");
+        apareceAntes(uploadPersistido, "const results = await Promise.all", "if (version !== selectionVersionRef.current");
+        apareceAntes(uploadPersistido, "if (version !== selectionVersionRef.current", "await enviarMinhasMidiasEmLote(");
+        apareceAntes(uploadPersistido, "await enviarMinhasMidiasEmLote(", "setPersisted(latest)");
+        apareceAntes(uploadPersistido, "setPersisted(latest)", "updatePendingFiles([])");
         String falha = recorte(uploadPersistido, "} catch (error) {", "} finally {");
-        assertThat(falha).doesNotContain("setPendingPersistedFiles([])");
-        assertThat(fotos)
+        assertThat(falha)
+                .contains("setRetryable(error instanceof TypeError || (error instanceof MeusAnunciosApiError")
+                .contains("error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500")
+                .doesNotContain("setPendingPersistedFiles([])", "updatePendingFiles([])", "error.status === 415");
+        assertThat(atualizarSelecao)
+                .contains("selectionVersionRef.current += 1")
+                .contains("pendingFilesRef.current = files")
                 .contains("setPendingPersistedFiles(files)")
-                .contains("pendingPersistedFiles.filter")
-                .contains("errors.lote && pendingPersistedFiles.length")
+                .contains("setErrors({})")
+                .contains("setProgress({})")
+                .contains("setRetryable(false)")
+                .doesNotContain("uploadPersisted(", "enviarMinhasMidiasEmLote(");
+        assertThat(selecionarERemover)
+                .contains("updatePendingFiles([...pendingFilesRef.current, ...files])")
+                .contains("pendingFilesRef.current.filter((file) => photoFilesRef.current.has(file))")
+                .contains("photoFilesRef.current.delete(file)")
+                .contains("updatePendingFiles(pendingFilesRef.current.filter((item) => item !== file))")
+                .doesNotContain("uploadPersisted(", "enviarMinhasMidiasEmLote(");
+        assertThat(validarSelecao)
+                .contains("const files = pendingPersistedFiles")
+                .contains("if (current) setPersistedValidation({ files, results })")
+                .contains("return () => { current = false }");
+        assertThat(fotos)
+                .contains("const photoFilesRef = useRef(new WeakSet<File>())")
+                .contains("const validationReady = persistedValidation.files === pendingPersistedFiles")
+                .contains("validationPending || invalidSelection || Boolean(errors.lote && !retryable)")
                 .contains("uploadPersisted(pendingPersistedFiles)")
-                .contains("Tentar enviar novamente");
+                .contains("errors.lote && retryable ? 'Tentar enviar novamente' : 'Enviar arquivos'");
+        assertThat(fluxoFinal)
+                .contains("if (!isEdit) {")
+                .contains("const files = state.fotos")
+                .contains("const results = await Promise.all(files.map(validatePhotoUpload))")
+                .contains("files.length !== photoSelectionRef.current.length")
+                .contains("files.some((file, index) => file !== photoSelectionRef.current[index])")
+                .contains("if (changed || files.length > 4 || invalidIndex >= 0 || files.some((file) => serverRejectedPhotos.includes(file)))")
+                .contains("throw new Error(result && !result.valid");
+        apareceAntes(fluxoFinal, "const results = await Promise.all", "const changed =");
+        apareceAntes(fluxoFinal, "throw new Error(result && !result.valid", "await ensureKycReady()");
+        apareceAntes(fluxoFinal, "await ensureKycReady()", "else await submitAnuncio()");
+        assertThat(criarAnuncio)
+                .contains("const created = await submitWizardAnuncio(state)")
+                .contains("setFotos([])")
+                .contains("setVideos([])");
+        apareceAntes(criarAnuncio, "await enviarMinhasMidiasEmLote(", "setFotos([])");
+        assertThat(wizard).contains("return () => urls.forEach((url) => URL.revokeObjectURL(url))");
+        assertThat(validador)
+                .contains("new WeakMap<File, Promise<PhotoUploadValidationResult>>()")
+                .contains("bitmap.close()")
+                .contains("URL.revokeObjectURL(url)");
     }
 
     @Test
@@ -231,6 +307,10 @@ class MeusAnunciosFrontendContractTest {
                 adapter,
                 "const PHOTO_UPLOAD_EXTENSIONS",
                 "function uploadErrorFromXhr(");
+        String classificarVideo = recorte(classificacao, "function isVideoUploadFile(", "function isPhotoUploadFile(");
+        String classificarFoto = recorte(classificacao, "function isPhotoUploadFile(", "function containsOnlyPhotoUploads(");
+        String validarFotos = recorte(classificacao, "async function validateMediaUploadPhotos(", "const failures = results.filter");
+        String validador = Files.readString(FRONTEND.resolve(Path.of("lib", "photo-upload-validation.ts")));
 
         assertThat(contrato)
                 .contains("unsupportedPhotoUpload?: boolean")
@@ -240,14 +320,40 @@ class MeusAnunciosFrontendContractTest {
         assertThat(classificacao)
                 .contains("new Set(['jpg', 'jpeg', 'png', 'webp'])")
                 .contains("file.type.trim().toLowerCase()")
-                .contains("if (mimeType) return mimeType.startsWith('image/')")
                 .contains("file.name.trim().toLowerCase()")
                 .contains("files.length > 0 && files.every(isPhotoUploadFile)");
+        assertThat(classificarVideo)
+                .contains("if (extension && PHOTO_UPLOAD_EXTENSIONS.has(extension)) return false")
+                .contains("return isSupportedUploadVideo(file)")
+                .contains("OTHER_VIDEO_EXTENSIONS.has(extension)")
+                .doesNotContain("mimeType.startsWith('video/')");
+        assertThat(classificarFoto)
+                .contains("if (isVideoUploadFile(file)) return false")
+                .contains("return Boolean(extension && PHOTO_UPLOAD_EXTENSIONS.has(extension)) || mimeType.startsWith('image/')")
+                .doesNotContain("if (mimeType) return");
+        assertThat(validarFotos)
+                .contains("const results = await Promise.all(files.map(async (file) => {")
+                .contains("if (isVideoUploadFile(file)) return null")
+                .contains("file.type.trim().toLowerCase().startsWith('video/')")
+                .contains("(!extension || !PHOTO_UPLOAD_EXTENSIONS.has(extension))")
+                .contains("const result = await validatePhotoUpload(file)")
+                .contains("return result.valid ? null : `${file.name}: ${result.message}`");
+        assertThat(validador)
+                .contains("if (!['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return invalid(PHOTO_FORMAT_MESSAGE)")
+                .contains("const bytes = new Uint8Array(await file.arrayBuffer())")
+                .contains("jpeg && (ext === 'jpg' || ext === 'jpeg')")
+                .contains("bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9")
+                .contains("ext === 'png' && pngSignature.every")
+                .contains("ext === 'webp'")
+                .contains("await imageDimensions(file.slice(0, file.size, mime))")
+                .doesNotContain("file.type");
         assertThat(adapter)
                 .contains("const message = xhr.status === 415 && unsupportedPhotoUpload")
                 .contains("candidateMessage || fallback");
         assertThat(documentos).doesNotContain("unsupportedPhotoUpload");
         assertThat(kyc).doesNotContain("unsupportedPhotoUpload");
+        assertThat(documentos).doesNotContain("photo-upload-validation", "validatePhotoUpload");
+        assertThat(kyc).doesNotContain("photo-upload-validation", "validatePhotoUpload");
     }
 
     @Test
@@ -274,6 +380,13 @@ class MeusAnunciosFrontendContractTest {
         assertThat(inicioIndex).as("inicio do contrato").isGreaterThanOrEqualTo(0);
         assertThat(fimIndex).as("fim do contrato").isGreaterThan(inicioIndex);
         return conteudo.substring(inicioIndex, fimIndex);
+    }
+
+    private static void apareceAntes(String conteudo, String primeiro, String segundo) {
+        assertThat(conteudo).contains(primeiro, segundo);
+        assertThat(conteudo.indexOf(primeiro))
+                .as("%s deve ocorrer antes de %s", primeiro, segundo)
+                .isLessThan(conteudo.indexOf(segundo));
     }
 
     private static int contarOcorrencias(String conteudo, String trecho) {
