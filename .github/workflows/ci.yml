@@ -17,6 +17,7 @@ jobs:
   verify:
     name: Backend e frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
 
@@ -33,10 +34,37 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Prepare synthetic PostgreSQL and cold JVM test images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_image in postgres:17.10-alpine postgres:17-alpine flyway/flyway:12.10.0 eclipse-temurin:17.0.13_11-jre; do
+            timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
+            docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$test_image"
+          done
+
       - name: Run full backend Maven gate
         working-directory: backend
         shell: bash
+        env:
+          LOCALIDADES_POSTGRES17_ENABLED: "true"
+          FOTO_ELEGIVEL_POSTGRES17_ENABLED: "true"
+          PREVIEW_BACKFILL_POSTGRES17_ENABLED: "true"
+          PUBLIC_SEARCH_POSTGRES17_ENABLED: "true"
+          ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
+          ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Preserve backend and cold JVM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-reconciliation-evidence
+          path: |
+            backend/target/surefire-reports
+            backend/target/localidades-cold
+            !backend/target/localidades-cold/**/inputs/**
+          if-no-files-found: warn
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
@@ -114,6 +142,13 @@ jobs:
           npm run test:public-http-states
           npm run test:public-data-access
           npm run test:health-readiness
+          node scripts/test-photo-upload-validation.mjs
+          node scripts/test-meus-anuncios-fase-1b.mjs
+          node scripts/test-admin-anuncios-fotos-lote.mjs
+          node scripts/test-admin-anuncios-moderacao-v3.mjs
+          node scripts/test-restricted-media-age-seo.mjs
+          node scripts/test-story-age-gate-fail-closed.mjs
+          node scripts/test-story-video-audio.mjs
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           npm run test:search-indexing
@@ -127,3 +162,60 @@ jobs:
       - name: Validate isolated infrastructure contract
         shell: pwsh
         run: ./scripts/deploy/validar-infra-vps-legadas.ps1
+
+  verify-operation:
+    name: Contratos operacionais sinteticos
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+
+      - name: Prepare local operation test images
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          docker compose version
+          for test_image in node:22.13.1-alpine postgres:17.10-alpine nginx:1.27-alpine; do
+            timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
+            docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$test_image"
+          done
+
+      - name: Validate composed operation contract
+        shell: pwsh
+        run: ./scripts/deploy/validar-deploy-production-local.ps1
+
+      - name: Run synthetic operation safety gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/reconciliation-operation-evidence"
+          first_failure=0
+          for gate in testar-stdin-deploy-production testar-gate-banco-production testar-gate-flyway-production testar-backfill-previews-production testar-operacao-production testar-backup-validado-production testar-operacao-containers-production; do
+            set +e
+            bash "./scripts/deploy/$gate.sh" 2>&1 | tee "$RUNNER_TEMP/reconciliation-operation-evidence/$gate.log"
+            codes=("${PIPESTATUS[@]}")
+            set -e
+            printf 'GATE %s test_exit=%s evidence_exit=%s\n' "$gate" "${codes[0]}" "${codes[1]}"
+            if [ "${codes[0]}" -ne 0 ] && [ "$first_failure" -eq 0 ]; then first_failure="${codes[0]}"; fi
+            if [ "${codes[1]}" -ne 0 ] && [ "$first_failure" -eq 0 ]; then first_failure="${codes[1]}"; fi
+          done
+          exit "$first_failure"
+
+      - name: Preserve operation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operation-reconciliation-evidence
+          path: ${{ runner.temp }}/reconciliation-operation-evidence
+          if-no-files-found: warn

@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 workflow="${repo_root}/.github/workflows/deploy-production.yml"
+operation_helper="${script_dir}/proteger-operacao-production.sh"
 backfill_helper="${repo_root}/scripts/deploy/executar-backfill-previews-production.sh"
 backfill_test="${repo_root}/scripts/deploy/testar-backfill-previews-production.sh"
 temp_dir="$(mktemp -d)"
@@ -97,7 +98,7 @@ grep -Fq 'test "$(sha256sum -- "${incoming}"' "${workflow}"
 echo "PASS: transporte_release_com_sha"
 
 target_line="$(grep -nF '      - name: Validate canonical production target' "${workflow}" | tail -1 | cut -d: -f1)"
-indexnow_line="$(grep -nF '      - name: Synchronize IndexNow key in production runtime' "${workflow}" | cut -d: -f1)"
+indexnow_line="$(grep -nF '          op_phase CONFIGURING' "${workflow}" | cut -d: -f1)"
 release_upload_line="$(grep -nF '      - name: Upload immutable release' "${workflow}" | cut -d: -f1)"
 (( target_line < indexnow_line && target_line < release_upload_line )) \
   || fail "target guard nao antecede todas as mutacoes remotas"
@@ -231,6 +232,24 @@ if grep -qx 'falha_posterior' "$failure_log"; then
 fi
 echo "PASS: falha_psql_interrompe"
 
+reader_failure_log="${temp_dir}/reader-failure.log"
+reader_status=0
+{
+  printf '%s\n' 'set -euo pipefail' 'db=fixture' 'user=fixture' "$flyway_reader"
+  printf '%s\n' 'flyway_before_state="$(read_flyway_state 053)"'
+  printf '%s\n' 'printf "leitura_flyway_prosseguiu\n"'
+} | PATH="${temp_dir}/bin:${PATH}" FAKE_PSQL_FAIL=true bash -s > "$reader_failure_log" 2>&1 \
+  || reader_status=$?
+[[ "$reader_status" -eq 42 ]] || fail "funcao Flyway real nao preservou o erro SQL 42"
+if grep -qx 'leitura_flyway_prosseguiu' "$reader_failure_log"; then
+  fail "atribuicao da leitura Flyway real prosseguiu apos erro SQL"
+fi
+grep -Fq 'flyway_before_state="$(read_flyway_state "${expected_flyway}")"' "$workflow" \
+  || fail "leitura Flyway anterior nao propaga falha da funcao"
+grep -Fq 'flyway_after_state="$(read_flyway_state "${expected_flyway}")"' "$workflow" \
+  || fail "leitura Flyway posterior nao propaga falha da funcao"
+echo "PASS: funcao_flyway_real_propaga_erro"
+
 line_number() {
   local needle="$1"
   local source="$2"
@@ -248,8 +267,8 @@ line_number() {
 backup_line="$(line_number 'bash "${backup_producer}"' "${workflow}")"
 flyway_line="$(line_number 'flyway migrate </dev/null' "${workflow}")"
 flyway_gate_line="$(line_number 'bash "${flyway_gate}" after' "${workflow}")"
-startup_line="$(line_number 'application_started=1' "${workflow}")"
-health_line="$(line_number 'test "${healthy}" -eq 1' "${workflow}")"
+startup_line="$(line_number 'op_phase ACTIVATING' "${workflow}")"
+health_line="$(line_number 'op_smoke "${release_sha}"' "${workflow}")"
 switch_line="$(line_number 'mv -Tf "${current_link}"' "${workflow}")"
 
 (( backup_line < flyway_line )) || fail "backup nao antecede Flyway"
@@ -268,4 +287,107 @@ if find "${temp_dir}" -maxdepth 1 -name 'transport-residual-*' -print -quit | gr
   fail "recurso temporario residual"
 fi
 echo "PASS: residuos_zero"
+begin_line="$(line_number 'op_begin "${deploy_root}" "${release_sha}"' "${workflow}")"
+baseline_line="$(line_number 'op_smoke "${previous_sha}"' "${workflow}")"
+expected_indexnow_line="$(line_number 'op_expect_indexnow "${indexnow_key}"' "${workflow}")"
+indexnow_line="$(line_number 'op_run mutating docker run --rm -i --pull never' "${workflow}")"
+build_line="$(line_number 'op_run mutating "${compose[@]}" build backend frontend' "${workflow}")"
+expected_candidate_line="$(line_number 'op_expect_candidate' "${workflow}")"
+startup_phase_line="$(line_number 'op_phase ACTIVATING' "${workflow}")"
+startup_line="$(line_number 'op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway' "${workflow}")"
+health_line="$(line_number 'op_smoke "${release_sha}"' "${workflow}")"
+switch_line="$(line_number 'mv -Tf "${current_link}"' "${workflow}")"
+final_runtime_line="$(line_number "grep -qx 'SEARCH_INDEXING_MODE=public'" "${workflow}")"
+final_logs_line="$(line_number 'IMPORTACAO_.*(INICIO|EXECUTADA)' "${workflow}")"
+finish_line="$(line_number '          op_finish' "${workflow}")"
+
+(( begin_line < baseline_line && baseline_line < expected_indexnow_line && expected_indexnow_line < indexnow_line && indexnow_line < backup_line )) \
+  || fail "baseline ou primeira mutacao de configuracao fora da posse compartilhada"
+echo "PASS: indexnow_sob_posse"
+(( build_line < expected_candidate_line && expected_candidate_line < startup_phase_line )) \
+  || fail "identidades candidatas nao foram fixadas apos build e antes da ativacao"
+echo "PASS: identidades_antes_ativacao"
+(( backup_line < flyway_line )) || fail "backup nao antecede Flyway"
+echo "PASS: backup_antes_flyway"
+(( flyway_line < flyway_gate_line && flyway_gate_line < startup_phase_line && startup_phase_line < startup_line )) \
+  || fail "Flyway validado fora da ordem de startup"
+echo "PASS: flyway_antes_startup"
+(( startup_line < health_line && health_line < switch_line )) || fail "troca da release antecede health/readiness"
+grep -Fq 'api/health/readiness' "$operation_helper" || fail "readiness ausente do smoke compartilhado"
+echo "PASS: health_antes_troca"
+(( switch_line < final_runtime_line && final_runtime_line < finish_line && final_logs_line < finish_line )) \
+  || fail "checks finais fora da operacao protegida"
+[[ "$(grep -Ec '^[[:space:]]+op_begin[[:space:]]' "$workflow")" -eq 1 ]] \
+  || fail "mais de uma entrada de operacao no workflow"
+[[ "$(grep -Ec '^[[:space:]]+op_finish[[:space:]]*$' "$workflow")" -eq 1 ]] \
+  || fail "conclusao protegida ausente ou duplicada"
+if grep -Eq '^[[:space:]]+- name: (Smoke production release|Synchronize IndexNow key in production runtime)[[:space:]]*$' "$workflow"; then
+  fail "smoke critico ou mutacao IndexNow ainda fora da operacao protegida"
+fi
+echo "PASS: smoke_final_sob_posse"
+grep -Fq 'tar -tzf "${ARCHIVE}" | grep -Fx '\''./scripts/deploy/proteger-operacao-production.sh'\''' "$workflow" \
+  || fail "empacotamento nao exige o helper compartilhado"
+echo "PASS: helper_no_empacotamento"
+
+
+# Execute the actual versioned guards against exclusively local boundaries.
+extract_run() {
+  awk -v wanted="$1" '
+    /^      - name: / { selected = ($0 == "      - name: " wanted); running=0 }
+    selected && /^        run: \|$/ {running=1; next}
+    running && /^          / {print substr($0,11)}
+  ' "$workflow"
+}
+guard_dir="${temp_dir}/guards"
+mkdir -p "${guard_dir}/bin"
+extract_run 'Validate preflight inputs and secrets' > "${guard_dir}/inputs.sh"
+extract_run 'Validate canonical production target' > "${guard_dir}/target.sh"
+[[ -s "${guard_dir}/inputs.sh" && -s "${guard_dir}/target.sh" ]] || fail 'guards reais ausentes'
+export REQUESTED_MODE=deploy DEPLOY_SHA=1111111111111111111111111111111111111111
+export GITHUB_SHA="$DEPLOY_SHA" CONFIRMATION=DEPLOY_PRODUCTION
+export TOPSDOJOB_PROD_SSH_HOST=fixture.invalid TOPSDOJOB_PROD_SSH_USER=topsdojob TOPSDOJOB_PROD_SSH_PORT=22
+export TOPSDOJOB_PROD_SSH_IDENTITY=CHANGE_ME TOPSDOJOB_PROD_SSH_HOST_KEY=CHANGE_ME
+export TOPSDOJOB_PROD_TARGET_SHA256=1111111111111111111111111111111111111111111111111111111111111111
+bash "${guard_dir}/inputs.sh"
+if DEPLOY_SHA=2222222222222222222222222222222222222222 bash "${guard_dir}/inputs.sh"; then fail 'SHA divergente passou pelo preflight'; fi
+if CONFIRMATION=NOT_AUTHORIZED bash "${guard_dir}/inputs.sh"; then fail 'confirmacao incorreta passou pelo preflight'; fi
+if TOPSDOJOB_PROD_SSH_USER=not_the_deploy_user bash "${guard_dir}/inputs.sh"; then fail 'usuario fora do target passou pelo preflight'; fi
+echo 'PASS: guards_reais_sha_confirmacao_usuario'
+cat > "${guard_dir}/bin/ssh" <<'TARGET_BOUNDARY'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *sha256sum* ]]; then
+  printf '%s\n' "$GUARD_TEST_TARGET_HASH"
+else
+  [[ "$GUARD_TEST_MARKER" == production ]] || exit 42
+fi
+TARGET_BOUNDARY
+chmod +x "${guard_dir}/bin/ssh"
+export GUARD_TEST_TARGET_HASH="$TOPSDOJOB_PROD_TARGET_SHA256" GUARD_TEST_MARKER=production
+PATH="${guard_dir}/bin:${PATH}" bash "${guard_dir}/target.sh"
+if PATH="${guard_dir}/bin:${PATH}" GUARD_TEST_TARGET_HASH=2222222222222222222222222222222222222222222222222222222222222222 bash "${guard_dir}/target.sh"; then fail 'target hash divergente aceito'; fi
+if PATH="${guard_dir}/bin:${PATH}" GUARD_TEST_MARKER=other bash "${guard_dir}/target.sh"; then fail 'marcador canonico divergente aceito'; fi
+echo 'PASS: guard_real_target_canonico'
+
+upload_body="$(awk '
+  /^      - name: Upload immutable release$/ {selected=1}
+  selected && /<<\047REMOTE\047/ {reading=1; next}
+  reading && /^          REMOTE$/ {exit}
+  reading {print substr($0,11)}
+' "$workflow")"
+[[ "$upload_body" == *'sha256sum -- "${incoming}"'* ]] || fail 'guard remoto de checksum ausente'
+fixture_root="${guard_dir}/production"
+mkdir -p "${fixture_root}/incoming" "${fixture_root}/releases" "${guard_dir}/payload"
+printf 'synthetic payload\n' > "${guard_dir}/payload/value"
+tar -czf "${fixture_root}/incoming/${DEPLOY_SHA}.tar.gz" -C "${guard_dir}/payload" .
+printf '%s\n' "${upload_body//\/opt\/topsv3\/production/$fixture_root}" > "${guard_dir}/upload.sh"
+archive_hash="$(sha256sum "${fixture_root}/incoming/${DEPLOY_SHA}.tar.gz" | cut -d ' ' -f 1)"
+if bash "${guard_dir}/upload.sh" "$DEPLOY_SHA" 2222222222222222222222222222222222222222222222222222222222222222; then fail 'checksum incorreto foi extraido'; fi
+[[ ! -e "${fixture_root}/releases/${DEPLOY_SHA}" && ! -e "${fixture_root}/releases/.${DEPLOY_SHA}.incoming" ]] || fail 'checksum falho realizou extracao'
+if bash "${guard_dir}/upload.sh" invalid_sha "$archive_hash"; then fail 'SHA invalido criou release'; fi
+bash "${guard_dir}/upload.sh" "$DEPLOY_SHA" "$archive_hash"
+[[ "$(cat "${fixture_root}/releases/${DEPLOY_SHA}/.release-sha")" == "$DEPLOY_SHA" ]] || fail 'identidade final divergente'
+[[ "$(cat "${fixture_root}/releases/${DEPLOY_SHA}/value")" == 'synthetic payload' ]] || fail 'payload integral nao foi extraido'
+chmod -R u+w "${fixture_root}/releases/${DEPLOY_SHA}"
+echo 'PASS: checksum_real_antes_extracao_e_sha_final'
 echo "DEPLOY_STDIN_REGRESSION_TESTS=PASS"

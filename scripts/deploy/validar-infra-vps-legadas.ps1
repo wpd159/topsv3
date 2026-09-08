@@ -92,10 +92,13 @@ foreach ($legacySecret in @(
 }
 
 $guard = $production.IndexOf("name: Validate canonical production target")
-$indexNow = $production.IndexOf("name: Synchronize IndexNow key in production runtime")
+$indexNow = $production.IndexOf('op_phase CONFIGURING')
+$operationBegin = $production.IndexOf('op_begin "${deploy_root}" "${release_sha}"')
 $upload = $production.IndexOf("name: Upload immutable release")
 Assert-Contract ($guard -ge 0) "target guard ausente"
 Assert-Contract ($guard -lt $indexNow) "target guard ocorre depois de mutacao remota"
+Assert-Contract ($operationBegin -gt $guard -and $indexNow -gt $operationBegin) "IndexNow deve ocorrer sob ownership e snapshot"
+Assert-Contract ($production.Contains('op_expect_indexnow "${indexnow_key}"')) "IndexNow sem contrato de snapshot"
 Assert-Contract ($guard -lt $upload) "target guard ocorre depois do upload"
 $preflight = [regex]::Match(
   $production,

@@ -22,6 +22,7 @@ const productionCompose = read('deploy/production/docker-compose.yml')
 const preprodCompose = read('deploy/preprod/docker-compose.yml')
 const hmlCompose = read('deploy/hml/docker-compose.yml')
 const productionWorkflow = read('.github/workflows/deploy-production.yml')
+const operationHelper = read('scripts/deploy/proteger-operacao-production.sh')
 const ciWorkflow = read('.github/workflows/ci.yml')
 
 assert.match(backendHealth, /@GetMapping\("\/liveness"\)/)
@@ -31,7 +32,7 @@ assert.match(databaseProbe, /SELECT 1 AS probe/)
 assert.match(databaseProbe, /FROM flyway_schema_history/)
 assert.match(databaseProbe, /setReadOnly\(true\)/)
 assert.match(databaseProbe, /setQueryTimeout/)
-assert.match(readinessService, /future\.get\(timeout\.toMillis\(\), TimeUnit\.MILLISECONDS\)/)
+assert.match(readinessService, /TimeUnit\.(?:MILLISECONDS|NANOSECONDS)/)
 assert.doesNotMatch(`${databaseProbe}\n${readinessService}`, /R2|Efi|Cloudflare|MailSender/)
 
 assert.match(frontendLiveness, /status:\s*'UP'/)
@@ -77,30 +78,30 @@ assert.match(productionWorkflow, /\/health\/readiness/)
 process.stdout.write('ok - workflow production aguarda readiness real\n')
 
 const activation = productionWorkflow.match(
-  /name: Build and activate production release[\s\S]*?(?=\n      - name:)/,
+  /name: Build and activate production release[\s\S]*?(?=\n      - name:|$)/,
 )?.[0]
 assert.ok(activation, 'etapa de ativacao ausente')
-const baseline = activation.slice(
-  activation.indexOf('baseline_health=DOWN'),
-  activation.indexOf('capture_database_snapshot "${snapshot_before}"'),
-)
-assert.match(baseline, /28080\/api\/health\/readiness/)
-assert.match(baseline, /23000\/anuncios/)
-assert.doesNotMatch(
-  baseline,
-  /(?:23010|23000)\/health\//,
-  'o baseline deve aceitar a release de referencia sem health frontend',
-)
-const startup = activation.indexOf('application_started=1')
-const health = activation.indexOf('test "${healthy}" -eq 1')
+const begin = activation.indexOf('op_begin "${deploy_root}" "${release_sha}"')
+const baseline = activation.indexOf('op_smoke "${previous_sha}"')
+const mutation = activation.indexOf('op_phase CONFIGURING')
+assert.ok(begin >= 0 && baseline > begin && mutation > baseline)
+assert.match(operationHelper, /a60b1e74978017a5bba1577f58804933b347c790/)
+assert.match(operationHelper, /previous\.health-profile/)
+assert.match(operationHelper, /candidate\.health-profile/)
+assert.match(operationHelper, /main-v1/)
+assert.match(operationHelper, /legacy-a60/)
+assert.match(operationHelper, /recovery_deadline=\$\(\(SECONDS \+ 300\)\)/)
+const startup = activation.indexOf('op_phase ACTIVATING')
+const health = activation.indexOf('op_smoke "${release_sha}"')
 const switchLink = activation.indexOf('mv -Tf "${current_link}"')
 assert.ok(startup >= 0 && health > startup && switchLink > health)
-const healthLoop = activation.slice(startup, health)
-assert.match(healthLoop, /28080\/api\/health\/readiness/)
-assert.match(healthLoop, /23010\/health\/readiness/)
-assert.match(healthLoop, /23000\/health\/readiness/)
-assert.match(activation, /trap on_error ERR/)
-assert.match(activation, /rollback_application/)
+for (const endpoint of ['28080/api/health/readiness', '23010/health/readiness', '23000/health/readiness']) {
+  assert.ok(operationHelper.includes(endpoint), `sonda obrigatoria ausente: ${endpoint}`)
+}
+assert.doesNotMatch(activation, /trap on_error ERR|rollback_application|application_started/)
+assert.match(operationHelper, /trap '_op_exit "\$\?"' EXIT/)
+assert.match(operationHelper, /--no-build --pull never backend frontend gateway/)
+assert.ok(activation.indexOf('op_finish') > activation.indexOf('IMPORTACAO_.*(INICIO|EXECUTADA)'))
 assert.ok(
   activation.indexOf('capture_database_snapshot "${snapshot_after}" UP') < switchLink,
   'a release deve passar health e gate de banco antes da confirmacao do symlink',
