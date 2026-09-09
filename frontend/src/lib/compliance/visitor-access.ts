@@ -31,6 +31,11 @@ let statusGeneration = 0
 const CACHE_TTL_MS = 30_000
 export const AGE_VERIFICATION_CHANGED_EVENT = 'topsv3:age-verification-changed'
 
+// Consumers must not apply a response captured before a newer invalidation.
+export function obterGeracaoStatusVisitante(): number {
+  return statusGeneration
+}
+
 function mapStatus(status: VisitorAccessStatus): StatusVisitante {
   return {
     globalAccepted: status.globalAccepted,

@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/compliance/age-gate-api"
 import {
   notificarMudancaVerificacao,
+  obterGeracaoStatusVisitante,
   obterStatusVisitante,
   recarregarStatusVisitante,
   statusSatisfazEscopo,
@@ -114,10 +116,26 @@ export function VisitorVerificationModal({
   const challengeKeyRef = useRef<string | null>(null)
   const verifyKeyRef = useRef<string | null>(null)
   const documentKeyRef = useRef<string | null>(null)
+  const operationRef = useRef(0)
   const callbacksRef = useRef({ onOpenChange, onVerified })
   callbacksRef.current = { onOpenChange, onVerified }
 
+  // Invalidate at commit: a transition can defer passive cleanup until after
+  // a response resolves, even though this flow is already closed or replaced.
+  useLayoutEffect(() => () => {
+    operationRef.current += 1
+  }, [
+    context?.anuncioId,
+    context?.midiaId,
+    context?.route,
+    context?.storyId,
+    level,
+    open,
+    scope,
+  ])
+
   useEffect(() => {
+    const operation = ++operationRef.current
     if (!open) {
       setStep("loading")
       setChallenge(null)
@@ -138,16 +156,19 @@ export function VisitorVerificationModal({
       return
     }
     let active = true
+    const generation = obterGeracaoStatusVisitante()
+    const isCurrent = () => active && operationRef.current === operation
+      && generation === obterGeracaoStatusVisitante()
     setStep("loading")
     setError(null)
     setMessage(null)
     void (async () => {
       const global = await obterStatusVisitante(true)
+      if (!isCurrent()) return
       if (!global.globalAccepted) {
         throw new Error("Aceite o aviso geral antes de acessar o conteudo protegido.")
       }
       if (statusSatisfazEscopo(global, scope, level)) {
-        if (!active) return
         notificarMudancaVerificacao(global)
         callbacksRef.current.onVerified?.(global)
         callbacksRef.current.onOpenChange(false)
@@ -172,7 +193,7 @@ export function VisitorVerificationModal({
         route: context?.route || "/",
         idempotencyKey: challengeKey,
       })
-      if (!active) return
+      if (!isCurrent()) return
       setChallenge(created)
       if (created.state === "BLOCKED") {
         setStep("blocked")
@@ -181,7 +202,7 @@ export function VisitorVerificationModal({
         setStep("birth")
       }
     })().catch((nextError) => {
-      if (!active) return
+      if (!isCurrent()) return
       setStep("blocked")
       setError(nextError instanceof Error
         ? nextError.message
@@ -189,6 +210,7 @@ export function VisitorVerificationModal({
     })
     return () => {
       active = false
+      operationRef.current += 1
     }
   }, [
     context?.anuncioId,
@@ -229,6 +251,10 @@ export function VisitorVerificationModal({
     }
     setSubmitting(true)
     setError(null)
+    const operation = ++operationRef.current
+    const generation = obterGeracaoStatusVisitante()
+    const isCurrent = () => operationRef.current === operation
+      && generation === obterGeracaoStatusVisitante()
     try {
       const verifyKey = verifyKeyRef.current
         ?? newIdempotencyKey("visitor-verify")
@@ -244,6 +270,8 @@ export function VisitorVerificationModal({
         confirmacaoExplicita: explicitAccepted,
         idempotencyKey: verifyKey,
       })
+      // A closed/replaced flow or newer revocation wins over this response.
+      if (!isCurrent()) return
       if (status.state === "DOCUMENT_PENDING") {
         setStep("document")
         setMessage(status.reasonPublic || "Envie um documento para analise manual.")
@@ -258,11 +286,12 @@ export function VisitorVerificationModal({
       onVerified?.(mapped)
       onOpenChange(false)
     } catch (nextError) {
+      if (!isCurrent()) return
       setError(nextError instanceof Error
         ? nextError.message
         : "Nao foi possivel concluir a verificacao.")
     } finally {
-      setSubmitting(false)
+      if (operationRef.current === operation) setSubmitting(false)
     }
   }
 
