@@ -21,6 +21,8 @@ public class FotoElegivelAnuncioPolicy {
             "Aprove ao menos uma foto antes de aprovar o anúncio.";
     public static final String MENSAGEM_FOTO_AGUARDANDO_DECISAO =
             "Conclua a análise de todas as fotos antes de aprovar o anúncio.";
+    public static final String MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO =
+            "O anúncio precisa manter ao menos uma foto aprovada para ser reativado.";
     public static final String MENSAGEM_ULTIMA_FOTO_APROVADA =
             "O anúncio publicado precisa manter ao menos uma foto aprovada. "
                     + "Adicione e aprove outra foto antes de remover esta.";
@@ -60,6 +62,15 @@ public class FotoElegivelAnuncioPolicy {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     MENSAGEM_SEM_FOTO_APROVADA);
+        }
+    }
+
+    public void validarParaReativacao(UUID anuncioId) {
+        bloquearMidiasEArquivos(anuncioId);
+        if (anuncioMidiaRepository.findFotosAprovadasElegiveisIds(anuncioId).isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO);
         }
     }
 

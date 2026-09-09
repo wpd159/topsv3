@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoAcaoService;
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioJuridicoService;
+import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminBloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.publico.service.SolicitarAnuncioPublicoService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
@@ -25,9 +26,11 @@ import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2VerificacaoAgrupadaPreviews;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.CategoriaBloqueioJuridico;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -64,6 +67,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -460,11 +464,16 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
         Ad ad = ad("PAUSADO", "APROVADO");
         Media photo = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
         AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
         Ordered result = ordered(ad, () -> remove(ad, photo),
                 () -> juridico.reativar(ad.id(), administrator, "reativar-admin-concorrente"));
-        assertThat(result.failure()).isInstanceOfSatisfying(ResponseStatusException.class,
-                exception -> assertThat(exception.getStatusCode().value()).isEqualTo(409));
+        assertThat(result.failure()).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+            assertThat(exception.getStatusCode().value()).isEqualTo(409);
+            assertThat(exception.getReason()).isEqualTo("anuncio nao pode ser reativado");
+        });
         assertClosed(ad, photo);
+        assertThat(count("select count(*) from auditoria_evento where recurso_id = ? and acao = 'ANUNCIO_REATIVADO_ADMINISTRATIVAMENTE'", ad.id())).isZero();
+        assertThat(count("select count(*) from anuncio_status_historico where anuncio_id = ?", ad.id())).isEqualTo(1);
     }
 
     @Test
@@ -472,20 +481,345 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
         Ad ad = ad("PAUSADO", "APROVADO");
         Media photo = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
         AdminUserPrincipal administrator = admin(ad);
-        Ordered result = ordered(ad,
-                () -> juridico.reativar(ad.id(), administrator, "reativar-admin-primeiro"),
-                () -> remove(ad, photo));
+        kycAprovado(ad, administrator);
+        List<String> mediaBefore = mediaSnapshot(ad);
+        Ordered result = ordered(ad, () -> {
+            Object response = juridico.reativar(ad.id(), administrator, "reativar-admin-primeiro");
+            entityManager.flush();
+            assertReactivated(ad, administrator, true, "reativar-admin-primeiro");
+            assertThat(mediaSnapshot(ad)).isEqualTo(mediaBefore);
+            return response;
+        }, () -> remove(ad, photo));
         assertThat(result.failure()).isNull();
         assertClosed(ad, photo);
+        assertThat(count("select count(*) from auditoria_evento where recurso_id = ? and acao = 'ANUNCIO_REATIVADO_ADMINISTRATIVAMENTE'", ad.id())).isEqualTo(1);
+        assertThat(count("select count(*) from anuncio_status_historico where anuncio_id = ?", ad.id())).isEqualTo(2);
     }
 
     @Test
     void reativacaoConcorrentePosteriorAoDeleteNaoReabreEncerrado() throws Exception {
         Ad ad = ad("PAUSADO", "APROVADO");
         Media photo = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        kycAprovado(ad, admin(ad));
         Ordered result = ordered(ad, () -> remove(ad, photo), () -> ciclo.reativar(ad.slug(), ad.auth(), "reativar-concorrente"));
-        assertThat(result.failure()).isInstanceOf(ResponseStatusException.class);
+        assertThat(result.failure()).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+            assertThat(exception.getStatusCode().value()).isEqualTo(404);
+            assertThat(exception.getReason()).isEqualTo("anuncio nao encontrado");
+        });
         assertClosed(ad, photo);
+        assertThat(count("select count(*) from auditoria_evento where recurso_id = ? and acao = 'ANUNCIO_REATIVADO_PELO_USUARIO'", ad.id())).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDENTE", "AJUSTE_SOLICITADO"})
+    void reativacaoProprietariaComAprovadaEPendenciaPreservaClassificacao(String pendingStatus) {
+        reativacaoComPendenciaPreservaClassificacao(false, pendingStatus);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDENTE", "AJUSTE_SOLICITADO"})
+    void reativacaoAdministrativaComAprovadaEPendenciaPreservaClassificacao(String pendingStatus) {
+        reativacaoComPendenciaPreservaClassificacao(true, pendingStatus);
+    }
+
+    private void reativacaoComPendenciaPreservaClassificacao(boolean administrative, String pendingStatus) {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        Media approved = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        Media pending = photo(ad, 1, pendingStatus, "PENDENTE");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        List<String> mediaBefore = mediaSnapshot(ad);
+        String requestId = "reativar-com-" + pendingStatus.toLowerCase();
+
+        reactivate(ad, administrator, administrative, requestId);
+
+        assertReactivated(ad, administrator, administrative, requestId);
+        assertThat(mediaSnapshot(ad)).isEqualTo(mediaBefore);
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).containsExactly(approved.id());
+        assertThat(vinculos.findFotosAguardandoDecisaoIds(ad.id())).containsExactly(pending.id());
+        assertThat(value("select status from anuncio_midia where id = ?", pending.id())).isEqualTo(pendingStatus);
+        // Reativacao nao aprova a pendencia, nem libera o DELETE da unica aprovada remanescente.
+        Map<String, Object> beforeRejectedDelete = persistedSnapshot(ad);
+        assertHttpReason(409, FotoElegivelAnuncioPolicy.MENSAGEM_ULTIMA_FOTO_APROVADA,
+                () -> remove(ad, approved));
+        assertThat(persistedSnapshot(ad)).isEqualTo(beforeRejectedDelete);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,CAPA,LIVRE", "true,CAPA,LIVRE", "false,GALERIA,RESTRITA_18", "true,GALERIA,RESTRITA_18"})
+    void reativacaoComUnicaFotoAprovadaRespeitaFinalidadeEVisibilidadeCanonicas(
+            boolean administrative, String purpose, String visibility) {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        Media approved = media(ad, 0, "FOTO", purpose, "PUBLICAVEL", "VALIDADO", "image/jpeg", 1024);
+        jdbc.update("update anuncio_midia set visibilidade_midia = ? where id = ?", visibility, approved.id());
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        List<String> mediaBefore = mediaSnapshot(ad);
+
+        reactivate(ad, administrator, administrative, "reativar-unica-aprovada");
+
+        assertReactivated(ad, administrator, administrative, "reativar-unica-aprovada");
+        assertThat(mediaSnapshot(ad)).isEqualTo(mediaBefore);
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).containsExactly(approved.id());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,NENHUMA", "true,NENHUMA", "false,PENDENTE", "true,PENDENTE",
+            "false,AJUSTE_SOLICITADO", "true,AJUSTE_SOLICITADO"})
+    void reativacaoSemAprovadaRecusaSemEfeitos(boolean administrative, String mediaStatus) {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        if (!mediaStatus.equals("NENHUMA")) photo(ad, 0, mediaStatus, "PENDENTE");
+        assertReactivationWithoutEligiblePhoto(ad, administrative);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,ARQUIVO_PENDENTE", "true,ARQUIVO_PENDENTE",
+            "false,ARQUIVO_REJEITADO", "true,ARQUIVO_REJEITADO",
+            "false,ARQUIVO_REMOVIDO", "true,ARQUIVO_REMOVIDO",
+            "false,FINALIDADE_STORY", "true,FINALIDADE_STORY",
+            "false,VIDEO", "true,VIDEO", "false,STORY", "true,STORY",
+            "false,FOTO_REJEITADA", "true,FOTO_REJEITADA", "false,FOTO_REMOVIDA", "true,FOTO_REMOVIDA",
+            "false,DOCUMENTO_HISTORICO", "true,DOCUMENTO_HISTORICO"})
+    void reativacaoNaoConfundeClassificacaoAparenteComFotoElegivel(boolean administrative, String scenario) {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        String type = scenario.equals("VIDEO") ? "VIDEO" : scenario.endsWith("STORY") ? "STORY" : "FOTO";
+        String purpose = scenario.endsWith("STORY") ? "STORY" : "GALERIA";
+        String status = scenario.equals("FOTO_REJEITADA") ? "REJEITADA"
+                : scenario.equals("FOTO_REMOVIDA") ? "REMOVIDA" : "PUBLICAVEL";
+        String fileStatus = scenario.startsWith("ARQUIVO_") ? scenario.substring("ARQUIVO_".length()) : "VALIDADO";
+        Media candidate = media(ad, 0, type, purpose, status, fileStatus,
+                type.equals("VIDEO") ? "video/mp4" : "image/jpeg", 1024);
+        if (scenario.equals("FINALIDADE_STORY")) {
+            List<String> beforeInvalidPurpose = mediaSnapshot(ad);
+            // V005 impede FOTO/STORY; conservar a STORY valida em vez de contornar a constraint.
+            assertThatThrownBy(() -> jdbc.update("update anuncio_midia set tipo = 'FOTO' where id = ?", candidate.id()))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("anuncio_midia_story_consistencia_chk");
+            assertThat(mediaSnapshot(ad)).isEqualTo(beforeInvalidPurpose);
+        }
+        if (scenario.equals("DOCUMENTO_HISTORICO")) historicalDocument(ad, candidate);
+        assertReactivationWithoutEligiblePhoto(ad, administrative);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void visibilidadeAusenteNaoPodeSerPersistidaComoPublicavelNemSatisfazerReativacao(boolean administrative) {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        Media candidate = photo(ad, 0, "PENDENTE", "VALIDADO");
+        List<String> beforeInvalidClassification = mediaSnapshot(ad);
+        // V018 impede esse estado em PostgreSQL; nao desabilitar a constraint para fabricar a prova.
+        assertThatThrownBy(() -> jdbc.update("update anuncio_midia set status = 'PUBLICAVEL' where id = ?", candidate.id()))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("anuncio_midia_publicavel_visibilidade_chk");
+        assertThat(mediaSnapshot(ad)).isEqualTo(beforeInvalidClassification);
+        assertReactivationWithoutEligiblePhoto(ad, administrative);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,REMOVIDO", "true,REMOVIDO", "false,DATA_REMOCAO", "true,DATA_REMOCAO"})
+    void fotoAdicionadaPosteriormenteNaoReabreEstadoTerminal(boolean administrative, String terminal) {
+        Ad ad = ad(terminal.equals("REMOVIDO") ? "REMOVIDO" : "PAUSADO", "APROVADO");
+        if (terminal.equals("DATA_REMOCAO")) jdbc.update("update anuncio set removido_em = ? where id = ?", AGORA, ad.id());
+        Media addedLater = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).containsExactly(addedLater.id());
+        Map<String, Object> before = persistedSnapshot(ad);
+
+        assertHttpReason(administrative ? 409 : 404,
+                administrative ? "anuncio nao pode ser reativado" : "anuncio nao encontrado",
+                () -> reactivate(ad, administrator, administrative, "reativar-terminal-com-foto"));
+
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,SUSPENSO", "true,SUSPENSO", "false,EXCLUIDO", "true,EXCLUIDO",
+            "false,MODERACAO", "true,MODERACAO"})
+    void reativacaoComFotoNaoContornaUsuarioOuModeracaoInvalidos(boolean administrative, String restriction) {
+        Ad ad = ad("PAUSADO", restriction.equals("MODERACAO") ? "PENDENTE" : "APROVADO");
+        photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        if (restriction.equals("EXCLUIDO")) {
+            // Preparar o estado completo exigido por V044 pelo metodo canonico, sem excluir o anuncio.
+            transaction().executeWithoutResult(ignored -> {
+                entityManager.find(UsuarioEntity.class, ad.owner()).anonimizarDefinitivamente(administrator.usuarioId(), AGORA);
+                entityManager.flush();
+            });
+        } else if (!restriction.equals("MODERACAO")) {
+            jdbc.update("update usuario set status = ? where id = ?", restriction, ad.owner());
+        }
+        Map<String, Object> before = persistedSnapshot(ad);
+
+        assertHttpReason(administrative || restriction.equals("MODERACAO") ? 409 : 401,
+                administrative ? "anuncio nao pode ser reativado"
+                        : restriction.equals("MODERACAO") ? "transicao de anuncio invalida" : "sessao publica invalida",
+                () -> reactivate(ad, administrator, administrative, "reativar-restricao-independente"));
+
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,false", "true,false", "false,true", "true,true"})
+    void reativacaoNaoContornaBloqueioJuridicoPersistido(boolean administrative, boolean blockUser) {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        AdminBloqueioJuridicoRequest request = new AdminBloqueioJuridicoRequest(
+                CategoriaBloqueioJuridico.FRAUDE, "Bloqueio sintetico de teste focal", null);
+        if (blockUser) juridico.bloquearAnuncioEUsuario(ad.id(), request, administrator, "bloquear-antes-reativar");
+        else juridico.bloquearAnuncio(ad.id(), request, administrator, "bloquear-antes-reativar");
+        Map<String, Object> before = persistedSnapshot(ad);
+
+        assertHttpReason(administrative || !blockUser ? 409 : 401,
+                administrative ? "anuncio nao pode ser reativado"
+                        : blockUser ? "sessao publica invalida" : "bloqueio juridico impede alteracao do anuncio",
+                () -> reactivate(ad, administrator, administrative, "reativar-juridico-bloqueado"));
+
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+    }
+
+    @Test
+    void reativacaoExigeProprietarioCorretoESessaoAdministrativaAutorizada() {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        Authentication other = auth(user());
+        AdminUserPrincipal disabled = new AdminUserPrincipal(administrator.usuarioId(), "Admin desabilitado",
+                "admin-disabled@example.invalid", null, List.of(PapelUsuario.ADMIN), List.of(), List.of(), false);
+        Map<String, Object> before = persistedSnapshot(ad);
+
+        assertHttpReason(403, "anuncio pertence a outro usuario",
+                () -> ciclo.reativar(ad.slug(), other, "reativar-owner-incorreto"));
+        assertHttpReason(401, "sessao publica obrigatoria",
+                () -> ciclo.reativar(ad.slug(), null, "reativar-sem-sessao"));
+        assertHttpReason(403, "administrador obrigatorio",
+                () -> juridico.reativar(ad.id(), disabled, "reativar-admin-desabilitado"));
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDENTE", "AJUSTE_SOLICITADO"})
+    void aprovacaoVerdadeiraContinuaExigindoDecisaoDaPendenciaMesmoComOutraAprovada(String pendingStatus) {
+        Ad ad = ad("PENDENTE_REVISAO", "PENDENTE");
+        Media approved = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        Media pending = photo(ad, 1, pendingStatus, "PENDENTE");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        revision(ad);
+        Map<String, Object> before = persistedSnapshot(ad);
+
+        assertHttpReason(409, FotoElegivelAnuncioPolicy.MENSAGEM_FOTO_AGUARDANDO_DECISAO,
+                () -> moderacao.aprovarEPublicarAnuncio(ad.id(), administrator, "aprovacao-exige-todas-decisoes"));
+
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).containsExactly(approved.id());
+        assertThat(vinculos.findFotosAguardandoDecisaoIds(ad.id())).containsExactly(pending.id());
+    }
+
+    @Test
+    void aprovacaoVerdadeiraMantemRecusaIndependenteDeKycMesmoComFotoAprovada() {
+        Ad ad = ad("PENDENTE_REVISAO", "PENDENTE");
+        photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        AdminUserPrincipal administrator = admin(ad);
+        revision(ad);
+        Map<String, Object> before = persistedSnapshot(ad);
+
+        assertHttpReason(409, "documentacao KYC ainda nao foi enviada",
+                () -> moderacao.aprovarEPublicarAnuncio(ad.id(), administrator, "aprovacao-kyc-ausente"));
+
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+    }
+
+    @Test
+    void reativacaoProprietariaAnteriorAoDeleteNaoImpedeEncerramentoPosterior() throws Exception {
+        Ad ad = ad("PAUSADO", "APROVADO");
+        Media photo = photo(ad, 0, "PUBLICAVEL", "VALIDADO");
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        List<String> mediaBefore = mediaSnapshot(ad);
+        Ordered result = ordered(ad, () -> {
+            Object response = ciclo.reativar(ad.slug(), ad.auth(), "reativar-owner-primeiro");
+            entityManager.flush();
+            assertReactivated(ad, administrator, false, "reativar-owner-primeiro");
+            assertThat(mediaSnapshot(ad)).isEqualTo(mediaBefore);
+            return response;
+        }, () -> remove(ad, photo));
+
+        assertThat(result.failure()).isNull();
+        assertClosed(ad, photo);
+        assertThat(count("select count(*) from auditoria_evento where recurso_id = ? and acao = 'ANUNCIO_REATIVADO_PELO_USUARIO'", ad.id())).isEqualTo(1);
+        assertThat(count("select count(*) from anuncio_status_historico where anuncio_id = ?", ad.id())).isEqualTo(1);
+    }
+
+    private Object reactivate(Ad ad, AdminUserPrincipal administrator, boolean administrative, String requestId) {
+        return administrative ? juridico.reativar(ad.id(), administrator, requestId)
+                : ciclo.reativar(ad.slug(), ad.auth(), requestId);
+    }
+
+    private void assertReactivationWithoutEligiblePhoto(Ad ad, boolean administrative) {
+        AdminUserPrincipal administrator = admin(ad);
+        kycAprovado(ad, administrator);
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).isEmpty();
+        Map<String, Object> before = persistedSnapshot(ad);
+        assertHttpReason(409, "O anúncio precisa manter ao menos uma foto aprovada para ser reativado.",
+                () -> reactivate(ad, administrator, administrative, "reativar-sem-foto-elegivel"));
+        assertThat(persistedSnapshot(ad)).isEqualTo(before);
+    }
+
+    private void assertReactivated(Ad ad, AdminUserPrincipal administrator, boolean administrative, String requestId) {
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PUBLICADO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("APROVADO");
+        assertThat(jdbc.queryForObject("select removido_em is null from anuncio where id = ?", Boolean.class, ad.id())).isTrue();
+        String action = administrative ? "ANUNCIO_REATIVADO_ADMINISTRATIVAMENTE" : "ANUNCIO_REATIVADO_PELO_USUARIO";
+        UUID actor = administrative ? administrator.usuarioId() : ad.owner();
+        assertThat(jdbc.queryForObject("""
+                select count(*) from auditoria_evento where recurso_id = ? and acao = ?
+                  and ator_usuario_id = ? and request_id = ? and resultado = 'SUCESSO'
+                """, Long.class, ad.id(), action, actor, requestId)).isEqualTo(1);
+        assertThat(count("select count(*) from auditoria_evento where recurso_id = ?", ad.id())).isEqualTo(1);
+        assertThat(count("select count(*) from anuncio_status_historico where anuncio_id = ?", ad.id())).isEqualTo(administrative ? 1 : 0);
+        if (administrative) {
+            assertThat(value("select motivo from anuncio_status_historico where anuncio_id = ?", ad.id())).isEqualTo("REATIVACAO_ADMINISTRATIVA");
+            assertThat(jdbc.queryForObject("""
+                    select count(*) from anuncio_status_historico where anuncio_id = ?
+                      and status_anterior = 'PAUSADO' and status_novo = 'PUBLICADO' and ator_usuario_id = ?
+                    """, Long.class, ad.id(), administrator.usuarioId())).isEqualTo(1);
+        }
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
+    }
+
+    private List<String> mediaSnapshot(Ad ad) {
+        return jdbc.queryForList("""
+                select jsonb_build_object('midia', to_jsonb(m), 'arquivo', to_jsonb(a))::text
+                from anuncio_midia m join arquivo_midia a on a.id = m.arquivo_midia_id
+                where m.anuncio_id = ? order by m.id
+                """, String.class, ad.id());
+    }
+
+    private Map<String, Object> persistedSnapshot(Ad ad) {
+        return Map.of(
+                "anuncio", value("select to_jsonb(a)::text from anuncio a where id = ?", ad.id()),
+                "usuario", value("select to_jsonb(u)::text from usuario u where id = ?", ad.owner()),
+                "midias", mediaSnapshot(ad),
+                "historico", jdbc.queryForList("select to_jsonb(h)::text from anuncio_status_historico h where anuncio_id = ? order by id", String.class, ad.id()),
+                "auditoria", jdbc.queryForList("select to_jsonb(e)::text from auditoria_evento e where recurso_id = ? order by id", String.class, ad.id()),
+                "revisoes", jdbc.queryForList("select to_jsonb(r)::text from revisao_anuncio r where anuncio_id = ? order by id", String.class, ad.id()),
+                "busca", jdbc.queryForList("select to_jsonb(b)::text from documento_busca_anuncio b where anuncio_id = ?", String.class, ad.id()),
+                "documentos", jdbc.queryForList("select to_jsonb(d)::text from documento_usuario d where usuario_id = ? order by id", String.class, ad.owner()),
+                "bloqueios", jdbc.queryForList("select to_jsonb(b)::text from anuncio_bloqueio_juridico b where usuario_id = ? order by id", String.class, ad.owner()));
+    }
+
+    private void historicalDocument(Ad ad, Media media) {
+        UUID document = UUID.randomUUID();
+        jdbc.update("""
+                insert into documento_usuario(id,usuario_id,arquivo_midia_id,envio_id,parte,tipo,status,politica_retencao,
+                  criado_em,atualizado_em,removido_em)
+                values(?,?,?,?,'UNICO','IDENTIDADE','REMOVIDO','MANUAL',?,?,?)
+                """, document, ad.owner(), media.fileId(), document, AGORA, AGORA, AGORA);
     }
 
     private Ordered ordered(Ad ad, Callable<?> firstOperation, Callable<?> secondOperation) throws Exception {

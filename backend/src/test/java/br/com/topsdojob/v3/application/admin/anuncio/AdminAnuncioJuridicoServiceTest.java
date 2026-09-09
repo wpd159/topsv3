@@ -106,27 +106,25 @@ class AdminAnuncioJuridicoServiceTest {
     ordem.verify(anuncioRepository).findUsuarioIdById(fixture.anuncio().getId());
     ordem.verify(usuarioRepository).findByIdForUpdate(fixture.usuario().getId());
     ordem.verify(anuncioRepository).findByUsuarioIdForLegalBlock(fixture.usuario().getId());
-    ordem.verify(fotoElegivelAnuncioPolicy).validarParaAprovacao(fixture.anuncio().getId());
+    ordem.verify(fotoElegivelAnuncioPolicy).validarParaReativacao(fixture.anuncio().getId());
     ordem.verify(anuncioRepository).save(fixture.anuncio());
     verify(anuncioRepository, never()).findById(any());
+    verify(fotoElegivelAnuncioPolicy, never()).validarParaAprovacao(any());
   }
 
   @Test
-  void reativacaoSemFotoAprovadaOuComFotoPendenteNaoProduzEfeitos() {
-    for (String mensagem : List.of(
-        FotoElegivelAnuncioPolicy.MENSAGEM_SEM_FOTO_APROVADA,
-        FotoElegivelAnuncioPolicy.MENSAGEM_FOTO_AGUARDANDO_DECISAO)) {
-      Fixture fixture = fixture(StatusAnuncio.PAUSADO, StatusModeracaoAnuncio.APROVADO, StatusUsuario.ATIVO);
-      doThrow(new ResponseStatusException(HttpStatus.CONFLICT, mensagem))
-          .when(fotoElegivelAnuncioPolicy).validarParaAprovacao(fixture.anuncio().getId());
+  void reativacaoSemFotoAprovadaElegivelNaoProduzEfeitos() {
+    Fixture fixture = fixture(StatusAnuncio.PAUSADO, StatusModeracaoAnuncio.APROVADO, StatusUsuario.ATIVO);
+    String mensagem = FotoElegivelAnuncioPolicy.MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO;
+    doThrow(new ResponseStatusException(HttpStatus.CONFLICT, mensagem))
+        .when(fotoElegivelAnuncioPolicy).validarParaReativacao(fixture.anuncio().getId());
 
-      assertThatThrownBy(() -> service.reativar(fixture.anuncio().getId(), admin(), "req-foto-invalida"))
-          .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
-            assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-            assertThat(error.getReason()).isEqualTo(mensagem);
-          });
-      assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PAUSADO);
-    }
+    assertThatThrownBy(() -> service.reativar(fixture.anuncio().getId(), admin(), "req-foto-invalida"))
+        .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+          assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+          assertThat(error.getReason()).isEqualTo(mensagem);
+        });
+    assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PAUSADO);
 
     verify(anuncioRepository, never()).save(any());
     verify(statusHistoricoRepository, never()).save(any());
@@ -149,6 +147,7 @@ class AdminAnuncioJuridicoServiceTest {
     assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.REMOVIDO);
     assertThat(fixture.anuncio().getRemovidoEm()).isNotNull();
     verify(anuncioRepository, never()).findById(any());
+    verify(fotoElegivelAnuncioPolicy, never()).validarParaReativacao(any());
     verify(fotoElegivelAnuncioPolicy, never()).validarParaAprovacao(any());
     verify(anuncioRepository, never()).save(any());
     verify(statusHistoricoRepository, never()).save(any());

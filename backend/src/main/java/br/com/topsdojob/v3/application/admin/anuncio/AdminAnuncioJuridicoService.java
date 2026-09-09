@@ -100,7 +100,7 @@ public class AdminAnuncioJuridicoService {
         || anuncio.getRemovidoEm() != null) {
       throw conflito("anuncio nao pode ser reativado");
     }
-    fotoElegivelAnuncioPolicy.validarParaAprovacao(anuncio.getId());
+    fotoElegivelAnuncioPolicy.validarParaReativacao(anuncio.getId());
 
     OffsetDateTime agora = agora();
     StatusAnuncio statusAnterior = anuncio.getStatus();

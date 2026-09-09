@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atMostOnce;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -43,6 +45,7 @@ class MeuAnuncioCicloVidaServiceTest {
     private MeusAnunciosConsultaService consultaService;
     private AnuncioRepository anuncioRepository;
     private AuditoriaEventoRepository auditoriaRepository;
+    private FotoElegivelAnuncioPolicy fotoElegivelPolicy;
     private Authentication authentication;
     private MeuAnuncioCicloVidaService service;
 
@@ -51,6 +54,7 @@ class MeuAnuncioCicloVidaServiceTest {
         consultaService = mock(MeusAnunciosConsultaService.class);
         anuncioRepository = mock(AnuncioRepository.class);
         auditoriaRepository = mock(AuditoriaEventoRepository.class);
+        fotoElegivelPolicy = mock(FotoElegivelAnuncioPolicy.class);
         authentication = mock(Authentication.class);
         UsuarioEntity usuario = mock(UsuarioEntity.class);
         when(usuario.getId()).thenReturn(USUARIO_ID);
@@ -72,7 +76,7 @@ class MeuAnuncioCicloVidaServiceTest {
                 mock(AnuncioStatusHistoricoRepository.class),
                 mock(DocumentoBuscaAnuncioRepository.class),
                 mock(RevisaoAnuncioRepository.class),
-                mock(FotoElegivelAnuncioPolicy.class));
+                fotoElegivelPolicy);
     }
 
     @Test
@@ -112,6 +116,37 @@ class MeuAnuncioCicloVidaServiceTest {
         assertThat(anuncio.getPublicadoEm()).isEqualTo(publicadoEm);
         assertThat(anuncio.getUltimaPublicacaoEm()).isEqualTo(ultimaPublicacaoEm);
         assertThat(auditoriaSalva().getAcao()).isEqualTo("ANUNCIO_REATIVADO_PELO_USUARIO");
+        var ordem = inOrder(consultaService, fotoElegivelPolicy, anuncioRepository);
+        ordem.verify(consultaService).anuncioDoUsuarioParaAtualizacao("perfil-pausado", authentication);
+        ordem.verify(fotoElegivelPolicy).validarParaReativacao(ANUNCIO_ID);
+        ordem.verify(anuncioRepository).save(anuncio);
+        verify(fotoElegivelPolicy, never()).validarParaAprovacao(any());
+    }
+
+    @Test
+    void reativacaoSemAprovadaElegivelRecusaSemAlterarAnuncioOuAuditoria() {
+        AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-sem-aprovada", StatusAnuncio.PAUSADO);
+        OffsetDateTime atualizadoEm = anuncio.getAtualizadoEm();
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-sem-aprovada", authentication))
+                .thenReturn(anuncio);
+        doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                FotoElegivelAnuncioPolicy.MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO))
+                .when(fotoElegivelPolicy).validarParaReativacao(ANUNCIO_ID);
+
+        assertThatThrownBy(() -> service.reativar("perfil-sem-aprovada", authentication, "req-sem-aprovada"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                    assertThat(error.getStatusCode().value()).isEqualTo(409);
+                    assertThat(error.getReason()).isEqualTo(
+                            FotoElegivelAnuncioPolicy.MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO);
+                });
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PAUSADO);
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(anuncio.getAtualizadoEm()).isEqualTo(atualizadoEm);
+        assertThat(anuncio.getRemovidoEm()).isNull();
+        verify(anuncioRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
+        verify(fotoElegivelPolicy, never()).validarParaAprovacao(any());
     }
 
     @Test

@@ -150,7 +150,7 @@ public class MeuAnuncioCicloVidaService {
         AnuncioEntity anuncio = consultaService.anuncioDoUsuarioParaAtualizacao(slug, authentication);
         UUID usuarioId = anuncio.getUsuarioId();
         if ("ANUNCIO_REATIVADO_PELO_USUARIO".equals(acaoAuditoria)) {
-            fotoElegivelPolicy.validarParaAprovacao(anuncio.getId());
+            fotoElegivelPolicy.validarParaReativacao(anuncio.getId());
         }
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
