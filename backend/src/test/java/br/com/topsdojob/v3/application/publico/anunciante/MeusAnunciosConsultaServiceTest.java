@@ -24,6 +24,7 @@ import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
@@ -119,7 +120,8 @@ class MeusAnunciosConsultaServiceTest {
                 new MidiaPublicaSeguraPolicy(),
                 visualizacaoService,
                 beneficioConsultaService,
-                storyConsultaService);
+                storyConsultaService,
+                mock(AnuncioBloqueioJuridicoRepository.class));
     }
 
     @Test

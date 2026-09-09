@@ -170,7 +170,7 @@ class MeusAnunciosFrontendContractTest {
         String lote = recorte(
                 adapter,
                 "export async function enviarMinhasMidiasEmLote(",
-                "export function reordenarMinhasMidias");
+                "export async function reordenarMinhasMidias");
         String fotos = Files.readString(FRONTEND.resolve(Path.of(
                 "features", "anuncio-wizard", "components", "wizard-step-fotos.tsx")));
         String uploadPersistido = recorte(
@@ -181,6 +181,7 @@ class MeusAnunciosFrontendContractTest {
                 "function selectPersistedFiles(");
         String selecionarERemover = recorte(fotos, "function selectPersistedFiles(", "const move = async");
         String validarSelecao = recorte(fotos, "useEffect(() => {", "const refresh = useCallback");
+        String aceitarResposta = recorte(fotos, "function acceptResponse(", "function handleUnconfirmedState(");
         String assinaturaLote = recorte(adapter, "function mediaBatchSignature(files: File[]) {",
                 "export async function enviarMinhasMidiasEmLote(");
         String wizard = Files.readString(FRONTEND.resolve(Path.of(
@@ -210,6 +211,7 @@ class MeusAnunciosFrontendContractTest {
                 .isGreaterThan(unitario.indexOf("if (xhr.status < 200 || xhr.status >= 300)"));
         apareceAntes(unitario, "await validateMediaUploadPhotos([arquivo])", "const csrfValue =");
         apareceAntes(unitario, "await validateMediaUploadPhotos([arquivo])", "const xhr = new XMLHttpRequest()");
+        apareceAntes(unitario, "const result = mapMinhasMidias(body, slug)", "mediaUploadIdempotencyKeys.delete(arquivo)");
         assertThat(lote)
                 .contains("await validateMediaUploadPhotos(arquivos)")
                 .contains("parseErrorEnvelope(xhr.responseText)")
@@ -222,6 +224,7 @@ class MeusAnunciosFrontendContractTest {
                 .isGreaterThan(lote.indexOf("if (xhr.status < 200 || xhr.status >= 300)"));
         apareceAntes(lote, "await validateMediaUploadPhotos(arquivos)", "const csrfValue =");
         apareceAntes(lote, "await validateMediaUploadPhotos(arquivos)", "const xhr = new XMLHttpRequest()");
+        apareceAntes(lote, "const result = mapMinhasMidias(body, slug)", "mediaBatchIdempotencyKeys.delete(signature)");
         assertThat(adapter).contains("const mediaBatchFileIds = new WeakMap<File, string>()");
         assertThat(assinaturaLote)
                 .contains("mediaBatchFileIds.get(file)")
@@ -241,8 +244,19 @@ class MeusAnunciosFrontendContractTest {
                 .contains("meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.')");
         apareceAntes(uploadPersistido, "const results = await Promise.all", "if (version !== selectionVersionRef.current");
         apareceAntes(uploadPersistido, "if (version !== selectionVersionRef.current", "await enviarMinhasMidiasEmLote(");
-        apareceAntes(uploadPersistido, "await enviarMinhasMidiasEmLote(", "setPersisted(latest)");
-        apareceAntes(uploadPersistido, "setPersisted(latest)", "updatePendingFiles([])");
+        apareceAntes(uploadPersistido, "await enviarMinhasMidiasEmLote(", "acceptResponse(latest, generation)");
+        apareceAntes(uploadPersistido, "acceptResponse(latest, generation)", "updatePendingFiles([])");
+        assertThat(uploadPersistido).contains("if (acceptResponse(latest, generation)) updatePendingFiles([])");
+        assertThat(aceitarResposta)
+                .contains("if (!mountedRef.current || generation !== operationGenerationRef.current || terminalRef.current) return false")
+                .contains("response.anuncio.slug !== slug")
+                .contains("if (response.anuncio.status === 'REMOVIDO') terminalRef.current = true")
+                .contains("setPersisted(response)")
+                .contains("onPersistedChange?.(response)")
+                .contains("return true");
+        apareceAntes(aceitarResposta, "generation !== operationGenerationRef.current", "setPersisted(response)");
+        apareceAntes(aceitarResposta, "setPersisted(response)", "onPersistedChange?.(response)");
+        apareceAntes(aceitarResposta, "onPersistedChange?.(response)", "return true");
         String falha = recorte(uploadPersistido, "} catch (error) {", "} finally {");
         assertThat(falha)
                 .contains("setRetryable(error instanceof TypeError || (error instanceof MeusAnunciosApiError")
@@ -363,15 +377,32 @@ class MeusAnunciosFrontendContractTest {
                 "features", "anuncio-wizard", "components", "wizard-step-fotos.tsx")));
         String remocao = recorte(
                 fotos,
-                "const remove = async (midia: MinhaMidiaGestao) => {",
+                "const confirmRemoval = async () => {",
                 "if (!slug) {");
+        String pedirConfirmacao = recorte(fotos, "const requestRemoval = (midia: MinhaMidiaGestao) => {", "const cancelRemoval = () => {");
+        String cancelar = recorte(fotos, "const cancelRemoval = () => {", "const confirmRemoval = async () => {");
 
         assertThat(adapter)
                 .contains("error.code ? `Código: ${error.code}` : null")
                 .contains("error.requestId ? `Request ID: ${error.requestId}` : null");
         assertThat(remocao)
                 .contains("meusAnunciosErrorMessage(error, 'Não foi possível remover a mídia.')")
+                .contains("handleUnconfirmedState(error, true)")
+                .contains("const midia = removalIntentRef.current")
+                .contains("!midia || busy || disabled || terminalRef.current || !uploadLockRef.current")
+                .contains("acceptResponse(await removerMinhaMidia(slug, midia.id), generation)")
                 .doesNotContain("error instanceof Error ? error.message");
+        apareceAntes(remocao, "removalIntentRef.current = null", "await removerMinhaMidia(slug, midia.id)");
+        assertThat(contarOcorrencias(fotos, "await removerMinhaMidia(")).isEqualTo(1);
+        assertThat(pedirConfirmacao)
+                .contains("!beginInteraction()")
+                .contains("setRemovalIntent(midia)")
+                .doesNotContain("removerMinhaMidia(");
+        assertThat(cancelar)
+                .contains("setRemovalIntent(null)")
+                .contains("endInteraction()")
+                .doesNotContain("removerMinhaMidia(");
+        assertThat(fotos).contains("Se esta for a última foto, o anúncio será encerrado. Para substituí-la, envie outra foto antes de excluir.");
     }
 
     private static String recorte(String conteudo, String inicio, String fim) {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
+import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useLocalidades } from '@/hooks/useLocalidades'
@@ -11,14 +12,22 @@ import { isoToBirthDate } from '@/lib/date/birth-date'
 import { cn } from '@/lib/utils'
 import { validatePhotoUpload, type PhotoUploadValidationResult } from '@/lib/photo-upload-validation'
 import {
+  anuncioEstaPublicamenteIndexavel,
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncio,
+} from '@/lib/seo/indexnow-client'
+import {
   atualizarMeuAnuncio,
   buscarMeuAnuncio,
   consultarLimitesMinhasMidias,
   enviarMinhasMidiasEmLote,
+  listarMinhasMidias,
   meusAnunciosErrorMessage,
   MeusAnunciosApiError,
   type MeuAnuncio,
   type MeuAnuncioAtualizacao,
+  type MeuAnuncioCicloVida,
+  type MinhasMidiasResponse,
 } from '@/lib/meus-anuncios-api'
 import { formatCurrencyBRL } from '@/utils/formatter'
 import {
@@ -123,6 +132,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     ...(isEdit && slug ? { slug } : {}),
   } : null, [cacheUserId, isEdit, mode, slug])
   const progressScope = `${cacheUserId ?? 'anonimo'}:${mode}:${slug ?? 'novo'}`
+  const progressScopeRef = useRef(progressScope)
+  progressScopeRef.current = progressScope
   const store = useAnuncioWizardStore({ cacheScope, backendFirst: isEdit })
   const {
     state: wizardState,
@@ -149,6 +160,14 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [editLoading, setEditLoading] = useState(isEdit)
   const [editError, setEditError] = useState<string | null>(null)
   const [editAnuncio, setEditAnuncio] = useState<MeuAnuncio | null>(null)
+  const previousAnuncioRef = useRef<MeuAnuncio | null>(null)
+  const [editMedia, setEditMedia] = useState<MinhasMidiasResponse | null>(null)
+  const [mediaBusy, setMediaBusy] = useState(false)
+  const mediaBusyRef = useRef(false)
+  const [terminalAnuncio, setTerminalAnuncio] = useState<MeuAnuncioCicloVida | null>(null)
+  const terminalAnuncioRef = useRef<MeuAnuncioCicloVida | null>(null)
+  const flowGenerationRef = useRef(0)
+  const mountedRef = useRef(true)
   const [fotoPreviewUrls, setFotoPreviewUrls] = useState<string[]>([])
   const [kycStatus, setKycStatus] = useState<WizardKycStatus | null>(null)
   const [kycLoading, setKycLoading] = useState(true)
@@ -178,11 +197,84 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const stepDidMountRef = useRef(false)
   const wizardSessionIdRef = useRef<string | null>(null)
   const lastSyncedStepRef = useRef<WizardProgressStep | null>(null)
-  const loadedEditSlugRef = useRef<string | null>(null)
+  const editLoadGenerationRef = useRef(0)
   const createdSlugRef = useRef<string | null>(null)
   const createdAnuncioIdRef = useRef<string | null>(null)
   const createdDetailsSyncedRef = useRef(false)
   const kycLoadedUserRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    terminalAnuncioRef.current = null
+    setTerminalAnuncio(null)
+    setEditMedia(null)
+    previousAnuncioRef.current = null
+    mediaBusyRef.current = false
+    setMediaBusy(false)
+    flowGenerationRef.current += 1
+    return () => {
+      mountedRef.current = false
+      flowGenerationRef.current += 1
+      editLoadGenerationRef.current += 1
+    }
+  }, [progressScope])
+
+  const closeWizard = useCallback((anuncio: MeuAnuncioCicloVida) => {
+    if (!mountedRef.current || terminalAnuncioRef.current || progressScopeRef.current !== progressScope) return
+    terminalAnuncioRef.current = anuncio
+    flowGenerationRef.current += 1
+    setTerminalAnuncio(anuncio)
+    clearCurrentCache()
+    clearWizardProgressSessionId(progressScope)
+    const previous = previousAnuncioRef.current
+    if (previous?.id === anuncio.id && previous.slug === anuncio.slug
+      && anuncioEstaPublicamenteIndexavel(previous.status)) {
+      // Reuse the lifecycle withdrawal invalidation without fetching a removed
+      // detail. Its best-effort result cannot undo the already latched terminal.
+      void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+        eventType: 'RETIRADA',
+        previous: {
+          slug: previous.slug,
+          estadoUf: previous.localizacao?.uf,
+          cidadeNome: previous.localizacao?.cidade,
+          bairroNome: previous.localizacao?.bairro,
+        },
+        changeFingerprint: anuncio.atualizadoEm,
+      }))
+    } else {
+      // An old pending snapshot cannot rule out a later publication. Invalidate
+      // the catalog without sending unproven-public URLs or locations to IndexNow.
+      void revalidarCacheCatalogoPublico().catch(() => {
+        // The canonical closure remains terminal even if invalidation fails.
+      })
+    }
+  }, [clearCurrentCache, progressScope])
+
+  const acceptMediaResponse = useCallback((response: MinhasMidiasResponse) => {
+    if (!mountedRef.current || terminalAnuncioRef.current || progressScopeRef.current !== progressScope) return
+    const targetSlug = slug ?? createdSlugRef.current
+    if (response.anuncio.slug !== targetSlug) throw new Error('A resposta não corresponde ao anúncio em edição.')
+    setEditMedia(response)
+    setEditAnuncio((current) => current ? { ...current, ...response.anuncio } : current)
+    if (response.anuncio.status === 'REMOVIDO') closeWizard(response.anuncio)
+  }, [closeWizard, progressScope, slug])
+
+  const beginMediaInteraction = useCallback(() => {
+    if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current || !mountedRef.current || progressScopeRef.current !== progressScope) return false
+    mediaBusyRef.current = true
+    flowGenerationRef.current += 1
+    setMediaBusy(true)
+    return true
+  }, [progressScope])
+
+  const endMediaInteraction = useCallback(() => {
+    if (progressScopeRef.current !== progressScope) return
+    mediaBusyRef.current = false
+    if (mountedRef.current) setMediaBusy(false)
+  }, [progressScope])
+
+  const flowIsCurrent = (generation: number) => mountedRef.current
+    && flowGenerationRef.current === generation && !terminalAnuncioRef.current && !mediaBusyRef.current
 
   useEffect(() => {
     let current = true
@@ -234,9 +326,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     profileDescription ||
     'Seu texto de apresentação aparece aqui para aproximar o preview do anúncio real.'
   const previewPrice = state.preco.trim() || 'Consulte valores'
-  const currentMediaUrls = editAnuncio?.midias
-    .map((midia) => midia.urlPublica)
-    .filter((url): url is string => Boolean(url)) ?? []
+  const currentMediaUrls = (editMedia ? editMedia.midias.map((midia) => midia.previewUrl) : editAnuncio?.midias.map((midia) => midia.urlPublica))
+    ?.filter((url): url is string => Boolean(url)) ?? []
   const previewMedia = fotoPreviewUrls.length ? fotoPreviewUrls : currentMediaUrls
   const syncProgress = useCallback(
     (
@@ -244,6 +335,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       status: WizardProgressStatus = 'EM_PREENCHIMENTO',
       anuncioId?: number | string | null
     ) => {
+      if (terminalAnuncioRef.current || !mountedRef.current || progressScopeRef.current !== progressScope) return Promise.resolve(null)
       lastSyncedStepRef.current = ultimoStep
       const sessionId = wizardSessionIdRef.current
         ?? createWizardProgressSessionId(progressScope)
@@ -266,21 +358,23 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }, [state.fotos])
 
   useEffect(() => {
-    if (!isEdit || carregando || !usuario) return
+    if (!isEdit || carregando || !cacheUserId) return
     if (!slug) {
       setEditError('Anúncio não encontrado.')
       setEditLoading(false)
       return
     }
-    const editLoadKey = `${usuario.id}:${slug}`
-    if (loadedEditSlugRef.current === editLoadKey) return
-    loadedEditSlugRef.current = editLoadKey
+    const generation = ++editLoadGenerationRef.current
     setEditLoading(true)
     setEditError(null)
 
-    void buscarMeuAnuncio(slug)
-      .then((anuncio) => {
+    void Promise.all([buscarMeuAnuncio(slug), listarMinhasMidias(slug)])
+      .then(([anuncio, media]) => {
+        if (!mountedRef.current || generation !== editLoadGenerationRef.current || terminalAnuncioRef.current) return
+        if (anuncio.id !== media.anuncio.id || anuncio.slug !== media.anuncio.slug) throw new Error('As respostas não correspondem ao mesmo anúncio.')
+        previousAnuncioRef.current = anuncio
         setEditAnuncio(anuncio)
+        acceptMediaResponse(media)
         hydrateFromBackend({
           currentStep: 'perfil',
           form: {
@@ -305,9 +399,14 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           kyc: { ...initialWizardKycState, documentos: [], documentoNomes: [] },
         }, editDraftSourceVersion(anuncio))
       })
-      .catch((error) => setEditError(editErrorMessage(error)))
-      .finally(() => setEditLoading(false))
-  }, [carregando, hydrateFromBackend, isEdit, slug, usuario])
+      .catch((error) => {
+        if (mountedRef.current && generation === editLoadGenerationRef.current) setEditError(editErrorMessage(error))
+      })
+      .finally(() => {
+        if (mountedRef.current && generation === editLoadGenerationRef.current) setEditLoading(false)
+      })
+    return () => { editLoadGenerationRef.current += 1 }
+  }, [acceptMediaResponse, cacheUserId, carregando, hydrateFromBackend, isEdit, slug])
 
   useEffect(() => {
     if (!hydrated) return
@@ -556,24 +655,32 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }
 
   const goToStep = (step: WizardStepId, index: number) => {
+    if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current) return
     if (!canMoveToStep(index)) return
     setStep(step)
   }
 
   const goNext = () => {
+    if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current) return
     if (!validateCurrentStep()) return
     nextStep()
   }
 
-  const submitEdit = async () => {
+  const submitEdit = async (generation: number) => {
     if (!slug) {
       toast.error('Anúncio não encontrado.')
       return
     }
 
     const atualizado = await atualizarMeuAnuncio(slug, editPayload(state))
+    if (!flowIsCurrent(generation)) return
+    if (atualizado.status === 'REMOVIDO') {
+      closeWizard(atualizado)
+      return
+    }
     setEditAnuncio(atualizado)
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', atualizado.id)
+    if (!flowIsCurrent(generation)) return
     clearWizardProgressSessionId(progressScope)
     clearCurrentCache()
     toast.success('Alterações salvas e enviadas para revisão.')
@@ -613,11 +720,13 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     })
     if (arquivos.length) {
       try {
-        await enviarMinhasMidiasEmLote(targetSlug, arquivos, (value) => {
+        const media = await enviarMinhasMidiasEmLote(targetSlug, arquivos, (value) => {
           setCreateMediaProgress(Object.fromEntries(
             arquivos.map((file) => [uploadFileKey(file), value])
           ))
         })
+        acceptMediaResponse(media)
+        if (terminalAnuncioRef.current || !mountedRef.current) return
       } catch (error) {
         if (error instanceof MeusAnunciosApiError && error.unsupportedPhotoUpload) {
           // A photo-only 415 does not identify the offending part of the batch.
@@ -684,9 +793,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }
 
   const runFinalFlow = async () => {
-    if (publishLockRef.current) return
+    if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current) return
 
     publishLockRef.current = true
+    const generation = flowGenerationRef.current
     try {
       setPublishing(true)
       // Complete the photo check before KYC submission or advertisement creation.
@@ -706,9 +816,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
         }
       }
       await ensureKycReady()
-      if (isEdit) await submitEdit()
+      if (!flowIsCurrent(generation)) return
+      if (isEdit) await submitEdit(generation)
       else await submitAnuncio()
     } catch (err: any) {
+      if (!flowIsCurrent(generation)) return
       const message = isEdit
         ? editErrorMessage(err)
         : err?.message || 'Não foi possível concluir a publicação agora.'
@@ -718,12 +830,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       }
     } finally {
       publishLockRef.current = false
-      setPublishing(false)
+      if (mountedRef.current) setPublishing(false)
     }
   }
 
   const requestPublish = () => {
-    if (publishing || publishLockRef.current) return
+    if (publishing || publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current || (isEdit && !editMedia)) return
     if (photoSelectionBlocked) {
       setStep('fotos')
       toast.warning(photoSelectionMessage)
@@ -805,6 +917,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (currentStep.id === 'fotos') {
       return (
         <WizardStepFotos
+          key={progressScope}
           slug={isEdit ? slug : undefined}
           initialFiles={state.fotos}
           fotoNomes={state.fotoNomes}
@@ -818,7 +931,17 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           onChangeVideosNovos={setVideos}
           createProgress={createMediaProgress}
           createErrors={createMediaErrors}
+          persistedState={isEdit ? editMedia : undefined}
+          onPersistedChange={acceptMediaResponse}
+          onInteractionStart={beginMediaInteraction}
+          onInteractionEnd={endMediaInteraction}
+          onStateUnconfirmed={() => {
+            flowGenerationRef.current += 1
+            setEditMedia(null)
+            setEditError('Não foi possível confirmar o estado do anúncio. Volte para Meus anúncios para conferir antes de continuar.')
+          }}
           onAddBenefit={() => {
+            if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current) return
             if (isEdit && slug) {
               router.push(`/meus-anuncios/${encodeURIComponent(slug)}/monetizar`)
               return
@@ -839,7 +962,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           previewReference={previewReference}
           state={state}
           hasVirtual={hasVirtual}
-          photoCount={isEdit ? editAnuncio?.midias.length ?? 0 : undefined}
+          photoCount={isEdit ? editMedia?.fotosValidasAtivasTotal ?? 0 : undefined}
         />
       )
     }
@@ -865,6 +988,19 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
         readOnly={isEdit}
         onSelect={(choice) => updateForm({ premiumChoice: choice })}
       />
+    )
+  }
+
+  if (terminalAnuncio) {
+    return (
+      <main className="mx-auto max-w-3xl space-y-4 px-4 py-20">
+        <section role="alert" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-6">
+          <h1 className="text-2xl font-semibold">Anúncio encerrado</h1>
+          <p>O servidor confirmou o encerramento do anúncio. Esta edição não será enviada para moderação.</p>
+          <p className="text-sm">Volte para Meus anúncios para consultar os anúncios disponíveis.</p>
+        </section>
+        <Button type="button" onClick={() => router.push('/meus-anuncios')}>Voltar para Meus anúncios</Button>
+      </main>
     )
   }
 
@@ -943,6 +1079,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
                 <button
                   key={step.id}
                   type="button"
+                  disabled={publishing || mediaBusy}
                   onClick={() => goToStep(step.id, idx)}
                   className={cn(
                     'h-1.5 rounded-full transition-all duration-300',
@@ -1000,15 +1137,17 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
               <Button
                 type="button"
                 variant="outline"
-                onClick={previousStep}
-                disabled={currentIndex === 0 || publishing}
+                onClick={() => {
+                  if (!publishLockRef.current && !mediaBusyRef.current && !terminalAnuncioRef.current) previousStep()
+                }}
+                disabled={currentIndex === 0 || publishing || mediaBusy}
               >
                 <ChevronLeft className="mr-2 h-4 w-4" />
                 Voltar
               </Button>
 
               {currentStep.id === 'kyc' ? (
-                <Button type="button" onClick={requestPublish} disabled={publishing || photoSelectionBlocked}>
+                <Button type="button" onClick={requestPublish} disabled={publishing || mediaBusy || photoSelectionBlocked}>
                   {publishing
                     ? isEdit
                       ? 'Salvando…'
@@ -1019,7 +1158,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button type="button" onClick={goNext} disabled={publishing || (currentStep.id === 'fotos' && photoSelectionBlocked)}>
+                <Button type="button" onClick={goNext} disabled={publishing || mediaBusy || (currentStep.id === 'fotos' && photoSelectionBlocked)}>
                   Continuar
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>

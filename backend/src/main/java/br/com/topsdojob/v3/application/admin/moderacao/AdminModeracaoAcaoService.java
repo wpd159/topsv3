@@ -730,11 +730,11 @@ public class AdminModeracaoAcaoService {
     private ContextoPublicacao carregarContextoDecisaoFinal(
             UUID anuncioId,
             AdminDecisaoModeracaoAcao decisao) {
-        AnuncioEntity referencia = anuncioRepository.findById(anuncioId)
+        UUID usuarioId = anuncioRepository.findUsuarioIdById(anuncioId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "anuncio da revisao nao encontrado"));
-        UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(referencia.getUsuarioId())
+        UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(usuarioId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.CONFLICT,
                         "proprietario do anuncio nao encontrado"));
@@ -742,6 +742,13 @@ public class AdminModeracaoAcaoService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "anuncio da revisao nao encontrado"));
+        if (anuncio.getRemovidoEm() != null
+                || anuncio.getStatus() == StatusAnuncio.REMOVIDO
+                || anuncio.getStatus() == StatusAnuncio.BLOQUEADO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do anuncio impede decisao de moderacao");
+        }
         if (!usuario.getId().equals(anuncio.getUsuarioId())
                 || usuario.getStatus() != StatusUsuario.ATIVO
                 || usuario.getDesativadoEm() != null

@@ -237,6 +237,7 @@ const componentImports = (runner, extra = {}) => ({
   'lucide-react': iconMocks,
   '@/components/forms/file-picker': { FilePicker: 'FilePicker' },
   '@/components/ui/button': { Button: 'Button' },
+  '@/components/ui/dialog': Object.fromEntries(['Dialog', 'DialogContent', 'DialogDescription', 'DialogFooter', 'DialogHeader', 'DialogTitle'].map((name) => [name, name])),
   '@/lib/photo-upload-validation': photo,
   '@/lib/api-contract': apiContract,
   ...extra,
@@ -244,7 +245,13 @@ const componentImports = (runner, extra = {}) => ({
 
 console.log('PHOTO_HELPER_RESULT=OK syntheticEncodedFixtures=true browserDecoder=controlledMock')
 
-const mediaResponse = { midias: [], limites: { fotosDisponiveis: 10, videosDisponiveis: 1, fotosAtivas: 0, maxFotos: 10, videosAtivos: 0, maxVideos: 1, videoAtivo: true } }
+const mediaResponse = {
+  midias: [],
+  limites: { fotosDisponiveis: 10, videosDisponiveis: 1, fotosAtivas: 0, maxFotos: 10, videosAtivos: 0, maxVideos: 1, videoAtivo: true },
+  fotosValidasAtivasTotal: 0,
+  anuncio: { id: 'created', slug: 'local', status: 'PENDENTE_REVISAO', statusModeracao: 'PENDENTE', atualizadoEm: null,
+    acoesPermitidas: { pausar: false, reativar: false, remover: true, corrigirEReenviar: false } },
+}
 const requests = []
 let nextResponse = { status: 200, body: mediaResponse }
 class UploadXHR {
@@ -261,7 +268,7 @@ class UploadXHR {
     queueMicrotask(() => this.status === 0 ? this.onerror() : this.onload())
   }
 }
-globalThis.document = { cookie: 'XSRF-TOKEN=photo-local-test' }
+globalThis.document = { cookie: 'XSRF-TOKEN=EXEMPLO_NAO_REAL; ' }
 globalThis.XMLHttpRequest = UploadXHR
 globalThis.fetch = async (url, options) => {
   requests.push({ url, ...options })
@@ -451,6 +458,8 @@ const wizardStore = {
 const user = { id: 'synthetic-user', dataNascimento: '1990-01-01' }
 const locations = { estados: [], cidades: [], bairros: [], loadBairros: async () => {}, loadCidades: async () => {} }
 const wizardImports = componentImports(wizardRunner, {
+  '@/app/(painel-admin)/admin/anuncios/actions': { revalidarCacheCatalogoPublico: async () => {} },
+  '@/lib/seo/indexnow-client': { anuncioEstaPublicamenteIndexavel: () => false },
   'next/navigation': { useRouter: () => ({ push() {} }) },
   sonner: { toast: { error: (message) => wizardErrors.push(message), warning: (message) => wizardErrors.push(message), success() {} } },
   '@/context/AuthContext': { useAuth: () => ({ usuario: user, carregando: false, refresh: async () => {} }) },
@@ -465,7 +474,7 @@ const wizardImports = componentImports(wizardRunner, {
       wizardCalls.upload++
       assert.ok(!files.includes(bad))
       if (wizardUploadFailure) throw wizardUploadFailure
-      return mediaResponse
+      return { ...mediaResponse, anuncio: { ...mediaResponse.anuncio, slug: 'synthetic' } }
     },
   },
   '@/utils/formatter': { formatCurrencyBRL: (value) => String(value) },
@@ -596,6 +605,7 @@ wizardRunner.unmount()
 console.log('PHOTO_WIZARD_PUBLICATION_RESULT=OK createAndUploadBlocked=true asyncSelection=OK')
 
 const editorRefs = []
+mediaResponse.anuncio.slug = 'synthetic'
 const editorRunner = hooks((ref) => editorRefs.push(ref))
 const editorUploads = []
 const photoStepImports = (runner) => componentImports(runner, {

@@ -73,6 +73,9 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     Optional<AnuncioEntity> findBySlugAndRemovidoEmIsNull(String slug);
 
+    @Query("select anuncio.usuarioId from AnuncioEntity anuncio where anuncio.id = :id")
+    Optional<UUID> findUsuarioIdById(@Param("id") UUID id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select anuncio from AnuncioEntity anuncio where anuncio.slug = :slug")
     Optional<AnuncioEntity> findBySlugForLifecycle(@Param("slug") String slug);

@@ -14,6 +14,10 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoRepository;
+import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
@@ -64,7 +68,11 @@ class MeuAnuncioCicloVidaServiceTest {
                 consultaService,
                 anuncioRepository,
                 auditoriaRepository,
-                new ObjectMapper());
+                new ObjectMapper(),
+                mock(AnuncioStatusHistoricoRepository.class),
+                mock(DocumentoBuscaAnuncioRepository.class),
+                mock(RevisaoAnuncioRepository.class),
+                mock(FotoElegivelAnuncioPolicy.class));
     }
 
     @Test
@@ -72,7 +80,7 @@ class MeuAnuncioCicloVidaServiceTest {
         AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-publicado", StatusAnuncio.PUBLICADO);
         OffsetDateTime publicadoEm = anuncio.getPublicadoEm();
         OffsetDateTime ultimaPublicacaoEm = anuncio.getUltimaPublicacaoEm();
-        when(anuncioRepository.findBySlugForLifecycle("perfil-publicado")).thenReturn(Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-publicado", authentication)).thenReturn(anuncio);
 
         var resultado = service.pausar("perfil-publicado", authentication, "request-pausa");
 
@@ -95,7 +103,7 @@ class MeuAnuncioCicloVidaServiceTest {
         anuncio.pausarPeloProprietario(CRIADO_EM.plusDays(1));
         OffsetDateTime publicadoEm = anuncio.getPublicadoEm();
         OffsetDateTime ultimaPublicacaoEm = anuncio.getUltimaPublicacaoEm();
-        when(anuncioRepository.findBySlugForLifecycle("perfil-pausado")).thenReturn(Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-pausado", authentication)).thenReturn(anuncio);
 
         var resultado = service.reativar("perfil-pausado", authentication, "request-reativar");
 
@@ -109,7 +117,7 @@ class MeuAnuncioCicloVidaServiceTest {
     @Test
     void proprietarioRemoveSomenteLogicamenteSemDeleteFisico() {
         AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-removido", StatusAnuncio.PAUSADO);
-        when(anuncioRepository.findBySlugForLifecycle("perfil-removido")).thenReturn(Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-removido", authentication)).thenReturn(anuncio);
 
         var resultado = service.remover("perfil-removido", authentication, "request-remover");
 
@@ -126,8 +134,8 @@ class MeuAnuncioCicloVidaServiceTest {
 
     @Test
     void anuncioDeOutroProprietarioRetorna403() {
-        when(anuncioRepository.findBySlugForLifecycle("perfil-terceiro"))
-                .thenReturn(Optional.of(anuncio(OUTRO_USUARIO_ID, "perfil-terceiro", StatusAnuncio.PUBLICADO)));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-terceiro", authentication))
+                .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "anuncio pertence a outro usuario"));
 
         assertStatus(403, () -> service.pausar("perfil-terceiro", authentication, "request-403"));
 
@@ -136,7 +144,8 @@ class MeuAnuncioCicloVidaServiceTest {
 
     @Test
     void slugInexistenteRetorna404() {
-        when(anuncioRepository.findBySlugForLifecycle("perfil-ausente")).thenReturn(Optional.empty());
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-ausente", authentication))
+                .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
         assertStatus(404, () -> service.remover("perfil-ausente", authentication, "request-404"));
 
@@ -146,7 +155,7 @@ class MeuAnuncioCicloVidaServiceTest {
     @Test
     void transicaoInvalidaERetryRepetidoRetornam409SemAuditoriaDuplicada() {
         AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-retry", StatusAnuncio.PUBLICADO);
-        when(anuncioRepository.findBySlugForLifecycle("perfil-retry")).thenReturn(Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-retry", authentication)).thenReturn(anuncio);
 
         service.pausar("perfil-retry", authentication, "request-primeiro");
         assertStatus(409, () -> service.pausar("perfil-retry", authentication, "request-repetido"));
@@ -166,7 +175,7 @@ class MeuAnuncioCicloVidaServiceTest {
                 StatusAnuncio.PAUSADO,
                 StatusModeracaoAnuncio.PENDENTE,
                 CRIADO_EM);
-        when(anuncioRepository.findBySlugForLifecycle("perfil-pendente")).thenReturn(Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-pendente", authentication)).thenReturn(anuncio);
 
         assertStatus(409, () -> service.reativar("perfil-pendente", authentication, "request-409"));
 
@@ -176,7 +185,7 @@ class MeuAnuncioCicloVidaServiceTest {
     @Test
     void anuncioBloqueadoJuridicamenteNaoPodeSerMutadoPeloProprietario() {
         AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-bloqueado", StatusAnuncio.BLOQUEADO);
-        when(anuncioRepository.findBySlugForLifecycle("perfil-bloqueado")).thenReturn(Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("perfil-bloqueado", authentication)).thenReturn(anuncio);
 
         assertStatus(409, () -> service.pausar("perfil-bloqueado", authentication, "request-pausa"));
         assertStatus(409, () -> service.reativar("perfil-bloqueado", authentication, "request-reativar"));

@@ -134,7 +134,8 @@ public class MeusAnunciosController {
   public MeuAnuncioMidiasResponseDto removerMidia(
       @PathVariable String slug,
       @PathVariable UUID midiaId,
-      Authentication authentication) {
-    return midiasService.remover(slug, midiaId, authentication);
+      Authentication authentication,
+      HttpServletRequest request) {
+    return midiasService.remover(slug, midiaId, authentication, RequestIdContext.current(request));
   }
 }

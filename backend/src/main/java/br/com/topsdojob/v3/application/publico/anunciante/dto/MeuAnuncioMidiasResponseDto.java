@@ -4,5 +4,7 @@ import java.util.List;
 
 public record MeuAnuncioMidiasResponseDto(
         List<MeuAnuncioMidiaGestaoDto> midias,
-        MeuAnuncioMidiaLimitesDto limites) {
+        MeuAnuncioMidiaLimitesDto limites,
+        MeuAnuncioCicloVidaDto anuncio,
+        long fotosValidasAtivasTotal) {
 }

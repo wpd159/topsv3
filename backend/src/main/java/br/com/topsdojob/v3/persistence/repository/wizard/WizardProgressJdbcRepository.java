@@ -4,6 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -93,6 +94,18 @@ public class WizardProgressJdbcRepository {
 
   public WizardProgressJdbcRepository(NamedParameterJdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  // The synchronization service holds the owner lock before resolving this link.
+  public Optional<UUID> findAnuncioIdPorSessao(UUID usuarioId, String sessaoId) {
+    return jdbc.query("""
+        SELECT anuncio_id FROM wizard_progresso
+        WHERE usuario_id = :usuario_id AND sessao_id = :sessao_id
+          AND anuncio_id IS NOT NULL
+        """, new MapSqlParameterSource()
+            .addValue("usuario_id", usuarioId)
+            .addValue("sessao_id", sessaoId),
+        (rs, rowNum) -> rs.getObject("anuncio_id", UUID.class)).stream().findFirst();
   }
 
   public SyncRow sincronizar(

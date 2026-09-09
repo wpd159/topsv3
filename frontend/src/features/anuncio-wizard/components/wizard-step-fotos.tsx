@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, Camera, Loader2, PlayCircle, Trash2 } from 'lucide-react'
 import { VideoUploader } from '@/components/anuncios/editar/video-uploader'
 import { FilePicker } from '@/components/forms/file-picker'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   PHOTO_UPLOAD_ACCEPT,
@@ -42,6 +43,11 @@ type WizardStepFotosProps = {
   photoValidationPending?: boolean
   disabled?: boolean
   onAddBenefit?: () => void
+  persistedState?: MinhasMidiasResponse | null
+  onPersistedChange?: (response: MinhasMidiasResponse) => void
+  onInteractionStart?: () => boolean
+  onInteractionEnd?: () => void
+  onStateUnconfirmed?: () => void
 }
 
 function fileKey(file: File) {
@@ -76,10 +82,22 @@ export function WizardStepFotos({
   photoValidationPending = false,
   disabled = false,
   onAddBenefit,
+  persistedState,
+  onPersistedChange,
+  onInteractionStart,
+  onInteractionEnd,
+  onStateUnconfirmed,
 }: WizardStepFotosProps) {
-  const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(null)
-  const [loading, setLoading] = useState(Boolean(slug))
+  const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(persistedState ?? null)
+  const [loading, setLoading] = useState(Boolean(slug) && persistedState === undefined)
   const [busy, setBusy] = useState(false)
+  const [removalIntent, setRemovalIntent] = useState<MinhaMidiaGestao | null>(null)
+  const removalIntentRef = useRef<MinhaMidiaGestao | null>(null)
+  const operationGenerationRef = useRef(0)
+  const mountedRef = useRef(true)
+  const terminalRef = useRef(persistedState?.anuncio.status === 'REMOVIDO')
+  const [stateUnconfirmed, setStateUnconfirmed] = useState(false)
+  const stateUnconfirmedRef = useRef(false)
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pendingPersistedFiles, setPendingPersistedFiles] = useState<File[]>([])
@@ -97,6 +115,51 @@ export function WizardStepFotos({
   const invalidSelection = validationReady && persistedValidation.results.some((result) => !result.valid)
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false; operationGenerationRef.current += 1 }
+  }, [slug])
+
+  useEffect(() => {
+    if (persistedState === undefined || terminalRef.current) return
+    setPersisted(persistedState)
+    if (persistedState?.anuncio.status === 'REMOVIDO') terminalRef.current = true
+  }, [persistedState])
+
+  function beginInteraction() {
+    if (disabled || uploadLockRef.current || terminalRef.current || stateUnconfirmedRef.current || !mountedRef.current) return false
+    if (onInteractionStart && !onInteractionStart()) return false
+    uploadLockRef.current = true
+    operationGenerationRef.current += 1
+    return true
+  }
+
+  function endInteraction() {
+    uploadLockRef.current = false
+    onInteractionEnd?.()
+  }
+
+  function acceptResponse(response: MinhasMidiasResponse, generation: number) {
+    if (!mountedRef.current || generation !== operationGenerationRef.current || terminalRef.current) return false
+    if (response.anuncio.slug !== slug) throw new Error('A resposta não corresponde ao anúncio em edição.')
+    if (response.anuncio.status === 'REMOVIDO') terminalRef.current = true
+    setPersisted(response)
+    onPersistedChange?.(response)
+    return true
+  }
+
+  function handleUnconfirmedState(error: unknown, destructiveRequest = false) {
+    // A lost DELETE response may follow a committed closure. Do not infer that
+    // the old active snapshot survived; deterministic client rejections remain usable.
+    const ambiguousDelete = destructiveRequest && (!(error instanceof MeusAnunciosApiError)
+      || error.status === 0 || error.status === 408 || error.status >= 500)
+    if (ambiguousDelete || (error instanceof MeusAnunciosApiError && error.code === 'MIDIAS_ESTADO_NAO_CONFIRMADO')) {
+      stateUnconfirmedRef.current = true
+      setStateUnconfirmed(true)
+      onStateUnconfirmed?.()
+    }
+  }
+
+  useEffect(() => {
     let current = true
     const files = pendingPersistedFiles
     void Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))
@@ -107,19 +170,28 @@ export function WizardStepFotos({
   }, [pendingPersistedFiles])
 
   const refresh = useCallback(async () => {
-    if (!slug) return
+    if (!slug || persistedState !== undefined || terminalRef.current) return
+    const generation = ++operationGenerationRef.current
     setLoading(true)
     try {
-      setPersisted(await listarMinhasMidias(slug))
+      const response = await listarMinhasMidias(slug)
+      if (mountedRef.current && generation === operationGenerationRef.current && !terminalRef.current) {
+        if (response.anuncio.slug !== slug) throw new Error('A resposta não corresponde ao anúncio em edição.')
+        terminalRef.current = response.anuncio.status === 'REMOVIDO'
+        setPersisted(response)
+        onPersistedChange?.(response)
+      }
+    } catch (error) {
+      if (mountedRef.current && generation === operationGenerationRef.current && !terminalRef.current) {
+        setErrors({ carregar: error instanceof Error ? error.message : 'Não foi possível carregar as mídias.' })
+      }
     } finally {
-      setLoading(false)
+      if (mountedRef.current && generation === operationGenerationRef.current) setLoading(false)
     }
-  }, [slug])
+  }, [onPersistedChange, persistedState, slug])
 
   useEffect(() => {
-    void refresh().catch((error) => {
-      setErrors({ carregar: error instanceof Error ? error.message : 'Não foi possível carregar as mídias.' })
-    })
+    void refresh()
   }, [refresh])
 
   const notifyPublicMediaChange = useCallback(async (changeFingerprint: string) => {
@@ -166,7 +238,8 @@ export function WizardStepFotos({
       return
     }
     const version = selectionVersionRef.current
-    uploadLockRef.current = true
+    if (!beginInteraction()) return
+    const generation = operationGenerationRef.current
     setBusy(true)
     setErrors({})
     try {
@@ -178,17 +251,18 @@ export function WizardStepFotos({
           ...files.map((file) => [file.name, value] as const),
         ]))
       })
-      setPersisted(latest)
-      updatePendingFiles([])
+      if (acceptResponse(latest, generation)) updatePendingFiles([])
     } catch (error) {
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return
+      handleUnconfirmedState(error)
       setRetryable(error instanceof TypeError || (error instanceof MeusAnunciosApiError
         && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)))
       setErrors({
         lote: meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.'),
       })
     } finally {
-      uploadLockRef.current = false
-      setBusy(false)
+      endInteraction()
+      if (mountedRef.current) setBusy(false)
     }
   }
 
@@ -205,7 +279,7 @@ export function WizardStepFotos({
   }
 
   function selectPersistedFiles(files: File[], photos = true) {
-    if (busy || uploadLockRef.current || disabled) return
+    if (busy || uploadLockRef.current || disabled || terminalRef.current) return
     if (photos) {
       files.forEach((file) => photoFilesRef.current.add(file))
       updatePendingFiles([...pendingFilesRef.current, ...files])
@@ -215,41 +289,68 @@ export function WizardStepFotos({
   }
 
   function removePendingPersistedFile(file: File) {
-    if (busy || uploadLockRef.current || disabled) return
+    if (busy || uploadLockRef.current || disabled || terminalRef.current) return
     photoFilesRef.current.delete(file)
     updatePendingFiles(pendingFilesRef.current.filter((item) => item !== file))
   }
 
   const move = async (index: number, direction: -1 | 1) => {
-    if (!slug || !persisted || busy) return
+    if (!slug || !persisted || busy || disabled || terminalRef.current) return
     const nextIndex = index + direction
     if (nextIndex < 0 || nextIndex >= persisted.midias.length) return
     const next = [...persisted.midias]
     ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
+    if (!beginInteraction()) return
+    const generation = operationGenerationRef.current
     setBusy(true)
     try {
       const mediaIds = next.map((item) => item.id)
-      setPersisted(await reordenarMinhasMidias(slug, mediaIds))
-      void notifyPublicMediaChange(`reorder:${mediaIds.join(',')}`)
+      if (acceptResponse(await reordenarMinhasMidias(slug, mediaIds), generation) && !terminalRef.current) {
+        void notifyPublicMediaChange(`reorder:${mediaIds.join(',')}`)
+      }
     } catch (error) {
-      setErrors({ ordenar: error instanceof Error ? error.message : 'Não foi possível alterar a ordem.' })
+      if (mountedRef.current && generation === operationGenerationRef.current) {
+        handleUnconfirmedState(error)
+        setErrors({ ordenar: error instanceof Error ? error.message : 'Não foi possível alterar a ordem.' })
+      }
     } finally {
-      setBusy(false)
+      endInteraction()
+      if (mountedRef.current) setBusy(false)
     }
   }
 
-  const remove = async (midia: MinhaMidiaGestao) => {
-    if (!slug || busy) return
+  const requestRemoval = (midia: MinhaMidiaGestao) => {
+    if (!slug || busy || !persisted?.midias.some((item) => item.id === midia.id) || !beginInteraction()) return
+    removalIntentRef.current = midia
+    setRemovalIntent(midia)
+  }
+
+  const cancelRemoval = () => {
+    if (busy || !removalIntentRef.current) return
+    removalIntentRef.current = null
+    setRemovalIntent(null)
+    endInteraction()
+  }
+
+  const confirmRemoval = async () => {
+    const midia = removalIntentRef.current
+    if (!slug || !midia || busy || disabled || terminalRef.current || !uploadLockRef.current) return
+    // Consume the intent synchronously: two clicks cannot send two DELETEs.
+    removalIntentRef.current = null
+    const generation = operationGenerationRef.current
     setBusy(true)
     try {
-      setPersisted(await removerMinhaMidia(slug, midia.id))
-      void notifyPublicMediaChange(`remove:${midia.id}`)
+      if (acceptResponse(await removerMinhaMidia(slug, midia.id), generation) && !terminalRef.current) {
+        void notifyPublicMediaChange(`remove:${midia.id}`)
+      }
     } catch (error) {
-      setErrors({
-        remover: meusAnunciosErrorMessage(error, 'Não foi possível remover a mídia.'),
-      })
+      if (mountedRef.current && generation === operationGenerationRef.current) {
+        handleUnconfirmedState(error, true)
+        setErrors({ remover: meusAnunciosErrorMessage(error, 'Não foi possível remover a mídia.') })
+      }
     } finally {
-      setBusy(false)
+      endInteraction()
+      if (mountedRef.current) { setBusy(false); setRemovalIntent(null) }
     }
   }
 
@@ -333,8 +434,33 @@ export function WizardStepFotos({
     )
   }
 
+  if (stateUnconfirmed) {
+    return <StepPanel><p role="alert">Não foi possível confirmar o estado do anúncio. Volte para Meus anúncios para conferir antes de continuar.</p></StepPanel>
+  }
+
+  if (persisted?.anuncio.status === 'REMOVIDO') {
+    return <StepPanel><p role="alert">Anúncio encerrado. Volte para Meus anúncios para continuar.</p></StepPanel>
+  }
+
   return (
     <StepPanel>
+      <Dialog open={removalIntent !== null} onOpenChange={(open) => { if (!open) cancelRemoval() }}>
+        <DialogContent showCloseButton={!busy} role="alertdialog">
+          <DialogHeader>
+            <DialogTitle>{removalIntent?.tipo === 'FOTO' ? 'Excluir foto do anúncio?' : 'Excluir vídeo do anúncio?'}</DialogTitle>
+            <DialogDescription>
+              {removalIntent?.tipo === 'FOTO'
+                ? 'Se esta for a última foto, o anúncio será encerrado. Para substituí-la, envie outra foto antes de excluir.'
+                : 'O vídeo será removido do anúncio. Você pode cancelar antes de confirmar.'}
+            </DialogDescription>
+          </DialogHeader>
+          {removalIntent?.tipo === 'FOTO' ? <p className="text-sm text-zinc-600">Para manter um anúncio aprovado ou publicado, a nova foto precisa ser aprovada antes de remover a última foto aprovada. Uma foto apenas selecionada ou em envio não é uma substituta persistida.</p> : null}
+          <DialogFooter>
+            <button type="button" disabled={busy} onClick={cancelRemoval} className="rounded-xl border px-4 py-2">Cancelar</button>
+            <button type="button" disabled={busy} onClick={() => void confirmRemoval()} className="rounded-xl bg-red-700 px-4 py-2 text-white">{busy ? 'Excluindo…' : 'Confirmar exclusão'}</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <section className="space-y-5 rounded-[28px] border border-zinc-200/80 bg-white p-5 shadow-[0_18px_60px_rgba(24,24,27,0.04)] sm:p-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
@@ -388,7 +514,7 @@ export function WizardStepFotos({
               <p className="mt-1 text-sm text-zinc-600">
                 Adicione um vídeo ao seu anúncio com o benefício Vídeo.
               </p>
-              <button type="button" onClick={onAddBenefit} className="mt-3 rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold">
+              <button type="button" disabled={disabled || busy || Boolean(removalIntent) || terminalRef.current} onClick={onAddBenefit} className="mt-3 rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold">
                 Adicionar benefício
               </button>
             </div>
@@ -452,9 +578,9 @@ export function WizardStepFotos({
                     {midia.ocultaPorLimite ? <p className="font-medium text-amber-700">Oculta enquanto exceder o limite vigente</p> : null}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="button" title="Mover para cima" disabled={busy || index === 0} onClick={() => void move(index, -1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button>
-                    <button type="button" title="Mover para baixo" disabled={busy || index === persisted.midias.length - 1} onClick={() => void move(index, 1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white disabled:opacity-40"><ArrowDown className="h-4 w-4" /></button>
-                    <button type="button" title="Remover mídia" disabled={busy} onClick={() => void remove(midia)} className="ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" title="Mover para cima" disabled={disabled || busy || Boolean(removalIntent) || terminalRef.current || index === 0} onClick={() => void move(index, -1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button>
+                    <button type="button" title="Mover para baixo" disabled={disabled || busy || Boolean(removalIntent) || terminalRef.current || index === persisted.midias.length - 1} onClick={() => void move(index, 1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white disabled:opacity-40"><ArrowDown className="h-4 w-4" /></button>
+                    <button type="button" title="Remover mídia" disabled={disabled || busy || Boolean(removalIntent) || terminalRef.current} onClick={() => requestRemoval(midia)} className="ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
               </article>

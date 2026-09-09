@@ -33,7 +33,6 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -61,6 +60,11 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.annotation.DirtiesContext.HierarchyMode;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.server.ResponseStatusException;
@@ -85,6 +89,9 @@ import org.springframework.web.server.ResponseStatusException;
         })
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED", matches = "true")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = AnuncianteConcorrenciaPostgres17IntegrationTest.ContextCapture.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class AnuncianteConcorrenciaPostgres17IntegrationTest {
 
     private static final UUID USUARIO_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
@@ -92,7 +99,8 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
     private static final UUID ESTADO_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
     private static final UUID CIDADE_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
     private static final String SLUG = "anuncio-concorrencia-qa";
-    private static final Postgres17Fixture POSTGRES = Postgres17Fixture.start();
+    private static final UltimaFotoPostgres17Fixture POSTGRES = UltimaFotoPostgres17Fixture.start();
+    private static TestContext testContext;
 
     @Autowired
     private MinhasMidiasService midiasService;
@@ -145,6 +153,18 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::credential);
     }
 
+    public static final class ContextCapture extends AbstractTestExecutionListener {
+        @Override public void beforeTestClass(TestContext context) { testContext = context; }
+    }
+
+    @AfterAll
+    static void fecharContextoAntesDoPostgres() throws Exception {
+        if (testContext == null) throw new IllegalStateException("contexto da fixture nao foi capturado");
+        testContext.markApplicationContextDirty(HierarchyMode.CURRENT_LEVEL);
+        POSTGRES.close();
+        POSTGRES.close();
+    }
+
     @BeforeEach
     void setUp() {
         jdbc.execute("TRUNCATE TABLE usuario, estado CASCADE");
@@ -172,19 +192,20 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
     void cincoUploadsConcorrentesRespeitamLimiteOrdemEIdempotenciaSemErroInterno()
             throws Exception {
         Authentication authentication = mock(Authentication.class);
-        when(consultaService.anuncioDoUsuario(eq(SLUG), eq(authentication)))
-                .thenAnswer(ignored -> anuncioFixture("Anuncio inicial QA"));
+        CyclicBarrier chamadasConcorrentes = new CyclicBarrier(5);
+        AtomicInteger consultas = new AtomicInteger();
+        when(consultaService.anuncioDoUsuarioParaAtualizacao(eq(SLUG), eq(authentication)))
+                .thenAnswer(ignored -> {
+                    // A partida e coordenada antes de qualquer lock, nunca dentro da secao serializada.
+                    if (consultas.incrementAndGet() <= 5) chamadasConcorrentes.await(5, TimeUnit.SECONDS);
+                    usuarioRepository.findByIdForUpdate(USUARIO_ID).orElseThrow();
+                    return anuncioRepository.findByIdForModeration(ANUNCIO_ID).orElseThrow();
+                });
         when(uploadValidator.validar(any())).thenReturn(uploadValidado());
         when(fotoProcessor.processar(any())).thenReturn(fotoProcessada());
 
-        CyclicBarrier leiturasConcorrentes = new CyclicBarrier(5);
-        AtomicInteger resolucoes = new AtomicInteger();
-        when(limiteService.resolver(ANUNCIO_ID)).thenAnswer(ignored -> {
-            if (resolucoes.incrementAndGet() <= 5) {
-                aguardarBarreira(leiturasConcorrentes);
-            }
-            return new LimiteMidiasAnuncioService.Resultado(4, 0, false, false);
-        });
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
         when(objectStorage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), anyString(), any(), anyString()))
                 .thenAnswer(invocation -> {
                     String key = invocation.getArgument(1);
@@ -214,6 +235,7 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     .toList();
         } finally {
             executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
         }
 
         assertThat(resultados)
@@ -245,7 +267,9 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
         when(usuario.getId()).thenReturn(USUARIO_ID);
         when(usuario.getTelefoneNormalizado()).thenReturn(null);
         when(consultaService.usuarioAutenticado(nullable(Authentication.class))).thenReturn(usuario);
-        when(consultaService.anuncioDoUsuario(eq(SLUG), nullable(Authentication.class)))
+        // Snapshot deliberadamente antigo: este caso preserva o contrato HTTP do conflito otimista.
+        // O protocolo pessimista real e exercitado na suite MinhasMidiasEncerramento.
+        when(consultaService.anuncioDoUsuarioParaAtualizacao(eq(SLUG), nullable(Authentication.class)))
                 .thenAnswer(ignored -> anuncioFixture("Anuncio inicial QA"));
         when(consultaService.detalhar(eq(SLUG), nullable(Authentication.class))).thenReturn(null);
 
@@ -274,7 +298,7 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     null);
         });
         when(atualizacaoValidator.slugify("Cidade QA")).thenReturn("cidade-qa");
-        when(atualizacaoValidator.textoBusca(any())).thenReturn("documento de busca qa");
+        when(atualizacaoValidator.textoBusca(any(), nullable(String.class))).thenReturn("documento de busca qa");
         seedLocalidade();
 
         var executor = Executors.newFixedThreadPool(5);
@@ -296,6 +320,7 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     .toList();
         } finally {
             executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
         }
 
         assertThat(resultados)
@@ -437,157 +462,4 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
     private record UploadResultado(String chave, int status, String causa) {
     }
 
-    private static final class Postgres17Fixture implements AutoCloseable {
-
-        private static final Path MIGRATIONS = Path.of(
-                "src", "main", "resources", "db", "migration")
-                .toAbsolutePath()
-                .normalize();
-
-        private final String network;
-        private final String container;
-        private final String username;
-        private final String credential;
-        private final int port;
-
-        private Postgres17Fixture(
-                String network,
-                String container,
-                String username,
-                String credential,
-                int port) {
-            this.network = network;
-            this.container = container;
-            this.username = username;
-            this.credential = credential;
-            this.port = port;
-        }
-
-        static Postgres17Fixture start() {
-            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-            String network = "topsv3-anunciante-concurrency-" + suffix + "-net";
-            String container = "topsv3-anunciante-concurrency-" + suffix;
-            String username = "topsv3test";
-            String credential = UUID.randomUUID().toString() + UUID.randomUUID();
-            try {
-                command("docker", "network", "create", network);
-                command(
-                        Map.of("POSTGRES_PASSWORD", credential),
-                        "docker", "run", "--pull=never", "-d", "--name", container,
-                        "--network", network,
-                        "-p", "127.0.0.1::5432",
-                        "-e", "POSTGRES_DB=topsv3_anunciante",
-                        "-e", "POSTGRES_USER=" + username,
-                        "-e", "POSTGRES_PASSWORD",
-                        "postgres:17-alpine");
-                awaitPostgres(container, username, credential);
-                migrate(network, container, username, credential, "migrate");
-                migrate(network, container, username, credential, "validate");
-                return new Postgres17Fixture(
-                        network,
-                        container,
-                        username,
-                        credential,
-                        mappedPort(container));
-            } catch (Exception exception) {
-                commandIgnoringFailure("docker", "rm", "-f", container);
-                commandIgnoringFailure("docker", "network", "rm", network);
-                throw new IllegalStateException("falha ao iniciar PostgreSQL 17 do teste", exception);
-            }
-        }
-
-        String jdbcUrl() {
-            return "jdbc:postgresql://127.0.0.1:" + port + "/topsv3_anunciante";
-        }
-
-        String username() {
-            return username;
-        }
-
-        String credential() {
-            return credential;
-        }
-
-        @Override
-        public void close() {
-            commandIgnoringFailure("docker", "rm", "-f", container);
-            commandIgnoringFailure("docker", "network", "rm", network);
-        }
-
-        private static void migrate(
-                String network,
-                String container,
-                String username,
-                String credential,
-                String action) throws Exception {
-            command(
-                    Map.of("FLYWAY_PASSWORD", credential),
-                    "docker", "run", "--pull=never", "--rm", "--network", network,
-                    "-e", "FLYWAY_PASSWORD",
-                    "-v", MIGRATIONS + ":/flyway/sql:ro",
-                    "flyway/flyway:12.10.0",
-                    "-url=jdbc:postgresql://" + container + ":5432/topsv3_anunciante",
-                    "-user=" + username,
-                    "-locations=filesystem:/flyway/sql",
-                    action);
-        }
-
-        private static void awaitPostgres(
-                String container,
-                String username,
-                String credential) throws Exception {
-            for (int attempt = 0; attempt < 60; attempt++) {
-                if (commandIgnoringFailure(
-                        Map.of("PGPASSWORD", credential),
-                        "docker", "exec", "-e", "PGPASSWORD", container,
-                        "pg_isready", "--host", "127.0.0.1",
-                        "--username", username, "--dbname", "topsv3_anunciante") == 0) {
-                    return;
-                }
-                Thread.sleep(500L);
-            }
-            throw new IllegalStateException("PostgreSQL 17 nao ficou pronto");
-        }
-
-        private static int mappedPort(String container) throws Exception {
-            String output = command("docker", "port", container, "5432/tcp").trim();
-            return Integer.parseInt(output.substring(output.lastIndexOf(':') + 1));
-        }
-
-        private static String command(String... args) throws Exception {
-            return command(Map.of(), args);
-        }
-
-        private static String command(
-                Map<String, String> environment,
-                String... args) throws Exception {
-            ProcessBuilder builder = new ProcessBuilder(args).redirectErrorStream(true);
-            builder.environment().putAll(environment);
-            Process process = builder.start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            int exit = process.waitFor();
-            if (exit != 0) {
-                throw new IllegalStateException(args[0] + " falhou: " + output.lines().findFirst().orElse("sem detalhe"));
-            }
-            return output;
-        }
-
-        private static int commandIgnoringFailure(String... args) {
-            return commandIgnoringFailure(Map.of(), args);
-        }
-
-        private static int commandIgnoringFailure(
-                Map<String, String> environment,
-                String... args) {
-            try {
-                ProcessBuilder builder = new ProcessBuilder(args).redirectErrorStream(true);
-                builder.environment().putAll(environment);
-                Process process = builder.start();
-                process.getInputStream().readAllBytes();
-                return process.waitFor();
-            } catch (Exception exception) {
-                return -1;
-            }
-        }
-    }
 }

@@ -118,6 +118,27 @@ public interface AnuncioMidiaRepository
             """, nativeQuery = true)
     List<UUID> findFotosAprovadasElegiveisIds(@Param("anuncioId") UUID anuncioId);
 
+    // Presence is not publication eligibility. An adjustment is still pending review;
+    // a rejected photo/file or a historical document cannot keep an advertisement open.
+    @Query(value = """
+            select am.id
+            from anuncio_midia am
+            join arquivo_midia arquivo on arquivo.id = am.arquivo_midia_id
+            where am.anuncio_id = :anuncioId
+              and am.tipo = 'FOTO'
+              and am.finalidade in ('CAPA', 'GALERIA')
+              and am.status in ('PENDENTE', 'AJUSTE_SOLICITADO', 'PUBLICAVEL')
+              and arquivo.status_arquivo in ('PENDENTE', 'VALIDADO')
+              and arquivo.mime_type in ('image/jpeg', 'image/png', 'image/webp')
+              and arquivo.tamanho_bytes > 0
+              and not exists (
+                select 1 from documento_usuario documento
+                where documento.arquivo_midia_id = am.arquivo_midia_id
+              )
+            order by am.id
+            """, nativeQuery = true)
+    List<UUID> findFotosValidasAtivasIds(@Param("anuncioId") UUID anuncioId);
+
     @Query(value = """
             select am.id
             from anuncio_midia am

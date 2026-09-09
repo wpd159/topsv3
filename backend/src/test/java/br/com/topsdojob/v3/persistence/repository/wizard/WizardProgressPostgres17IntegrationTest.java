@@ -133,7 +133,7 @@ class WizardProgressPostgres17IntegrationTest {
           .singleElement()
           .satisfies(item -> assertThat(item.status()).isEqualTo("PUBLICADO"));
     } finally {
-      commandIgnoringFailure("docker", "rm", "-f", container);
+      commandIgnoringFailure("docker", "rm", "-f", "-v", container);
       commandIgnoringFailure("docker", "network", "rm", network);
     }
   }
