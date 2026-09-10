@@ -123,6 +123,8 @@ try {
 
   async function scenario(name, action, options = {}) {
     const state = { current: media(options.count ?? 1, 'anuncio-sintetico', options.status), readGate: options.holdInitialRead ? deferred() : null, deleteGate: null, patchGate: null, uploadGate: null, invalidDelete: false, deleteFailure: null, capturedRead: null }
+    if (options.validCount !== undefined) state.current.fotosValidasAtivasTotal = options.validCount
+    if (options.video) state.current.midias.push({ ...photo('video-1'), tipo: 'VIDEO' })
     if (options.status === 'PUBLICADO') state.current.midias.forEach((item) => { item.status = 'PUBLICAVEL'; item.visibilidadeMidia = 'LIVRE' })
     const start = requests.length
     const context = await browser.newContext({ serviceWorkers: 'block' })
@@ -150,10 +152,12 @@ try {
         body = structuredClone(current)
         if (state.readGate && slug === 'anuncio-sintetico') { state.capturedRead = body; await state.readGate.promise }
       } else if (url.pathname.includes('/midias/') && request.method() === 'DELETE') {
-        assert.equal(url.pathname, '/api/public/minha-conta/anuncios/anuncio-sintetico/midias/foto-1')
+        assert.ok(['/api/public/minha-conta/anuncios/anuncio-sintetico/midias/foto-1', '/api/public/minha-conta/anuncios/anuncio-sintetico/midias/video-1'].includes(url.pathname))
         if (state.deleteGate) await state.deleteGate.promise
-        const remaining = current.midias.filter((item) => item.id !== 'foto-1')
-        state.current = { ...media(remaining.length, slug, remaining.length ? 'PENDENTE_REVISAO' : 'REMOVIDO'), midias: remaining }
+        if (state.deleteFailure === 'rejected') { await route.fulfill({ status: 409, contentType: 'application/json', body: '{"message":"Exclusão recusada para este teste","code":"ULTIMA_FOTO_APROVADA"}' }); return }
+        const remaining = current.midias.filter((item) => item.id !== url.pathname.split('/').at(-1))
+        const remainingPhotos = remaining.filter((item) => item.tipo === 'FOTO').length
+        state.current = { ...media(remainingPhotos, slug, remainingPhotos ? 'PENDENTE_REVISAO' : 'REMOVIDO'), midias: remaining }
         if (state.deleteFailure === 'abort') { await route.abort('connectionreset'); return }
         if (state.deleteFailure === 'truncated') { await route.fulfill({ status: 200, contentType: 'application/json', body: '{"midias":' }); return }
         if (state.deleteFailure === 'gateway') { await route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Resposta indisponível"}' }); return }
@@ -209,8 +213,11 @@ try {
     await photoStep(page)
     await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
     const dialog = page.getByRole('alertdialog')
-    await dialog.getByText('Se esta for a última foto, o anúncio será encerrado. Para substituí-la, envie outra foto antes de excluir.', { exact: true }).waitFor()
-    await dialog.getByText(/a nova foto precisa ser aprovada/).waitFor()
+    await dialog.getByRole('heading', { name: 'Excluir a última foto?', exact: true }).waitFor()
+    await dialog.getByText('Ao excluir esta foto, seu anúncio será encerrado. Deseja continuar?', { exact: true }).waitFor()
+    await dialog.getByText('Para trocar a foto, envie a nova antes de excluir a atual.', { exact: true }).waitFor()
+    await dialog.getByText('Se o anúncio já estiver aprovado, aguarde a aprovação da nova foto antes de excluir a última foto aprovada.', { exact: true }).waitFor()
+    assert.equal(await dialog.getByRole('button', { name: 'Cancelar', exact: true }).evaluate((button) => button === document.activeElement), true)
     await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click()
     assert.equal(deleteCount(entries), 0)
     await page.getByRole('button', { name: 'Revise seu anúncio', exact: true }).click()
@@ -222,12 +229,15 @@ try {
     await photoStep(page)
     state.deleteGate = deferred()
     await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
-    await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).evaluate((button) => { button.click(); button.click() })
+    await page.getByRole('button', { name: 'Excluir foto e encerrar anúncio', exact: true }).evaluate((button) => { button.click(); button.click() })
     await waitFor(() => deleteCount(entries) === 1, 'DELETE iniciado')
     assert.equal(await page.getByRole('button', { name: 'Confirmação de identidade', exact: true, includeHidden: true }).isDisabled(), true)
     assert.equal(await page.getByRole('button', { name: 'Adicionar benefício', exact: true, includeHidden: true }).isDisabled(), true)
+    assert.equal(await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).count(), 0)
     state.deleteGate.resolve()
     await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).waitFor()
+    await page.getByText('Seu anúncio foi encerrado e não está mais disponível.', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Voltar para Meus anúncios', exact: true }).waitFor()
     assert.equal(deleteCount(entries), 1)
     assert.equal(entries().filter((item) => item.method === 'PATCH').length, 0)
     assert.equal(completedCount(entries), 0)
@@ -239,7 +249,7 @@ try {
       await photoStep(page)
       await page.evaluate((failure) => { window.__failCatalogRevalidation = failure }, actionFails)
       await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
-      await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).evaluate((button) => { button.click(); button.click() })
+      await page.getByRole('button', { name: 'Excluir foto e encerrar anúncio', exact: true }).evaluate((button) => { button.click(); button.click() })
       await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).waitFor()
       await page.evaluate(() => new Promise(requestAnimationFrame))
       await assertSingleInvalidation(page, entries, true)
@@ -252,7 +262,9 @@ try {
   await scenario('resumo-atualizado-outra-foto', async ({ page, entries }) => {
     await photoStep(page)
     await page.getByRole('button', { name: 'Remover mídia', exact: true }).first().click()
-    await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).click()
+    await page.getByRole('heading', { name: 'Excluir foto?', exact: true }).waitFor()
+    await page.getByText('Ao excluir a última foto, seu anúncio será encerrado. Deseja continuar?', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Excluir foto', exact: true }).click()
     await page.getByRole('button', { name: 'Revise seu anúncio', exact: true }).click()
     await page.getByText('1 foto selecionada', { exact: true }).waitFor()
     assert.equal(deleteCount(entries), 1)
@@ -265,13 +277,15 @@ try {
     await page.getByRole('button', { name: 'Atualizar snapshot sintético', exact: true }).click()
     await waitFor(() => state.capturedRead !== null, 'snapshot anterior capturado')
     await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
-    await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).click()
+    await page.getByRole('button', { name: 'Excluir foto e encerrar anúncio', exact: true }).click()
     await waitFor(() => state.current.anuncio.status === 'REMOVIDO', 'estado encerrado')
-    await page.getByText('Anúncio encerrado. Volte para Meus anúncios para continuar.', { exact: true }).waitFor()
+    await page.getByText('Seu anúncio foi encerrado e não está mais disponível.', { exact: true }).waitFor()
     state.readGate.resolve()
     await page.waitForFunction(() => window.__snapshotResponses === 1)
     await page.evaluate(() => new Promise(requestAnimationFrame))
-    await page.getByText('Anúncio encerrado. Volte para Meus anúncios para continuar.', { exact: true }).waitFor()
+    await page.getByText('Seu anúncio foi encerrado e não está mais disponível.', { exact: true }).waitFor()
+    await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Voltar para Meus anúncios', exact: true }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'Remover mídia', exact: true }).count(), 0)
     assert.equal(deleteCount(entries), 1)
   }, { standalone: true })
@@ -279,7 +293,7 @@ try {
     await photoStep(page)
     state.invalidDelete = true
     await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
-    await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).click()
+    await page.getByRole('button', { name: 'Excluir foto e encerrar anúncio', exact: true }).click()
     await page.getByText('Não foi possível confirmar o estado do anúncio. Volte para Meus anúncios para conferir antes de continuar.', { exact: true }).waitFor()
     assert.equal(completedCount(entries), 0)
     assert.equal((await page.evaluate(() => window.__events)).filter((item) => item.kind === 'success').length, 0)
@@ -289,7 +303,7 @@ try {
       await photoStep(page)
       state.deleteFailure = failureMode
       await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
-      await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).click()
+      await page.getByRole('button', { name: 'Excluir foto e encerrar anúncio', exact: true }).click()
       await page.getByText('Não foi possível confirmar o estado do anúncio. Volte para Meus anúncios para conferir antes de continuar.', { exact: true }).waitFor()
       assert.equal(state.current.anuncio.status, 'REMOVIDO', 'Synthetic server committed before the response fault.')
       assert.equal(deleteCount(entries), 1)
@@ -305,8 +319,8 @@ try {
     state.current = media(1) // Another authorized request removed the other photo, outside this browser.
     state.current.anuncio.status = 'PUBLICADO' // Approval may also have happened after this browser loaded PENDENTE.
     await page.getByRole('button', { name: 'Remover mídia', exact: true }).first().click()
-    await page.getByRole('alertdialog').getByText(/Se esta for a última foto/).waitFor()
-    await page.getByRole('button', { name: 'Confirmar exclusão', exact: true }).click()
+    await page.getByRole('alertdialog').getByText('Ao excluir a última foto, seu anúncio será encerrado. Deseja continuar?', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Excluir foto', exact: true }).click()
     await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).waitFor()
     assert.equal(completedCount(entries), 0)
     await assertSingleInvalidation(page, entries)
@@ -350,6 +364,73 @@ try {
     await page.goto('about:blank')
     assert.equal(deleteCount(entries), 0, 'Failure and unmount never compensate by DELETE.')
   })
+  for (const options of [{ count: 2, validCount: 1 }, { count: 1, validCount: 0 }]) {
+    await scenario(`identidade-valida-incerta-${options.count}-${options.validCount}`, async ({ page, entries }) => {
+      await photoStep(page)
+      await page.getByRole('button', { name: 'Remover mídia', exact: true }).first().click()
+      await page.getByRole('heading', { name: 'Excluir foto?', exact: true }).waitFor()
+      await page.getByText('Ao excluir a última foto, seu anúncio será encerrado. Deseja continuar?', { exact: true }).waitFor()
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
+      assert.equal(deleteCount(entries), 0)
+    }, options)
+  }
+  for (const close of ['Fechar', 'Escape', 'fora']) {
+    await scenario(`fechamento-sem-delete-${close}`, async ({ page, entries }) => {
+      await photoStep(page)
+      await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
+      const dialog = page.getByRole('alertdialog')
+      await dialog.waitFor()
+      assert.equal(deleteCount(entries), 0)
+      if (close === 'Fechar') await dialog.getByRole('button', { name: 'Fechar', exact: true }).click()
+      else if (close === 'Escape') await page.keyboard.press('Escape')
+      else await page.mouse.click(1, 1)
+      await page.evaluate(() => new Promise(requestAnimationFrame))
+      assert.equal(deleteCount(entries), 0)
+      if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click()
+      await dialog.waitFor({ state: 'hidden' })
+      assert.equal(deleteCount(entries), 0)
+    })
+  }
+  await scenario('video-nao-anuncia-encerramento', async ({ page, entries }) => {
+    await photoStep(page)
+    await page.getByRole('button', { name: 'Remover mídia', exact: true }).last().click()
+    const dialog = page.getByRole('alertdialog')
+    await dialog.getByRole('heading', { name: 'Excluir vídeo do anúncio?', exact: true }).waitFor()
+    assert.doesNotMatch(await dialog.innerText(), /encerrado|última foto|trocar a foto/)
+    assert.equal(deleteCount(entries), 0)
+    await dialog.getByRole('button', { name: 'Excluir vídeo', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden' })
+    assert.equal(deleteCount(entries), 1)
+    assert.equal(await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).count(), 0)
+    assert.equal(await page.getByRole('button', { name: 'Remover mídia', exact: true }).count(), 1)
+  }, { video: true })
+  await scenario('substituta-local-nao-muda-confirmacao', async ({ page, entries }) => {
+    await photoStep(page)
+    const jpeg = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#667788' } }).jpeg().toBuffer()
+    const chooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: 'Selecionar fotos do anúncio', exact: true }).click()
+    await (await chooser).setFiles({ name: 'substituta-local.jpg', mimeType: 'image/jpeg', buffer: jpeg })
+    await page.getByText('substituta-local.jpg: Arquivo pronto para envio.', { exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
+    await page.getByRole('heading', { name: 'Excluir a última foto?', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    await page.getByRole('button', { name: 'Remover substituta-local.jpg', exact: true }).click()
+    assert.equal(await page.getByRole('alertdialog').count(), 0)
+    assert.equal(deleteCount(entries), 0)
+    assert.equal(entries().filter((item) => item.path.endsWith('/midias/lote')).length, 0)
+  })
+  await scenario('recusa-deterministica-nao-encerra', async ({ page, state, entries }) => {
+    await photoStep(page)
+    state.deleteFailure = 'rejected'
+    await page.getByRole('button', { name: 'Remover mídia', exact: true }).click()
+    await page.getByRole('button', { name: 'Excluir foto e encerrar anúncio', exact: true }).click()
+    await page.getByText(/Exclusão recusada para este teste/).waitFor()
+    assert.equal(deleteCount(entries), 1)
+    assert.equal(await page.getByRole('heading', { name: 'Anúncio encerrado', exact: true }).count(), 0)
+    assert.equal(state.current.anuncio.status, 'PENDENTE_REVISAO')
+    assert.equal(completedCount(entries), 0)
+  })
+  assert.equal(results.length, 21, 'Preserve the original 13 scenarios and the eight focused additions.')
   assert.deepEqual(unexpected, [], 'Nenhuma consulta externa ou rota não declarada é aceita.')
 } catch (error) {
   failure = error

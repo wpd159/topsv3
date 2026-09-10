@@ -402,7 +402,26 @@ class MeusAnunciosFrontendContractTest {
                 .contains("setRemovalIntent(null)")
                 .contains("endInteraction()")
                 .doesNotContain("removerMinhaMidia(");
-        assertThat(fotos).contains("Se esta for a última foto, o anúncio será encerrado. Para substituí-la, envie outra foto antes de excluir.");
+        assertThat(fotos)
+                .contains("Excluir a última foto?", "Excluir foto?")
+                .contains("Ao excluir esta foto, seu anúncio será encerrado. Deseja continuar?")
+                .contains("Ao excluir a última foto, seu anúncio será encerrado. Deseja continuar?")
+                .contains("Excluir foto e encerrar anúncio", "'Excluir foto'")
+                .contains("Para trocar a foto, envie a nova antes de excluir a atual.")
+                .contains("Se o anúncio já estiver aprovado, aguarde a aprovação da nova foto antes de excluir a última foto aprovada.")
+                .contains("onOpenAutoFocus", "cancelRemovalButtonRef.current?.focus()")
+                .contains("persisted?.fotosValidasAtivasTotal === 1")
+                .contains("persisted.midias.every((midia) => midia.tipo !== 'FOTO' || midia.id === removalIntent.id)")
+                .doesNotContain("substituta persistida", "Se esta for a última foto");
+        String wizard = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "anuncio-wizard", "anuncio-wizard.tsx")));
+        for (String encerramento : new String[] { fotos, wizard }) {
+            assertThat(encerramento)
+                    .contains("Anúncio encerrado")
+                    .contains("Seu anúncio foi encerrado e não está mais disponível.")
+                    .contains("Voltar para Meus anúncios")
+                    .doesNotContain("O servidor confirmou o encerramento");
+        }
     }
 
     private static String recorte(String conteudo, String inicio, String fim) {

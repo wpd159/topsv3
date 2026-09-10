@@ -93,6 +93,7 @@ export function WizardStepFotos({
   const [busy, setBusy] = useState(false)
   const [removalIntent, setRemovalIntent] = useState<MinhaMidiaGestao | null>(null)
   const removalIntentRef = useRef<MinhaMidiaGestao | null>(null)
+  const cancelRemovalButtonRef = useRef<HTMLButtonElement | null>(null)
   const operationGenerationRef = useRef(0)
   const mountedRef = useRef(true)
   const terminalRef = useRef(persistedState?.anuncio.status === 'REMOVIDO')
@@ -113,6 +114,13 @@ export function WizardStepFotos({
   const validationReady = persistedValidation.files === pendingPersistedFiles
   const validationPending = pendingPersistedFiles.length > 0 && !validationReady
   const invalidSelection = validationReady && persistedValidation.results.some((result) => !result.valid)
+  // The canonical total identifies the chosen photo only when the complete
+  // response has no other photo identity. Multiple candidates remain ambiguous;
+  // do not reimplement eligibility from status, previews or local selections.
+  const removingLastValidPhoto = removalIntent?.tipo === 'FOTO'
+    && persisted?.fotosValidasAtivasTotal === 1
+    && persisted.midias.some((midia) => midia.tipo === 'FOTO' && midia.id === removalIntent.id)
+    && persisted.midias.every((midia) => midia.tipo !== 'FOTO' || midia.id === removalIntent.id)
 
   useEffect(() => {
     mountedRef.current = true
@@ -439,25 +447,49 @@ export function WizardStepFotos({
   }
 
   if (persisted?.anuncio.status === 'REMOVIDO') {
-    return <StepPanel><p role="alert">Anúncio encerrado. Volte para Meus anúncios para continuar.</p></StepPanel>
+    return (
+      <StepPanel>
+        <section role="alert" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-6">
+          <h2 className="text-2xl font-semibold">Anúncio encerrado</h2>
+          <p>Seu anúncio foi encerrado e não está mais disponível.</p>
+        </section>
+        <button type="button" onClick={() => window.location.assign('/meus-anuncios')} className="min-h-11 rounded-xl border px-4 py-2">
+          Voltar para Meus anúncios
+        </button>
+      </StepPanel>
+    )
   }
 
   return (
     <StepPanel>
       <Dialog open={removalIntent !== null} onOpenChange={(open) => { if (!open) cancelRemoval() }}>
-        <DialogContent showCloseButton={!busy} role="alertdialog">
-          <DialogHeader>
-            <DialogTitle>{removalIntent?.tipo === 'FOTO' ? 'Excluir foto do anúncio?' : 'Excluir vídeo do anúncio?'}</DialogTitle>
+        <DialogContent showCloseButton={!busy} role="alertdialog" onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          cancelRemovalButtonRef.current?.focus()
+        }}>
+          <DialogHeader className="pr-6 text-left">
+            <DialogTitle className="leading-6">{removalIntent?.tipo === 'FOTO'
+              ? removingLastValidPhoto ? 'Excluir a última foto?' : 'Excluir foto?'
+              : 'Excluir vídeo do anúncio?'}</DialogTitle>
             <DialogDescription>
               {removalIntent?.tipo === 'FOTO'
-                ? 'Se esta for a última foto, o anúncio será encerrado. Para substituí-la, envie outra foto antes de excluir.'
+                ? removingLastValidPhoto
+                  ? 'Ao excluir esta foto, seu anúncio será encerrado. Deseja continuar?'
+                  : 'Ao excluir a última foto, seu anúncio será encerrado. Deseja continuar?'
                 : 'O vídeo será removido do anúncio. Você pode cancelar antes de confirmar.'}
             </DialogDescription>
           </DialogHeader>
-          {removalIntent?.tipo === 'FOTO' ? <p className="text-sm text-zinc-600">Para manter um anúncio aprovado ou publicado, a nova foto precisa ser aprovada antes de remover a última foto aprovada. Uma foto apenas selecionada ou em envio não é uma substituta persistida.</p> : null}
-          <DialogFooter>
-            <button type="button" disabled={busy} onClick={cancelRemoval} className="rounded-xl border px-4 py-2">Cancelar</button>
-            <button type="button" disabled={busy} onClick={() => void confirmRemoval()} className="rounded-xl bg-red-700 px-4 py-2 text-white">{busy ? 'Excluindo…' : 'Confirmar exclusão'}</button>
+          {removalIntent?.tipo === 'FOTO' ? (
+            <div className="space-y-2 text-sm text-zinc-600">
+              <p>Para trocar a foto, envie a nova antes de excluir a atual.</p>
+              <p>Se o anúncio já estiver aprovado, aguarde a aprovação da nova foto antes de excluir a última foto aprovada.</p>
+            </div>
+          ) : null}
+          <DialogFooter className="flex-col sm:flex-row">
+            <button ref={cancelRemovalButtonRef} type="button" disabled={busy} onClick={cancelRemoval} className="min-h-11 rounded-xl border px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950">Cancelar</button>
+            <button type="button" disabled={busy} onClick={() => void confirmRemoval()} className="min-h-11 min-w-0 rounded-xl bg-red-700 px-4 py-2 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2">{busy ? 'Excluindo…' : removalIntent?.tipo === 'FOTO'
+              ? removingLastValidPhoto ? 'Excluir foto e encerrar anúncio' : 'Excluir foto'
+              : 'Excluir vídeo'}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

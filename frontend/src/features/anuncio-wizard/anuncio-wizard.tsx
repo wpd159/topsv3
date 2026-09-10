@@ -996,8 +996,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-20">
         <section role="alert" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h1 className="text-2xl font-semibold">Anúncio encerrado</h1>
-          <p>O servidor confirmou o encerramento do anúncio. Esta edição não será enviada para moderação.</p>
-          <p className="text-sm">Volte para Meus anúncios para consultar os anúncios disponíveis.</p>
+          <p>Seu anúncio foi encerrado e não está mais disponível.</p>
         </section>
         <Button type="button" onClick={() => router.push('/meus-anuncios')}>Voltar para Meus anúncios</Button>
       </main>
