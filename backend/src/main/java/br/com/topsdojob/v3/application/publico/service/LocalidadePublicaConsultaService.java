@@ -46,6 +46,7 @@ public class LocalidadePublicaConsultaService {
     private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final AnuncioSeoElegibilidadeConsultaService elegibilidadeService;
     private final LocalidadeSeoIndexabilidadePolicy indexabilidadePolicy;
+    private final LocalidadesConsultaCoordenador coordenador;
 
     public LocalidadePublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -54,7 +55,8 @@ public class LocalidadePublicaConsultaService {
             AnuncioRepository anuncioRepository,
             AnuncioLocalizacaoRepository localizacaoRepository,
             AnuncioSeoElegibilidadeConsultaService elegibilidadeService,
-            LocalidadeSeoIndexabilidadePolicy indexabilidadePolicy) {
+            LocalidadeSeoIndexabilidadePolicy indexabilidadePolicy,
+            LocalidadesConsultaCoordenador coordenador) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -62,39 +64,53 @@ public class LocalidadePublicaConsultaService {
         this.localizacaoRepository = localizacaoRepository;
         this.elegibilidadeService = elegibilidadeService;
         this.indexabilidadePolicy = indexabilidadePolicy;
+        this.coordenador = coordenador;
     }
 
-    @Transactional(readOnly = true)
     public DescobertaLocalidadesPublicaDto descobrir() {
-        List<AnuncioEntity> anuncios = anunciosPublicos();
+        return consultar().descoberta();
+    }
+
+    private ResultadoConsulta consultar() {
+        // Global and city endpoints consume exactly the same public, unfiltered snapshot.
+        // No completed result is retained; all public/moderation/removal rules are reread.
+        return coordenador.executar("descoberta-publica-global", () ->
+                coordenador.transacao("avaliacao_e_agregacao", this::carregar));
+    }
+
+    private ResultadoConsulta carregar() {
+        List<AnuncioEntity> anuncios = coordenador.medir("anuncios", this::anunciosPublicos);
         if (anuncios.isEmpty()) {
-            return new DescobertaLocalidadesPublicaDto(List.of());
+            return new ResultadoConsulta(new DescobertaLocalidadesPublicaDto(List.of()), Map.of());
         }
 
         Map<UUID, AnuncioEntity> anuncioPorId = anuncios.stream()
                 .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
-        List<AnuncioLocalizacaoEntity> localizacoes = localizacaoRepository.findByAnuncioIdIn(anuncioPorId.keySet());
+        List<AnuncioLocalizacaoEntity> localizacoes = coordenador.medir("localizacoes",
+                () -> localizacaoRepository.findByAnuncioIdIn(anuncioPorId.keySet()));
         Map<UUID, EstadoEntity> estados = porId(
-                estadoRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getEstadoId)),
+                coordenador.medir("estados", () -> estadoRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getEstadoId))),
                 EstadoEntity::getId);
         Map<UUID, CidadeEntity> cidades = porId(
-                cidadeRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getCidadeId)),
+                coordenador.medir("cidades", () -> cidadeRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getCidadeId))),
                 CidadeEntity::getId);
         Map<UUID, BairroEntity> bairros = porId(
-                bairroRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getBairroId)),
+                coordenador.medir("bairros", () -> bairroRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getBairroId))),
                 BairroEntity::getId);
         Map<UUID, LocalizacaoPublicaDto> localizacoesPublicas = new LinkedHashMap<>();
         for (AnuncioLocalizacaoEntity localizacao : localizacoes) {
+            LocalidadesConsultaOrcamento.atualOuNulo().conferir();
             localizacoesPublicas.putIfAbsent(
                     localizacao.getAnuncioId(),
                     localizacao(localizacao, estados, cidades, bairros));
         }
-        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliar(
+        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = coordenador.medir("elegibilidade", () -> elegibilidadeService.avaliarLocalidades(
                 anuncios,
-                localizacoesPublicas);
+                localizacoesPublicas));
 
         Map<UUID, EstadoAcc> acumulado = new LinkedHashMap<>();
         for (AnuncioLocalizacaoEntity localizacao : localizacoes) {
+            LocalidadesConsultaOrcamento.atualOuNulo().conferir();
             AnuncioEntity anuncio = anuncioPorId.get(localizacao.getAnuncioId());
             EstadoEntity estado = estados.get(localizacao.getEstadoId());
             CidadeEntity cidade = cidades.get(localizacao.getCidadeId());
@@ -105,6 +121,11 @@ public class LocalidadePublicaConsultaService {
                     && elegibilidade.get(anuncio.getId()).indexavel();
             BairroEntity bairro = bairros.get(localizacao.getBairroId());
             OffsetDateTime atualizacao = ultimaAtualizacao(anuncio, localizacao);
+            OffsetDateTime midiaAtualizada = elegibilidade.containsKey(anuncio.getId())
+                    ? elegibilidade.get(anuncio.getId()).ultimaAtualizacaoMidia() : null;
+            if (midiaAtualizada != null && (atualizacao == null || midiaAtualizada.isAfter(atualizacao))) {
+                atualizacao = midiaAtualizada;
+            }
             EstadoAcc estadoAcc = acumulado.computeIfAbsent(estado.getId(), ignored -> new EstadoAcc(estado));
             estadoAcc.adicionar(anuncio.getId(), indexavel, atualizacao);
             CidadeAcc cidadeAcc = estadoAcc.cidades.computeIfAbsent(cidade.getId(), ignored -> new CidadeAcc(cidade));
@@ -119,7 +140,10 @@ public class LocalidadePublicaConsultaService {
                 .map(item -> item.toDto(indexabilidadePolicy))
                 .sorted(Comparator.comparing(EstadoLocalidadePublicaDto::uf))
                 .toList();
-        return new DescobertaLocalidadesPublicaDto(resultado);
+        DescobertaLocalidadesPublicaDto descoberta = new DescobertaLocalidadesPublicaDto(resultado);
+        Map<String, AgregadoCidadePublicaDto> agregados = coordenador.medir("agregados_cidades",
+                () -> agregados(descoberta, anuncios, localizacoes, cidades, estados));
+        return new ResultadoConsulta(descoberta, agregados);
     }
 
     @Transactional(readOnly = true)
@@ -164,43 +188,49 @@ public class LocalidadePublicaConsultaService {
         return new DescobertaLocalidadesPublicaDto(estados);
     }
 
-    @Transactional(readOnly = true)
     public AgregadoCidadePublicaDto agregadoCidade(String uf, String cidadeSlug) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
-        EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
-                .orElseThrow(() -> notFound("estado nao encontrado"));
-        CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
-                .orElseThrow(() -> notFound("cidade nao encontrada"));
+        AgregadoCidadePublicaDto resultado = consultar().cidades().get(chaveCidade(ufSeguro, cidadeSegura));
+        if (resultado == null) throw notFound("cidade sem anuncios publicos");
+        return resultado;
+    }
 
-        List<AnuncioLocalizacaoEntity> localizacoes = localizacaoRepository.findByCidadeId(cidade.getId());
-        List<UUID> ids = localizacoes.stream().map(AnuncioLocalizacaoEntity::getAnuncioId).distinct().toList();
-        List<AnuncioEntity> anuncios = ids.isEmpty()
-                ? List.of()
-                : anuncioRepository.findPublicosComProprietarioAtivoPorIds(ids).stream()
-                        .filter(anuncio -> !anuncio.isAtendimentoExclusivamenteVirtual())
-                        .toList();
-        if (anuncios.isEmpty()) {
-            throw notFound("cidade sem anuncios publicos");
-        }
-
+    private Map<String, AgregadoCidadePublicaDto> agregados(DescobertaLocalidadesPublicaDto descoberta,
+            List<AnuncioEntity> anuncios, List<AnuncioLocalizacaoEntity> localizacoes,
+            Map<UUID, CidadeEntity> cidades, Map<UUID, EstadoEntity> estados) {
         Map<UUID, AnuncioEntity> anuncioPorId = anuncios.stream()
                 .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
-        List<AnuncioLocalizacaoEntity> localizacoesPublicas = localizacoes.stream()
+        Map<UUID, List<AnuncioLocalizacaoEntity>> porCidade = localizacoes.stream()
                 .filter(item -> anuncioPorId.containsKey(item.getAnuncioId()))
-                .toList();
-        DescobertaLocalidadesPublicaDto descoberta = descobrir();
-        EstadoLocalidadePublicaDto estadoDescoberto = descoberta.estados().stream()
-                .filter(item -> item.uf().equalsIgnoreCase(estado.getUf()))
-                .findFirst()
-                .orElseThrow(() -> notFound("estado sem anuncios publicos"));
-        CidadeLocalidadePublicaDto cidadeDescoberta = estadoDescoberto.cidades().stream()
-                .filter(item -> item.slug().equals(cidade.getSlug()))
-                .findFirst()
-                .orElseThrow(() -> notFound("cidade sem anuncios publicos"));
+                .filter(item -> item.getCidadeId() != null)
+                .collect(Collectors.groupingBy(AnuncioLocalizacaoEntity::getCidadeId));
+        Map<String, AgregadoCidadePublicaDto> resultado = new LinkedHashMap<>();
+        Map<String, UUID> identidades = cidades.values().stream()
+                .filter(cidade -> estados.containsKey(cidade.getEstadoId()))
+                .collect(Collectors.toMap(cidade -> chaveCidade(estados.get(cidade.getEstadoId()).getUf(),
+                        cidade.getSlug()), CidadeEntity::getId));
+        for (EstadoLocalidadePublicaDto estado : descoberta.estados()) {
+            for (CidadeLocalidadePublicaDto cidade : estado.cidades()) {
+                LocalidadesConsultaOrcamento.atualOuNulo().conferir();
+                UUID cidadeId = identidades.get(chaveCidade(estado.uf(), cidade.slug()));
+                List<AnuncioLocalizacaoEntity> locais = porCidade.getOrDefault(cidadeId, List.of());
+                List<AnuncioEntity> daCidade = locais.stream().map(AnuncioLocalizacaoEntity::getAnuncioId)
+                        .distinct().map(anuncioPorId::get).toList();
+                resultado.put(chaveCidade(estado.uf(), cidade.slug()),
+                        agregado(estado, cidade, daCidade, locais, anuncioPorId));
+            }
+        }
+        return Map.copyOf(resultado);
+    }
+
+    private AgregadoCidadePublicaDto agregado(EstadoLocalidadePublicaDto estadoDescoberto,
+            CidadeLocalidadePublicaDto cidadeDescoberta, List<AnuncioEntity> anuncios,
+            List<AnuncioLocalizacaoEntity> localizacoesPublicas, Map<UUID, AnuncioEntity> anuncioPorId) {
 
         Map<String, Long> categorias = anuncios.stream()
                 .flatMap(anuncio -> {
+                    LocalidadesConsultaOrcamento.atualOuNulo().conferir();
                     Set<String> codigos = new java.util.LinkedHashSet<>();
                     if (anuncio.getCategoria() != null && !anuncio.getCategoria().isBlank()) {
                         codigos.add(anuncio.getCategoria());
@@ -221,27 +251,28 @@ public class LocalidadePublicaConsultaService {
                 .toList();
 
         List<CidadeLocalidadePublicaDto> relacionadas = estadoDescoberto.cidades().stream()
-                .filter(item -> !item.slug().equals(cidade.getSlug()))
+                .filter(item -> !item.slug().equals(cidadeDescoberta.slug()))
                 .toList();
 
-        OffsetDateTime ultimaAtualizacao = localizacoesPublicas.stream()
-                .map(localizacao -> ultimaAtualizacao(anuncioPorId.get(localizacao.getAnuncioId()), localizacao))
-                .filter(java.util.Objects::nonNull)
-                .max(OffsetDateTime::compareTo)
-                .orElse(null);
-
         return new AgregadoCidadePublicaDto(
-                estado.getUf(),
-                estado.getNome(),
-                cidade.getNome(),
-                cidade.getSlug(),
+                estadoDescoberto.uf(),
+                estadoDescoberto.nome(),
+                cidadeDescoberta.nome(),
+                cidadeDescoberta.slug(),
                 anuncios.size(),
-                ultimaAtualizacao,
+                cidadeDescoberta.ultimaAtualizacao(),
                 cidadeDescoberta.indexacao(),
                 cidadeDescoberta.bairros(),
                 categoriasDto,
                 relacionadas);
     }
+
+    private String chaveCidade(String uf, String slug) {
+        return uf.toLowerCase(Locale.ROOT) + "/" + slug;
+    }
+
+    private record ResultadoConsulta(DescobertaLocalidadesPublicaDto descoberta,
+            Map<String, AgregadoCidadePublicaDto> cidades) { }
 
     private List<AnuncioEntity> anunciosPublicos() {
         return anuncioRepository.findPublicosComProprietarioAtivo().stream()

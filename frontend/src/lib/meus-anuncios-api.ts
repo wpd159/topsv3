@@ -94,6 +94,8 @@ export type MinhasMidiasLimites = {
 export type MinhasMidiasResponse = {
   midias: MinhaMidiaGestao[]
   limites: MinhasMidiasLimites
+  anuncio: MeuAnuncioCicloVida
+  fotosValidasAtivasTotal: number
 }
 
 export type MeuAnuncio = {
@@ -487,6 +489,32 @@ function mapCicloVida(payload: unknown): MeuAnuncioCicloVida {
   }
 }
 
+function mapMinhasMidias(payload: unknown, slug: string): MinhasMidiasResponse {
+  if (!payload || typeof payload !== 'object') {
+    throw new MeusAnunciosApiError('O servico retornou as midias em formato incompativel. Atualize a pagina para conferir o estado do anuncio.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+  }
+  const raw = payload as Partial<MinhasMidiasResponse>
+  if (!Array.isArray(raw.midias) || !raw.limites || typeof raw.limites !== 'object'
+    || !Number.isSafeInteger(raw.fotosValidasAtivasTotal) || raw.fotosValidasAtivasTotal! < 0) {
+    throw new MeusAnunciosApiError('O servico retornou as midias em formato incompativel. Atualize a pagina para conferir o estado do anuncio.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+  }
+  let anuncio: MeuAnuncioCicloVida
+  try { anuncio = mapCicloVida(raw.anuncio) }
+  catch { throw new MeusAnunciosApiError('O servico não confirmou o estado do anuncio após a operação. Atualize a pagina para conferir.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO') }
+  if (anuncio.slug !== slug || !anuncio.id.trim()
+    || !['RASCUNHO', 'PENDENTE_REVISAO', 'APROVADO', 'PUBLICADO', 'PAUSADO', 'REJEITADO', 'BLOQUEADO', 'REMOVIDO'].includes(anuncio.status)
+    || raw.midias.some((item) => !item || typeof item.id !== 'string' || !['FOTO', 'VIDEO'].includes(item.tipo))
+    || raw.fotosValidasAtivasTotal! > raw.midias.filter((item) => item.tipo === 'FOTO').length) {
+    throw new MeusAnunciosApiError('O servico retornou um estado de midias incompativel. Atualize a pagina para conferir o anuncio.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+  }
+  return {
+    midias: raw.midias,
+    limites: raw.limites,
+    anuncio,
+    fotosValidasAtivasTotal: raw.fotosValidasAtivasTotal!,
+  }
+}
+
 export async function listarMeusAnuncios() {
   const payload = await request<unknown>('/minha-conta/anuncios')
   if (!Array.isArray(payload)) {
@@ -529,10 +557,10 @@ export async function removerMeuAnuncio(slug: string) {
   ))
 }
 
-export function listarMinhasMidias(slug: string) {
-  return request<MinhasMidiasResponse>(
+export async function listarMinhasMidias(slug: string) {
+  return mapMinhasMidias(await request<unknown>(
     `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`
-  )
+  ), slug)
 }
 
 export function consultarLimitesMinhasMidias(slug: string) {
@@ -591,9 +619,14 @@ export async function enviarMinhaMidia(
         ))
         return
       }
-      onProgress?.(100)
-      mediaUploadIdempotencyKeys.delete(arquivo)
-      resolve(body as MinhasMidiasResponse)
+      try {
+        const result = mapMinhasMidias(body, slug)
+        onProgress?.(100)
+        mediaUploadIdempotencyKeys.delete(arquivo)
+        resolve(result)
+      } catch (error) {
+        reject(error)
+      }
     }
     const form = new FormData()
     form.append('arquivo', arquivo)
@@ -661,9 +694,14 @@ export async function enviarMinhasMidiasEmLote(
         ))
         return
       }
-      onProgress?.(100)
-      mediaBatchIdempotencyKeys.delete(signature)
-      resolve(body as MinhasMidiasResponse)
+      try {
+        const result = mapMinhasMidias(body, slug)
+        onProgress?.(100)
+        mediaBatchIdempotencyKeys.delete(signature)
+        resolve(result)
+      } catch (error) {
+        reject(error)
+      }
     }
     const form = new FormData()
     arquivos.forEach((arquivo) => form.append('arquivos', arquivo))
@@ -671,20 +709,20 @@ export async function enviarMinhasMidiasEmLote(
   })
 }
 
-export function reordenarMinhasMidias(slug: string, midiaIds: string[]) {
-  return request<MinhasMidiasResponse>(
+export async function reordenarMinhasMidias(slug: string, midiaIds: string[]) {
+  return mapMinhasMidias(await request<unknown>(
     `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/ordem`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ midiaIds }),
     }
-  )
+  ), slug)
 }
 
-export function removerMinhaMidia(slug: string, midiaId: string) {
-  return request<MinhasMidiasResponse>(
+export async function removerMinhaMidia(slug: string, midiaId: string) {
+  return mapMinhasMidias(await request<unknown>(
     `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/${encodeURIComponent(midiaId)}`,
     { method: 'DELETE' }
-  )
+  ), slug)
 }

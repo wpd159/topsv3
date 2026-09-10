@@ -97,7 +97,11 @@ assert.match(
 assert.doesNotMatch(`${api}\n${access}`, /localStorage|sessionStorage/)
 assert.doesNotMatch(`${api}\n${access}\n${verification}`, /\/idade\/confirmar|\/idade\/status/)
 assert.match(sensitiveImage, /\/compliance\/visitor\/media\//)
-assert.match(sensitiveImage, /void obterStatusVisitante\(\)/)
+assert.match(sensitiveImage, /const request = force \? obterStatusVisitante\(true\) : obterStatusVisitante\(\)/)
+assert.match(sensitiveImage, /void request\s*\.then/)
+assert.match(sensitiveImage, /generation !== obterGeracaoStatusVisitante\(\)/)
+assert.match(sensitiveImage, /sequence !== requestSequence\.current/)
+assert.match(sensitiveImage, /if \(!force\) setErro\(false\)/)
 assert.equal(
   (sensitiveImage.match(/obterStatusVisitante\(true\)/g) ?? []).length,
   1,

@@ -73,6 +73,9 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     Optional<AnuncioEntity> findBySlugAndRemovidoEmIsNull(String slug);
 
+    @Query("select anuncio.usuarioId from AnuncioEntity anuncio where anuncio.id = :id")
+    Optional<UUID> findUsuarioIdById(@Param("id") UUID id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select anuncio from AnuncioEntity anuncio where anuncio.slug = :slug")
     Optional<AnuncioEntity> findBySlugForLifecycle(@Param("slug") String slug);
@@ -255,6 +258,13 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
               and u.excluido_em is null
             """, nativeQuery = true)
     List<AnuncioEntity> findPublicosComProprietarioAtivo();
+
+    @Query("""
+            select distinct a.anuncioId
+            from AtivacaoBeneficioEntity a join BeneficioPremiumEntity b on b.id = a.beneficioId
+            where array_contains(:ids, a.anuncioId) and b.codigo in ('FOTOS_EXTRA_5', 'VIDEO_1')
+            """)
+    List<UUID> findIdsComBeneficiosDeMidia(@Param("ids") UUID[] ids);
 
     @Query(value = """
             select a.*

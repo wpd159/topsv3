@@ -163,6 +163,53 @@ class MidiaRestritaDerivacaoServiceTest {
     assertThat(arquivo.getPreviewRestritoStatus()).isEqualTo(StatusDerivadoMidia.FALHA);
   }
 
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"DISPONIVEL", "PENDENTE", "FALHA",
+      "REMOVIDO", "DESCONHECIDO", "chave", "checksum", "pipeline", "tipo", "instante"})
+  void projecaoEEntidadeExigemOMesmoEstadoCanonicoSemStorage(String state) {
+    R2StorageProperties props = properties();
+    ObjectStorage storage = mock(ObjectStorage.class);
+    var file = arquivo(UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001"),
+        props.getPrivateMediaBucket(), props.getPrivateMediaPrefix() + "original.jpg", "a".repeat(64));
+    var service = service(storage, props);
+    file.marcarPreviewRestritoDisponivel(service.chavePublica(file), "v1", OffsetDateTime.now());
+    switch (state) {
+      case "PENDENTE" -> file.marcarPreviewRestritoPendente(service.chavePublica(file), "v1");
+      case "FALHA" -> file.marcarPreviewRestritoFalha(service.chavePublica(file), "v1");
+      case "REMOVIDO" -> file.marcarPreviewRestritoRemovido();
+      case "DESCONHECIDO" -> file.marcarPreviewRestritoDesconhecido(service.chavePublica(file), "v1");
+      case "chave" -> org.springframework.test.util.ReflectionTestUtils.setField(file, "previewRestritoChave", "outra.jpg");
+      case "checksum" -> org.springframework.test.util.ReflectionTestUtils.setField(file, "sha256", "b".repeat(64));
+      case "pipeline" -> org.springframework.test.util.ReflectionTestUtils.setField(file, "previewRestritoPipelineVersao", "v2");
+      case "tipo" -> org.springframework.test.util.ReflectionTestUtils.setField(file, "previewRestritoTipo", null);
+      case "instante" -> org.springframework.test.util.ReflectionTestUtils.setField(file, "previewRestritoConfirmadoEm", null);
+      default -> { }
+    }
+    var observed = service.resolverPreviewPublicaLeitura(
+        br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura.de(file));
+    if (state.equals("DISPONIVEL")) {
+      assertThat(observed.previewUrl()).isEqualTo(props.getPublicBaseUrl() + "/" + service.chavePublica(file));
+      assertThat(observed.pendencia()).isNull();
+    } else {
+      assertThat(observed.previewUrl()).isNull();
+      assertThat(observed.pendencia()).isEqualTo("PENDENTE_DERIVACAO_RESTRITA");
+    }
+    assertThat(service.resolverPreviewPublica(file)).isEqualTo(observed);
+    verifyNoInteractions(storage);
+  }
+
+  @Test
+  void overloadEscalarPreservaAlgoritmoCanonicoDosProdutores() throws Exception {
+    var props = properties();
+    var id = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
+    var file = arquivo(id, props.getPrivateMediaBucket(), props.getPrivateMediaPrefix() + "a.jpg", " AABB ");
+    var identity = new br.com.topsdojob.v3.application.operacional.midia.MidiaRestritaPreviewIdentity(props);
+    String expected = props.getPublicMediaPrefix() + "restritas-borradas/v1/"
+        + sha256((id + ":aabb:v1").getBytes(java.nio.charset.StandardCharsets.UTF_8)).substring(0, 32) + ".jpg";
+    assertThat(identity.chavePublicaOuNula(id, " AABB ")).isEqualTo(expected);
+    assertThat(identity.chavePublica(file)).isEqualTo(expected);
+  }
+
   private MidiaRestritaDerivacaoService service(
       ObjectStorage storage,
       R2StorageProperties properties) {

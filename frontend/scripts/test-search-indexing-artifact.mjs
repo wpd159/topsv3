@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises"
 import { pathToFileURL } from "node:url"
 
 const EXPECTED_MANIFEST_VERSION = 3
-const EXPECTED_NEXT_VERSION = "15.5.23"
+const EXPECTED_NEXT_VERSION = "15.5.24"
 const GLOBAL_HEADER_SOURCE = "/:path*"
 const EXPECTED_GLOBAL_HEADER_REGEX =
   "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"

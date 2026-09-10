@@ -4,7 +4,10 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import javax.sql.DataSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -23,47 +26,76 @@ final class DatabaseReadinessProbe {
     private final DataSource dataSource;
     private final PackagedMigrationCatalog migrationCatalog;
     private final int queryTimeoutSeconds;
+    private final LongSupplier nanoClock;
 
+    @Autowired
     DatabaseReadinessProbe(
             DataSource dataSource,
             PackagedMigrationCatalog migrationCatalog,
             @Value("${app.health.readiness-query-timeout-seconds:1}") int queryTimeoutSeconds) {
+        this(dataSource, migrationCatalog, queryTimeoutSeconds, System::nanoTime);
+    }
+
+    DatabaseReadinessProbe(
+            DataSource dataSource,
+            PackagedMigrationCatalog migrationCatalog,
+            int queryTimeoutSeconds,
+            LongSupplier nanoClock) {
         if (queryTimeoutSeconds < 1 || queryTimeoutSeconds > 5) {
             throw new IllegalArgumentException("readiness-query-timeout-seconds deve estar entre 1 e 5");
         }
         this.dataSource = dataSource;
         this.migrationCatalog = migrationCatalog;
         this.queryTimeoutSeconds = queryTimeoutSeconds;
+        this.nanoClock = nanoClock;
     }
 
     DatabaseReadiness check() {
-        boolean databaseReady = false;
-        try (Connection connection = dataSource.getConnection()) {
-            connection.setReadOnly(true);
-            connection.setAutoCommit(false);
-            databaseReady = databaseResponds(connection);
-            if (!databaseReady) {
-                connection.rollback();
-                return DatabaseReadiness.down();
-            }
-
-            boolean migrationsReady = migrationsAreCompatible(connection);
-            connection.rollback();
-            return new DatabaseReadiness(true, migrationsReady);
-        } catch (SQLException | RuntimeException exception) {
-            return new DatabaseReadiness(databaseReady, false);
-        }
+        return check(nanoClock.getAsLong() + TimeUnit.SECONDS.toNanos(1));
     }
 
-    private boolean databaseResponds(Connection connection) throws SQLException {
-        try (Statement statement = statement(connection);
+    DatabaseReadiness check(long deadlineNanos) {
+        boolean databaseReady = false;
+        boolean migrationsReady = false;
+        if (expired(deadlineNanos)) {
+            return DatabaseReadiness.down();
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            requireTime(deadlineNanos);
+            connection.setReadOnly(true);
+            requireTime(deadlineNanos);
+            connection.setAutoCommit(false);
+            try {
+                requireTime(deadlineNanos);
+                databaseReady = databaseResponds(connection, deadlineNanos);
+                requireTime(deadlineNanos);
+                if (databaseReady) {
+                    migrationsReady = migrationsAreCompatible(connection, deadlineNanos);
+                    requireTime(deadlineNanos);
+                }
+            } finally {
+                // Cleanup must really finish before an UP result is observable.
+                connection.rollback();
+            }
+        } catch (SQLException | RuntimeException exception) {
+            return expired(deadlineNanos)
+                    ? DatabaseReadiness.down() : new DatabaseReadiness(databaseReady, false);
+        }
+        // try-with-resources has completed close, including a driver that ignored
+        // interruption. Its late success must not be reused as health evidence.
+        return expired(deadlineNanos)
+                ? DatabaseReadiness.down() : new DatabaseReadiness(databaseReady, migrationsReady);
+    }
+
+    private boolean databaseResponds(Connection connection, long deadlineNanos) throws SQLException {
+        try (Statement statement = statement(connection, deadlineNanos);
                 ResultSet result = statement.executeQuery(DATABASE_PROBE_SQL)) {
             return result.next() && result.getInt("probe") == 1;
         }
     }
 
-    private boolean migrationsAreCompatible(Connection connection) throws SQLException {
-        try (Statement statement = statement(connection);
+    private boolean migrationsAreCompatible(Connection connection, long deadlineNanos) throws SQLException {
+        try (Statement statement = statement(connection, deadlineNanos);
                 ResultSet result = statement.executeQuery(MIGRATIONS_PROBE_SQL)) {
             if (!result.next()) {
                 return false;
@@ -75,10 +107,35 @@ final class DatabaseReadinessProbe {
         }
     }
 
-    private Statement statement(Connection connection) throws SQLException {
+    private Statement statement(Connection connection, long deadlineNanos) throws SQLException {
+        requireTime(deadlineNanos);
         Statement statement = connection.createStatement();
-        statement.setQueryTimeout(queryTimeoutSeconds);
-        return statement;
+        try {
+            requireTime(deadlineNanos);
+            long remaining = deadlineNanos - nanoClock.getAsLong();
+            int remainingSeconds = (int) Math.max(1,
+                    (remaining + TimeUnit.SECONDS.toNanos(1) - 1) / TimeUnit.SECONDS.toNanos(1));
+            statement.setQueryTimeout(Math.min(queryTimeoutSeconds, remainingSeconds));
+            requireTime(deadlineNanos);
+            return statement;
+        } catch (SQLException | RuntimeException exception) {
+            try {
+                statement.close();
+            } catch (SQLException closeFailure) {
+                exception.addSuppressed(closeFailure);
+            }
+            throw exception;
+        }
+    }
+
+    private boolean expired(long deadlineNanos) {
+        return Thread.currentThread().isInterrupted() || nanoClock.getAsLong() - deadlineNanos >= 0;
+    }
+
+    private void requireTime(long deadlineNanos) throws SQLException {
+        if (expired(deadlineNanos)) {
+            throw new SQLException("Readiness deadline exhausted");
+        }
     }
 
     record DatabaseReadiness(boolean databaseReady, boolean migrationsReady) {

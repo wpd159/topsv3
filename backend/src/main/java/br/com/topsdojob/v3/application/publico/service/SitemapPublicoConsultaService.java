@@ -50,7 +50,7 @@ public class SitemapPublicoConsultaService {
         this.elegibilidadeService = elegibilidadeService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public List<SitemapAnuncioPublicoDto> listarAnunciosIndexaveis() {
         List<AnuncioEntity> anuncios = anuncioRepository.findPublicosComProprietarioAtivo();
         if (anuncios.isEmpty()) {
@@ -77,7 +77,7 @@ public class SitemapPublicoConsultaService {
                     anuncio.getId(),
                     localizacao(localizacoes.get(anuncio.getId()), estados, cidades, bairros));
         }
-        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliar(
+        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliarLocalidades(
                 anuncios,
                 localizacoesPublicas);
 

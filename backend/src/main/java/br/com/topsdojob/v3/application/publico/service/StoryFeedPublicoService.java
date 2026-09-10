@@ -292,7 +292,7 @@ public class StoryFeedPublicoService {
         AnuncioEntity anuncio = anuncios.get(vinculo.getAnuncioId());
         UsuarioEntity proprietario = proprietarios.get(proprietarioId(story, anuncio));
         if (!arquivoStoryElegivel(arquivo)
-                || anuncio == null
+                || !anuncioNaoRemovido(anuncio)
                 || proprietario == null) {
             return null;
         }
@@ -448,6 +448,7 @@ public class StoryFeedPublicoService {
                 .filter(this::arquivoStoryElegivel)
                 .orElseThrow(this::naoEncontrado);
         AnuncioEntity anuncio = anuncioRepository.findById(vinculo.getAnuncioId())
+                .filter(this::anuncioNaoRemovido)
                 .orElseThrow(this::naoEncontrado);
         UUID proprietarioId = proprietarioId(story, anuncio);
         UsuarioEntity usuario = usuarioRepository.findById(proprietarioId)
@@ -656,6 +657,12 @@ public class StoryFeedPublicoService {
                 && anuncio.getRemovidoEm() == null
                 && anuncio.getStatus() == StatusAnuncio.PUBLICADO
                 && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO;
+    }
+
+    private boolean anuncioNaoRemovido(AnuncioEntity anuncio) {
+        return anuncio != null
+                && anuncio.getRemovidoEm() == null
+                && anuncio.getStatus() != StatusAnuncio.REMOVIDO;
     }
 
     private boolean anuncioComProprietarioAtivo(AnuncioEntity anuncio) {

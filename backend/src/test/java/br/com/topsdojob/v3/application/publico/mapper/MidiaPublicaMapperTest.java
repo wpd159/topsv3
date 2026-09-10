@@ -2,12 +2,16 @@ package br.com.topsdojob.v3.application.publico.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
+import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -15,11 +19,16 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncio
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class MidiaPublicaMapperTest {
 
@@ -298,6 +307,218 @@ class MidiaPublicaMapperTest {
         verify(video, never()).reordenar(any(), any());
         assertThat(foto.getOrdem()).isZero();
         assertThat(video.getOrdem()).isEqualTo(10);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4,false,false", "4,false,true", "4,true,false", "4,true,true",
+            "10,false,false", "10,false,true", "10,true,false", "10,true,true"})
+    void cardPreservaDtoDaGaleriaMaisPolicyComOraculoFixoDeLimitesVideosECarrossel(
+            int limite, boolean videoPermitido, boolean carrossel) {
+        var vinculos = new ArrayList<AnuncioMidiaEntity>();
+        var arquivos = new LinkedHashMap<UUID, ArquivoMidiaEntity>();
+        for (int ordem = 0; ordem <= 10; ordem++) {
+            adicionar(vinculos, arquivos, idCard(100 + ordem), TipoAnuncioMidia.FOTO,
+                    ordem == 0 || ordem == 2 ? VisibilidadeMidia.RESTRITA_18 : VisibilidadeMidia.LIVRE, ordem);
+        }
+        adicionar(vinculos, arquivos, idCard(201), TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, 9);
+        adicionar(vinculos, arquivos, idCard(202), TipoAnuncioMidia.VIDEO, VisibilidadeMidia.RESTRITA_18, 0);
+        java.util.Collections.reverse(vinculos);
+        configurarUrlsPublicasEPreviews();
+        var policy = new MidiaPublicaSeguraPolicy();
+        // Card priority is free before restricted within each type, not gallery order.
+        List<UUID> fotosEsperadas = limite == 4
+                ? List.of(idCard(101), idCard(103), idCard(100), idCard(102))
+                : List.of(idCard(101), idCard(103), idCard(104), idCard(105), idCard(106),
+                        idCard(107), idCard(108), idCard(109), idCard(100), idCard(102));
+        var idsEsperados = new ArrayList<UUID>();
+        if (videoPermitido) {
+            idsEsperados.add(idCard(201));
+            if (carrossel) idsEsperados.add(idCard(202));
+        }
+        idsEsperados.addAll(carrossel ? fotosEsperadas : List.of(idCard(101)));
+        var referencia = policy.paraCard(mapper.publicas(vinculos, arquivos, false, limite, videoPermitido),
+                carrossel, videoPermitido);
+        assertThat(referencia).extracting(MidiaPublicaDto::id).containsExactlyElementsOf(idsEsperados);
+        clearInvocations(urlService);
+
+        var resultado = mapper.publicasParaCard(vinculos, arquivos, limite, videoPermitido, carrossel, policy);
+
+        assertThat(resultado).isEqualTo(referencia);
+        assertThat(resultado).filteredOn(dto -> "RESTRITA_18".equals(dto.visibilidadeMidia()))
+                .allSatisfy(dto -> {
+                    assertThat(dto.autorizada()).isFalse();
+                    assertThat(dto.urlPublica()).isNull();
+                });
+        verify(urlService, times(carrossel ? 2 : 0)).resolverPreviewRestrita(any());
+        vinculos.forEach(vinculo -> verify(vinculo, never()).reordenar(any(), any()));
+    }
+
+    @Test
+    void cardComSomenteFotoLivreExibidaNaoConsultaPreviewsDescartados() {
+        var vinculos = new ArrayList<AnuncioMidiaEntity>();
+        var arquivos = new LinkedHashMap<UUID, ArquivoMidiaEntity>();
+        for (int ordem = 0; ordem < 4; ordem++) {
+            adicionar(vinculos, arquivos, idCard(100 + ordem), TipoAnuncioMidia.FOTO,
+                    ordem == 3 ? VisibilidadeMidia.LIVRE : VisibilidadeMidia.RESTRITA_18, ordem);
+        }
+        configurarUrlsPublicasEPreviews();
+        doThrow(new AssertionError("preview descartado pelo card nao pode ser consultado"))
+                .when(urlService).resolverPreviewRestrita(any());
+
+        assertThat(mapper.publicasParaCard(vinculos, arquivos, 4, false, false, new MidiaPublicaSeguraPolicy()))
+                .singleElement().satisfies(dto -> {
+                    assertThat(dto.id()).isEqualTo(idCard(103));
+                    assertThat(dto.autorizada()).isTrue();
+                    assertThat(dto.urlPublica()).isEqualTo("/original/" + idCard(103));
+                    assertThat(dto.previewUrl()).isNull();
+                    assertThat(dto.pendenciaMidia()).isNull();
+                });
+        verify(urlService, never()).resolverPreviewRestrita(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {4, 10})
+    void cardNaoPromoveFotoLivrePosteriorAosSlotsInvalidosOuSemArquivo(int limite) {
+        var vinculos = new ArrayList<AnuncioMidiaEntity>();
+        var arquivos = new LinkedHashMap<UUID, ArquivoMidiaEntity>();
+        for (int ordem = 0; ordem <= limite; ordem++) {
+            boolean livre = ordem == 1 || ordem == 2 || ordem == limite;
+            adicionar(vinculos, arquivos, idCard(1000 + ordem), TipoAnuncioMidia.FOTO,
+                    livre ? VisibilidadeMidia.LIVRE : VisibilidadeMidia.RESTRITA_18, ordem);
+        }
+        when(arquivos.get(idCard(1001)).getStatusArquivo()).thenReturn(StatusArquivoMidia.REMOVIDO);
+        arquivos.remove(idCard(1002));
+        java.util.Collections.reverse(vinculos);
+        configurarUrlsPublicasEPreviews();
+        var policy = new MidiaPublicaSeguraPolicy();
+        var referencia = policy.paraCard(mapper.publicas(vinculos, arquivos, false, limite, false), true, false);
+        List<UUID> idsEsperados = limite == 4
+                ? List.of(idCard(1000), idCard(1003))
+                : List.of(idCard(1000), idCard(1003), idCard(1004), idCard(1005),
+                        idCard(1006), idCard(1007), idCard(1008), idCard(1009));
+        assertThat(referencia).extracting(MidiaPublicaDto::id).containsExactlyElementsOf(idsEsperados);
+        clearInvocations(urlService);
+
+        var resultado = mapper.publicasParaCard(vinculos, arquivos, limite, false, true, policy);
+
+        assertThat(resultado).isEqualTo(referencia);
+        assertThat(resultado).allSatisfy(dto -> {
+            assertThat(dto.autorizada()).isFalse();
+            assertThat(dto.urlPublica()).isNull();
+        });
+        verify(urlService, never()).resolver(any(), any());
+        verify(urlService, times(limite - 2)).resolverPreviewRestrita(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void cardPreservaUuidComSinalOrdemNulaEPrioridadeLivreSemReordenarGaleria(boolean carrossel) {
+        UUID negativoAlto = new UUID(Long.MIN_VALUE, 1);
+        UUID negativoBaixo = new UUID(1, Long.MIN_VALUE);
+        UUID positivo = new UUID(1, 1);
+        UUID ordemNula = idCard(4);
+        var vinculos = new ArrayList<AnuncioMidiaEntity>();
+        var arquivos = new LinkedHashMap<UUID, ArquivoMidiaEntity>();
+        adicionar(vinculos, arquivos, positivo, TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, 0);
+        adicionar(vinculos, arquivos, ordemNula, TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, null);
+        adicionar(vinculos, arquivos, negativoBaixo, TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, 0);
+        adicionar(vinculos, arquivos, negativoAlto, TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, 0);
+        configurarUrlsPublicasEPreviews();
+        var policy = new MidiaPublicaSeguraPolicy();
+        var galeria = mapper.publicas(vinculos, arquivos, false, 4, false);
+        assertThat(galeria).extracting(MidiaPublicaDto::id)
+                .containsExactly(negativoAlto, negativoBaixo, positivo, ordemNula);
+        var referencia = policy.paraCard(galeria, carrossel, false);
+        List<UUID> idsEsperados = carrossel
+                ? List.of(negativoBaixo, positivo, ordemNula, negativoAlto) : List.of(negativoBaixo);
+        clearInvocations(urlService);
+
+        var resultado = mapper.publicasParaCard(vinculos, arquivos, 4, false, carrossel, policy);
+
+        assertThat(resultado).isEqualTo(referencia);
+        assertThat(resultado).extracting(MidiaPublicaDto::id).containsExactlyElementsOf(idsEsperados);
+        verify(urlService, times(carrossel ? 1 : 0)).resolverPreviewRestrita(any());
+        assertThat(vinculos).extracting(AnuncioMidiaEntity::getOrdem).containsExactly(0, null, 0, 0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"presente", "ausente", "retorno_nulo"})
+    void cardRestritoPreservaPreviewPendenciaEBloqueioOriginalSemConsultarSegundaFoto(String resposta) {
+        var vinculos = new ArrayList<AnuncioMidiaEntity>();
+        var arquivos = new LinkedHashMap<UUID, ArquivoMidiaEntity>();
+        adicionar(vinculos, arquivos, idCard(100), TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, 0);
+        adicionar(vinculos, arquivos, idCard(101), TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, 1);
+        when(urlService.resolverPreviewRestrita(any())).thenAnswer(call -> {
+            if (resposta.equals("retorno_nulo")) return null;
+            ArquivoMidiaEntity arquivo = call.getArgument(0);
+            return new MidiaPublicaUrlService.ResultadoUrlPublica(
+                    resposta.equals("presente") ? "/preview/" + arquivo.getId() : null,
+                    resposta.equals("presente") ? null : "PENDENTE_DERIVACAO_RESTRITA");
+        });
+        var policy = new MidiaPublicaSeguraPolicy();
+        var referencia = policy.paraCard(mapper.publicas(vinculos, arquivos, false, 4, false), false, false);
+        clearInvocations(urlService);
+
+        var resultado = mapper.publicasParaCard(vinculos, arquivos, 4, false, false, policy);
+
+        assertThat(resultado).isEqualTo(referencia).singleElement().satisfies(dto -> {
+            assertThat(dto.id()).isEqualTo(idCard(100));
+            assertThat(dto.autorizada()).isFalse();
+            assertThat(dto.urlPublica()).isNull();
+            assertThat(dto.previewUrl()).isEqualTo(resposta.equals("presente") ? "/preview/" + idCard(100) : null);
+            assertThat(dto.pendenciaMidia()).isEqualTo(resposta.equals("presente")
+                    ? "MIDIA_RESTRITA_IDADE" : "PENDENTE_DERIVACAO_RESTRITA");
+        });
+        verify(urlService).resolverPreviewRestrita(arquivos.get(idCard(100)));
+        verify(urlService, never()).resolverPreviewRestrita(arquivos.get(idCard(101)));
+        verify(urlService, never()).resolver(any(), any());
+    }
+
+    @Test
+    void cardMantemExclusoesDeStoryStatusVisibilidadeEVideoSemBeneficio() {
+        var vinculos = new ArrayList<AnuncioMidiaEntity>();
+        var arquivos = new LinkedHashMap<UUID, ArquivoMidiaEntity>();
+        adicionar(vinculos, arquivos, idCard(1), TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, 10);
+        adicionar(vinculos, arquivos, idCard(2), TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, 0);
+        when(vinculos.get(1).getStatus()).thenReturn(StatusAnuncioMidia.PENDENTE);
+        adicionar(vinculos, arquivos, idCard(3), TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, 0);
+        when(vinculos.get(2).getStatus()).thenReturn(StatusAnuncioMidia.REJEITADA);
+        adicionar(vinculos, arquivos, idCard(4), TipoAnuncioMidia.STORY, VisibilidadeMidia.RESTRITA_18, 0);
+        adicionar(vinculos, arquivos, idCard(5), TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, 0);
+        when(vinculos.get(4).getFinalidade()).thenReturn(FinalidadeAnuncioMidia.STORY);
+        adicionar(vinculos, arquivos, idCard(6), TipoAnuncioMidia.FOTO, null, 0);
+        adicionar(vinculos, arquivos, idCard(7), TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, 0);
+        configurarUrlsPublicasEPreviews();
+
+        assertThat(mapper.publicasParaCard(vinculos, arquivos, 4, false, true, new MidiaPublicaSeguraPolicy()))
+                .extracting(MidiaPublicaDto::id).containsExactly(idCard(1));
+        verify(urlService, never()).resolverPreviewRestrita(any());
+        verify(urlService, times(1)).resolver(any(), any());
+    }
+
+    private static UUID idCard(long valor) {
+        return new UUID(0, valor);
+    }
+
+    private void adicionar(List<AnuncioMidiaEntity> vinculos, Map<UUID, ArquivoMidiaEntity> arquivos,
+            UUID id, TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, Integer ordem) {
+        vinculos.add(midia(id, tipo, visibilidade, id, ordem));
+        ArquivoMidiaEntity arquivo = arquivo(id);
+        when(arquivo.getLargura()).thenReturn(800);
+        when(arquivo.getAltura()).thenReturn(600);
+        if (tipo == TipoAnuncioMidia.VIDEO) when(arquivo.getMimeType()).thenReturn("video/mp4");
+        arquivos.put(id, arquivo);
+    }
+
+    private void configurarUrlsPublicasEPreviews() {
+        when(urlService.resolver(any(), any())).thenAnswer(call -> {
+            AnuncioMidiaEntity vinculo = call.getArgument(0);
+            return new MidiaPublicaUrlService.ResultadoUrlPublica("/original/" + vinculo.getId(), null);
+        });
+        when(urlService.resolverPreviewRestrita(any())).thenAnswer(call -> {
+            ArquivoMidiaEntity arquivo = call.getArgument(0);
+            return new MidiaPublicaUrlService.ResultadoUrlPublica("/preview/" + arquivo.getId(), null);
+        });
     }
 
     private AnuncioMidiaEntity midia(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, UUID arquivoId, Integer ordem) {

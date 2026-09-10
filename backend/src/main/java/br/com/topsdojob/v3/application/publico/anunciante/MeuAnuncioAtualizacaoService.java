@@ -81,7 +81,7 @@ public class MeuAnuncioAtualizacaoService {
             String slug,
             MeuAnuncioAtualizacaoRequestDto request,
             Authentication authentication) {
-        AnuncioEntity anuncio = consultaService.anuncioDoUsuario(slug, authentication);
+        AnuncioEntity anuncio = consultaService.anuncioDoUsuarioParaAtualizacao(slug, authentication);
         UsuarioEntity usuario = consultaService.usuarioAutenticado(authentication);
         kycService.garantirProntoParaAnuncio(usuario.getId());
         DadosAtualizacao validado = validator.validar(request, usuario.getTelefoneNormalizado());

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -393,6 +394,33 @@ class AdminModeracaoAnuncioServiceTest {
     }
 
     @Test
+    void aprovacaoReconfereEncerramentoAposLockSemCarregarEntidadeAntesDoUsuario() {
+        Fixture fixture = fixtureComKycValidado();
+        when(anuncioRepository.findByIdForModeration(fixture.anuncio().getId())).thenAnswer(invocation -> {
+            fixture.anuncio().removerPeloProprietario(OffsetDateTime.parse("2026-09-08T12:00:00Z"));
+            return Optional.of(fixture.anuncio());
+        });
+
+        assertThatThrownBy(() -> service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(), fixture.actor(), "req-aprovar-encerrado"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do anuncio impede");
+
+        var ordem = inOrder(anuncioRepository, usuarioRepository);
+        ordem.verify(anuncioRepository).findUsuarioIdById(fixture.anuncio().getId());
+        ordem.verify(usuarioRepository).findByIdForUpdate(fixture.usuario().getId());
+        ordem.verify(anuncioRepository).findByIdForModeration(fixture.anuncio().getId());
+        verify(anuncioRepository, never()).findById(any());
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.REMOVIDO);
+        assertThat(fixture.revisao().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
+        verifyNoInteractions(fotoElegivelAnuncioPolicy, outboxRepository, storageService);
+        verify(revisaoRepository, never()).save(any());
+        verify(decisaoRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
+    }
+
+    @Test
     void telaAntigaNaoAprovaDepoisQueUsuarioFoiSuspenso() {
         Fixture fixture = fixture();
         fixture.usuario().bloquearJuridicamente(OffsetDateTime.parse("2026-07-22T12:05:00Z"));
@@ -580,7 +608,7 @@ class AdminModeracaoAnuncioServiceTest {
         AtomicBoolean decisaoRegistrada = new AtomicBoolean(false);
         when(revisaoRepository.findById(revisaoId)).thenReturn(Optional.of(revisao));
         when(revisaoRepository.findByIdForUpdate(revisaoId)).thenReturn(Optional.of(revisao));
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(anuncioRepository.findUsuarioIdById(anuncioId)).thenReturn(Optional.of(usuarioId));
         when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
         when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
         when(bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(anuncioId))

@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaGestaoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLimitesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCicloVidaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService.CapacidadeProprietario;
@@ -17,10 +18,11 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
-import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.net.URI;
@@ -48,7 +50,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class MinhasMidiasService {
 
     private final MeusAnunciosConsultaService consultaService;
-    private final AnuncioRepository anuncioRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final RevisaoAnuncioRepository revisaoRepository;
@@ -58,10 +59,10 @@ public class MinhasMidiasService {
     private final ObjectProvider<ObjectStorage> storageProvider;
     private final AnuncioMidiaUploadCoreService uploadCoreService;
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
+    private final MeuAnuncioCicloVidaService cicloVidaService;
 
     public MinhasMidiasService(
             MeusAnunciosConsultaService consultaService,
-            AnuncioRepository anuncioRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             RevisaoAnuncioRepository revisaoRepository,
@@ -70,9 +71,9 @@ public class MinhasMidiasService {
             R2StorageProperties storageProperties,
             ObjectProvider<ObjectStorage> storageProvider,
             AnuncioMidiaUploadCoreService uploadCoreService,
-            FotoElegivelAnuncioPolicy fotoElegivelPolicy) {
+            FotoElegivelAnuncioPolicy fotoElegivelPolicy,
+            MeuAnuncioCicloVidaService cicloVidaService) {
         this.consultaService = consultaService;
-        this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.revisaoRepository = revisaoRepository;
@@ -82,6 +83,7 @@ public class MinhasMidiasService {
         this.storageProvider = storageProvider;
         this.uploadCoreService = uploadCoreService;
         this.fotoElegivelPolicy = fotoElegivelPolicy;
+        this.cicloVidaService = cicloVidaService;
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +122,8 @@ public class MinhasMidiasService {
             String idempotencyKey,
             Authentication authentication) {
         AnuncioEntity anuncio = anuncioMutavel(slug, authentication);
-        List<AnuncioMidiaEntity> atuais = vinculosAtivos(anuncio.getId());
+        List<AnuncioMidiaEntity> atuais = vinculosAtivos(
+                anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncio.getId()));
         MeuAnuncioMidiaLimitesDto limites = limites(anuncio, atuais);
         uploadCoreService.enviarProprietario(
                 anuncio,
@@ -139,7 +142,8 @@ public class MinhasMidiasService {
             ReordenarMinhasMidiasRequestDto request,
             Authentication authentication) {
         AnuncioEntity anuncio = anuncioMutavel(slug, authentication);
-        List<AnuncioMidiaEntity> atuais = vinculosAtivos(anuncio.getId());
+        List<AnuncioMidiaEntity> atuais = vinculosAtivos(
+                anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncio.getId()));
         List<UUID> ids = request == null || request.midiaIds() == null ? List.of() : request.midiaIds();
         if (ids.size() != atuais.size() || new HashSet<>(ids).size() != ids.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ordem deve conter todas as midias ativas sem duplicidade");
@@ -171,9 +175,11 @@ public class MinhasMidiasService {
     public MeuAnuncioMidiasResponseDto remover(
             String slug,
             UUID midiaId,
-            Authentication authentication) {
-        AnuncioEntity anuncio = anuncioMutavel(slug, authentication);
-        AnuncioMidiaEntity midia = anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncio.getId()).stream()
+            Authentication authentication,
+            String requestId) {
+        AnuncioEntity anuncio = consultaService.anuncioDoUsuarioParaRemocaoMidia(slug, authentication);
+        List<AnuncioMidiaEntity> vinculadas = anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncio.getId());
+        AnuncioMidiaEntity midia = vinculadas.stream()
                 .filter(item -> item != null && Objects.equals(item.getId(), midiaId))
                 .findFirst()
                 .orElse(null);
@@ -186,26 +192,45 @@ public class MinhasMidiasService {
         if (midia.getStatus() == StatusAnuncioMidia.REMOVIDA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "midia ja removida");
         }
-        fotoElegivelPolicy.validarRemocaoIndividual(anuncio, midiaId);
-        midia.removerLogicamente(OffsetDateTime.now(ZoneOffset.UTC));
+        if (anuncio.getRemovidoEm() != null || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
+        }
+        validarRevisaoMutavel(anuncio);
+        List<UUID> arquivoIds = vinculadas.stream().map(AnuncioMidiaEntity::getArquivoMidiaId)
+                .filter(Objects::nonNull).distinct().sorted().toList();
+        if (!arquivoIds.isEmpty()) {
+            arquivoMidiaRepository.findByIdInForUpdate(arquivoIds);
+        }
+        boolean fotoDoAnuncio = midia.getTipo() == TipoAnuncioMidia.FOTO
+                && (midia.getFinalidade() == FinalidadeAnuncioMidia.CAPA
+                    || midia.getFinalidade() == FinalidadeAnuncioMidia.GALERIA);
+        boolean encerrar = fotoDoAnuncio && anuncioMidiaRepository.findFotosValidasAtivasIds(anuncio.getId())
+                .stream().noneMatch(id -> !id.equals(midiaId));
+        if (!encerrar) {
+            // A pending replacement cannot authorize removing the last approved photo
+            // while the advertisement stays operational.
+            fotoElegivelPolicy.validarRemocaoIndividual(anuncio, midiaId);
+        }
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        midia.removerLogicamente(agora);
         anuncioMidiaRepository.flush();
+        if (encerrar) {
+            cicloVidaService.encerrarPorUltimaFoto(anuncio, midiaId, requestId, agora);
+        }
         return resposta(anuncio);
     }
 
     private AnuncioEntity anuncioMutavel(String slug, Authentication authentication) {
-        AnuncioEntity consultado = consultaService.anuncioDoUsuario(slug, authentication);
-        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(consultado.getId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "anuncio nao encontrado"));
-        if (!Objects.equals(consultado.getUsuarioId(), anuncio.getUsuarioId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "anuncio pertence a outro usuario");
-        }
+        AnuncioEntity anuncio = consultaService.anuncioDoUsuarioParaAtualizacao(slug, authentication);
+        validarRevisaoMutavel(anuncio);
+        return anuncio;
+    }
+
+    private void validarRevisaoMutavel(AnuncioEntity anuncio) {
         if (revisaoRepository.existsByAnuncioIdAndStatusIn(
                 anuncio.getId(), List.of(StatusRevisaoAnuncio.EM_ANALISE))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio possui revisao em analise");
         }
-        return anuncio;
     }
 
     private MeuAnuncioMidiasResponseDto resposta(AnuncioEntity anuncio) {
@@ -231,7 +256,11 @@ public class MinhasMidiasService {
                     vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18,
                     ocultaPorLimite));
         }
-        return new MeuAnuncioMidiasResponseDto(List.copyOf(resultado), limites);
+        return new MeuAnuncioMidiasResponseDto(List.copyOf(resultado), limites,
+                new MeuAnuncioCicloVidaDto(anuncio.getId(), anuncio.getSlug(), anuncio.getStatus().name(),
+                        anuncio.getStatusModeracao().name(), anuncio.getAtualizadoEm(),
+                        consultaService.acoesPermitidas(anuncio)),
+                anuncioMidiaRepository.findFotosValidasAtivasIds(anuncio.getId()).size());
     }
 
     private String previewUrl(ObjectStorage storage, ArquivoMidiaEntity arquivo) {
@@ -271,7 +300,11 @@ public class MinhasMidiasService {
     }
 
     private List<AnuncioMidiaEntity> vinculosAtivos(UUID anuncioId) {
-        return anuncioMidiaRepository.findByAnuncioId(anuncioId).stream()
+        return vinculosAtivos(anuncioMidiaRepository.findByAnuncioId(anuncioId));
+    }
+
+    private List<AnuncioMidiaEntity> vinculosAtivos(List<AnuncioMidiaEntity> vinculadas) {
+        return vinculadas.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> item.getStatus() != StatusAnuncioMidia.REMOVIDA)
                 .filter(item -> item.getTipo() != TipoAnuncioMidia.STORY)

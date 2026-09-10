@@ -34,13 +34,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 class ListagemPublicaUsuarioTest {
+
+  private final EntityManager entityManager = mock(EntityManager.class);
+
+  @BeforeEach
+  void fabricaDoProxyNaoExigeConexao() {
+    when(entityManager.getEntityManagerFactory()).thenReturn(mock(EntityManagerFactory.class));
+  }
+
+  @AfterEach
+  void limpaContextoDePersistenciaAntesDaLeitura() {
+    verify(entityManager).clear();
+  }
 
   @Test
   void contaSemAnuncioPublicoRetornaEstadoVazioSemRegistrarVisualizacao() {
@@ -79,7 +98,9 @@ class ListagemPublicaUsuarioTest {
         mock(PoliticaContatoPublicoService.class),
         ordemSeedService,
         visualizacaoService,
-        mock(IdadeAnunciantePublicaService.class));
+        mock(IdadeAnunciantePublicaService.class),
+        transacoesSomenteLeitura(),
+        entityManager);
 
     ListaAnunciosCategoriaPublicaDto resposta = service.listar(
         null, null, username, 0, 20, "42");
@@ -152,7 +173,7 @@ class ListagemPublicaUsuarioTest {
     when(bairroRepository.findAllById(List.of())).thenReturn(List.of());
     when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId))).thenReturn(List.of());
     when(premiumMapper.flagsPorAnuncios(List.of(anuncio))).thenReturn(Map.of(anuncioId, premium));
-    when(anuncioConsultaService.midiasPorAnuncios(List.of(anuncioId), Map.of(anuncioId, premium)))
+    when(anuncioConsultaService.midiasParaCardsPorAnuncios(List.of(anuncioId), Map.of(anuncioId, premium)))
         .thenReturn(Map.of(anuncioId, List.of()));
     when(visualizacaoService.calcularEmLote(List.of(anuncioId)))
         .thenReturn(Map.of(anuncioId, VisualizacoesCanonicasDto.total(0)));
@@ -172,7 +193,9 @@ class ListagemPublicaUsuarioTest {
         contatoService,
         ordemSeedService,
         visualizacaoService,
-        idadeService);
+        idadeService,
+        transacoesSomenteLeitura(),
+        entityManager);
 
     ListaAnunciosCategoriaPublicaDto resposta =
         service.listar(null, null, "wesley", 0, 20, "42");
@@ -182,7 +205,7 @@ class ListagemPublicaUsuarioTest {
     verify(anuncioRepository).findPublicosOrdenados(
         eq(null), eq(null), eq(usuarioId), any(), eq(seed), eq(pagina));
     verify(localizacaoRepository).findByAnuncioIdIn(List.of(anuncioId));
-    verify(anuncioConsultaService).midiasPorAnuncios(List.of(anuncioId), Map.of(anuncioId, premium));
+    verify(anuncioConsultaService).midiasParaCardsPorAnuncios(List.of(anuncioId), Map.of(anuncioId, premium));
     verify(visualizacaoService).calcularEmLote(List.of(anuncioId));
   }
 
@@ -207,10 +230,23 @@ class ListagemPublicaUsuarioTest {
         mock(PoliticaContatoPublicoService.class),
         ordemSeedService,
         mock(VisualizacaoTotalCanonicaService.class),
-        mock(IdadeAnunciantePublicaService.class));
+        mock(IdadeAnunciantePublicaService.class),
+        transacoesSomenteLeitura(),
+        entityManager);
 
     assertThatThrownBy(() -> service.listar(null, null, "Wesley", 0, 20, null))
         .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
             assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+  }
+
+  /** Unit-test transaction collaborator; real JDBC boundaries are covered by the HTTP/PG17 suite. */
+  private static PlatformTransactionManager transacoesSomenteLeitura() {
+    PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
+    when(manager.getTransaction(any())).thenAnswer(call -> {
+      TransactionDefinition definition = call.getArgument(0);
+      assertThat(definition.isReadOnly()).isTrue();
+      return new SimpleTransactionStatus();
+    });
+    return manager;
   }
 }

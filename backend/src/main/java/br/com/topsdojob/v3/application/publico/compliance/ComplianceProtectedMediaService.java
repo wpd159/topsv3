@@ -18,6 +18,7 @@ import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
@@ -137,6 +138,7 @@ public class ComplianceProtectedMediaService {
           .filter(this::vinculoStoryProtegido)
           .orElseThrow(this::storyNaoEncontrado);
       AnuncioEntity anuncio = anuncioRepository.findById(vinculo.getAnuncioId())
+          .filter(item -> item.getRemovidoEm() == null && item.getStatus() != StatusAnuncio.REMOVIDO)
           .orElseThrow(this::storyNaoEncontrado);
       proprietarioId = story.getCriadoPor() == null
           ? anuncio.getUsuarioId()

@@ -22,6 +22,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
+import jakarta.persistence.EntityManager;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -34,8 +35,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.jpa.EntityManagerHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -54,6 +58,8 @@ public class ListagemPublicaConsultaService {
     private final OrdemSeedPublicaService ordemSeedService;
     private final VisualizacaoTotalCanonicaService visualizacaoService;
     private final IdadeAnunciantePublicaService idadeService;
+    private final TransactionTemplate leitura;
+    private final EntityManager entityManager;
 
     public ListagemPublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -68,7 +74,9 @@ public class ListagemPublicaConsultaService {
             PoliticaContatoPublicoService contatoService,
             OrdemSeedPublicaService ordemSeedService,
             VisualizacaoTotalCanonicaService visualizacaoService,
-            IdadeAnunciantePublicaService idadeService) {
+            IdadeAnunciantePublicaService idadeService,
+            PlatformTransactionManager transactionManager,
+            EntityManager entityManager) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -82,9 +90,12 @@ public class ListagemPublicaConsultaService {
         this.ordemSeedService = ordemSeedService;
         this.visualizacaoService = visualizacaoService;
         this.idadeService = idadeService;
+        this.leitura = new TransactionTemplate(transactionManager);
+        this.leitura.setReadOnly(true);
+        this.leitura.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        this.entityManager = entityManager;
     }
 
-    @Transactional(readOnly = true)
     public ListaAnunciosCategoriaPublicaDto listar(
             String categoriaCodigo,
             String busca,
@@ -92,11 +103,17 @@ public class ListagemPublicaConsultaService {
             int pagina,
             int tamanho,
             String ordemSeed) {
+        long seed = ordemSeedService.resolver(ordemSeed);
+        return consultarCards(() -> listar(categoriaCodigo, busca, anunciante, pagina, tamanho, seed));
+    }
+
+    private ListaAnunciosCategoriaPublicaDto listar(
+            String categoriaCodigo, String busca, String anunciante,
+            int pagina, int tamanho, long seed) {
         Pageable pageable = pageable(pagina, tamanho);
         CategoriaAnuncio categoria = categoria(categoriaCodigo);
         String termoBusca = termoBusca(busca);
         UUID usuarioId = usuarioId(anunciante);
-        long seed = ordemSeedService.resolver(ordemSeed);
 
         Page<AnuncioEntity> paginaAnuncios = anuncioRepository.findPublicosOrdenados(
                 categoria == null ? null : categoria.name(),
@@ -121,11 +138,14 @@ public class ListagemPublicaConsultaService {
                 categoria == null ? null : categoria.name());
     }
 
-    @Transactional(readOnly = true)
     public ListaAnunciosPublicaDto porEstado(String uf, int pagina, int tamanho, String ordemSeed) {
+        long seed = ordemSeedService.resolver(ordemSeed);
+        return consultarCards(() -> porEstado(uf, pagina, tamanho, seed));
+    }
+
+    private ListaAnunciosPublicaDto porEstado(String uf, int pagina, int tamanho, long seed) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         Pageable pageable = pageable(pagina, tamanho);
-        long seed = ordemSeedService.resolver(ordemSeed);
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
                 .orElseThrow(() -> notFound("estado nao encontrado"));
         return listarLocalizacoes(
@@ -136,13 +156,17 @@ public class ListagemPublicaConsultaService {
                 seed);
     }
 
-    @Transactional(readOnly = true)
     public ListaAnunciosPublicaDto porCidade(
             String uf, String cidadeSlug, int pagina, int tamanho, String ordemSeed) {
+        long seed = ordemSeedService.resolver(ordemSeed);
+        return consultarCards(() -> porCidade(uf, cidadeSlug, pagina, tamanho, seed));
+    }
+
+    private ListaAnunciosPublicaDto porCidade(
+            String uf, String cidadeSlug, int pagina, int tamanho, long seed) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
         Pageable pageable = pageable(pagina, tamanho);
-        long seed = ordemSeedService.resolver(ordemSeed);
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
                 .orElseThrow(() -> notFound("estado nao encontrado"));
         CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
@@ -155,7 +179,6 @@ public class ListagemPublicaConsultaService {
                 seed);
     }
 
-    @Transactional(readOnly = true)
     public ListaAnunciosPublicaDto porBairro(
             String uf,
             String cidadeSlug,
@@ -163,11 +186,16 @@ public class ListagemPublicaConsultaService {
             int pagina,
             int tamanho,
             String ordemSeed) {
+        long seed = ordemSeedService.resolver(ordemSeed);
+        return consultarCards(() -> porBairro(uf, cidadeSlug, bairroSlug, pagina, tamanho, seed));
+    }
+
+    private ListaAnunciosPublicaDto porBairro(
+            String uf, String cidadeSlug, String bairroSlug, int pagina, int tamanho, long seed) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
         String bairroSeguro = RotaPublicaGuard.slug(bairroSlug, "bairro");
         Pageable pageable = pageable(pagina, tamanho);
-        long seed = ordemSeedService.resolver(ordemSeed);
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
                 .orElseThrow(() -> notFound("estado nao encontrado"));
         CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
@@ -180,6 +208,51 @@ public class ListagemPublicaConsultaService {
                 bairro,
                 pageable,
                 seed);
+    }
+
+    private <T> T consultarCards(java.util.function.Supplier<T> consulta) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "consulta de cards nao pode herdar transacao");
+        }
+        return leituraPrivadaDeCards(consulta);
+    }
+
+    private <T> T leituraPrivadaDeCards(java.util.function.Supplier<T> consulta) {
+        var fabrica = entityManager.getEntityManagerFactory();
+        Object externo = TransactionSynchronizationManager.getResource(fabrica);
+        if (externo != null && (!(externo instanceof EntityManagerHolder holder)
+                || holder.isSynchronizedWithTransaction())) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "contexto de persistencia externo invalido para cards");
+        }
+        // Spring leaves a pre-bound OSIV EntityManager open after commit. With
+        // Hibernate ON_CLOSE that also retains JDBC. Let the transaction manager
+        // create and close a private EntityManager for each complete DTO read.
+        if (externo != null) TransactionSynchronizationManager.unbindResource(fabrica);
+        Throwable falha = null;
+        try {
+            return leitura.execute(status -> {
+                entityManager.clear();
+                return consulta.get();
+            });
+        } catch (RuntimeException | Error exception) {
+            falha = exception;
+            throw exception;
+        } finally {
+            if (externo != null) {
+                try {
+                    if (TransactionSynchronizationManager.hasResource(fabrica)) {
+                        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                                "contexto de persistencia de cards permaneceu vinculado");
+                    }
+                    TransactionSynchronizationManager.bindResource(fabrica, externo);
+                } catch (RuntimeException | Error restauracao) {
+                    if (falha != null) falha.addSuppressed(restauracao);
+                    else throw restauracao;
+                }
+            }
+        }
     }
 
     private ListaAnunciosPublicaDto listarLocalizacoes(
@@ -232,7 +305,7 @@ public class ListagemPublicaConsultaService {
                         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getUsuarioId,
                         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getPrimeiraPublicacaoEm));
         Map<UUID, List<MidiaPublicaDto>> midiasPorAnuncio =
-                anuncioConsultaService.midiasPorAnuncios(anuncioIds, premiumPorAnuncio);
+                anuncioConsultaService.midiasParaCardsPorAnuncios(anuncioIds, premiumPorAnuncio);
 
         List<AnuncioCardPublicoDto> itens = anuncios.stream()
                 .map(anuncio -> {
@@ -304,7 +377,7 @@ public class ListagemPublicaConsultaService {
                         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getUsuarioId,
                         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getPrimeiraPublicacaoEm));
         Map<UUID, List<MidiaPublicaDto>> midiasPorAnuncio =
-                anuncioConsultaService.midiasPorAnuncios(
+                anuncioConsultaService.midiasParaCardsPorAnuncios(
                         anuncios.stream().map(AnuncioEntity::getId).toList(),
                         premiumPorAnuncio);
         Map<UUID, VisualizacoesCanonicasDto> visualizacoesPorAnuncio = visualizacaoService.calcularEmLote(

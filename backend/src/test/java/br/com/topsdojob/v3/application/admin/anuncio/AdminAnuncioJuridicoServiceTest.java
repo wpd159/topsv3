@@ -7,12 +7,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminBloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminDesbloqueioJuridicoRequest;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -63,6 +66,7 @@ class AdminAnuncioJuridicoServiceTest {
       mock(StorySelecaoAdministrativaRepository.class);
   private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
   private final PublicSessionRegistry sessionRegistry = mock(PublicSessionRegistry.class);
+  private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy = mock(FotoElegivelAnuncioPolicy.class);
   private AdminAnuncioJuridicoService service;
 
   @BeforeEach
@@ -76,6 +80,7 @@ class AdminAnuncioJuridicoServiceTest {
         storyAdminRepository,
         auditoriaRepository,
         sessionRegistry,
+        fotoElegivelAnuncioPolicy,
         new ObjectMapper());
     when(bloqueioRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(statusHistoricoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -97,6 +102,56 @@ class AdminAnuncioJuridicoServiceTest {
     assertThat(auditoria.getValue().getAcao()).isEqualTo("ANUNCIO_REATIVADO_ADMINISTRATIVAMENTE");
     assertThat(auditoria.getValue().getRequestId()).isEqualTo("req-reativar");
     verify(sessionRegistry, never()).invalidateAll(any());
+    var ordem = inOrder(anuncioRepository, usuarioRepository, fotoElegivelAnuncioPolicy);
+    ordem.verify(anuncioRepository).findUsuarioIdById(fixture.anuncio().getId());
+    ordem.verify(usuarioRepository).findByIdForUpdate(fixture.usuario().getId());
+    ordem.verify(anuncioRepository).findByUsuarioIdForLegalBlock(fixture.usuario().getId());
+    ordem.verify(fotoElegivelAnuncioPolicy).validarParaReativacao(fixture.anuncio().getId());
+    ordem.verify(anuncioRepository).save(fixture.anuncio());
+    verify(anuncioRepository, never()).findById(any());
+    verify(fotoElegivelAnuncioPolicy, never()).validarParaAprovacao(any());
+  }
+
+  @Test
+  void reativacaoSemFotoAprovadaElegivelNaoProduzEfeitos() {
+    Fixture fixture = fixture(StatusAnuncio.PAUSADO, StatusModeracaoAnuncio.APROVADO, StatusUsuario.ATIVO);
+    String mensagem = FotoElegivelAnuncioPolicy.MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO;
+    doThrow(new ResponseStatusException(HttpStatus.CONFLICT, mensagem))
+        .when(fotoElegivelAnuncioPolicy).validarParaReativacao(fixture.anuncio().getId());
+
+    assertThatThrownBy(() -> service.reativar(fixture.anuncio().getId(), admin(), "req-foto-invalida"))
+        .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+          assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+          assertThat(error.getReason()).isEqualTo(mensagem);
+        });
+    assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PAUSADO);
+
+    verify(anuncioRepository, never()).save(any());
+    verify(statusHistoricoRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    verify(sessionRegistry, never()).invalidateAll(any());
+  }
+
+  @Test
+  void reativacaoReconfereAnuncioEncerradoAoAdquirirLockSemConsultarFoto() {
+    Fixture fixture = fixture(StatusAnuncio.PAUSADO, StatusModeracaoAnuncio.APROVADO, StatusUsuario.ATIVO);
+    when(anuncioRepository.findByUsuarioIdForLegalBlock(fixture.usuario().getId())).thenAnswer(invocation -> {
+      fixture.anuncio().removerPeloProprietario(OffsetDateTime.now());
+      return List.of(fixture.anuncio());
+    });
+
+    assertThatThrownBy(() -> service.reativar(fixture.anuncio().getId(), admin(), "req-encerrado"))
+        .isInstanceOfSatisfying(ResponseStatusException.class, error ->
+            assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+    assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.REMOVIDO);
+    assertThat(fixture.anuncio().getRemovidoEm()).isNotNull();
+    verify(anuncioRepository, never()).findById(any());
+    verify(fotoElegivelAnuncioPolicy, never()).validarParaReativacao(any());
+    verify(fotoElegivelAnuncioPolicy, never()).validarParaAprovacao(any());
+    verify(anuncioRepository, never()).save(any());
+    verify(statusHistoricoRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
   }
 
   @Test
@@ -255,7 +310,7 @@ class AdminAnuncioJuridicoServiceTest {
             assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
 
     UUID inexistente = UUID.randomUUID();
-    when(anuncioRepository.findById(inexistente)).thenReturn(Optional.empty());
+    when(anuncioRepository.findUsuarioIdById(inexistente)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.reativar(inexistente, admin(), "req-404"))
         .isInstanceOfSatisfying(ResponseStatusException.class, error ->
             assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
@@ -296,7 +351,7 @@ class AdminAnuncioJuridicoServiceTest {
         OffsetDateTime.now().minusYears(1));
     set(usuario, "status", statusUsuario);
     AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, status, moderacao);
-    when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+    when(anuncioRepository.findUsuarioIdById(anuncioId)).thenReturn(Optional.of(usuarioId));
     when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
     when(anuncioRepository.findByUsuarioIdForLegalBlock(usuarioId)).thenReturn(List.of(anuncio));
     when(bloqueioRepository.findAtivoPorAnuncioForUpdate(anuncioId)).thenReturn(Optional.empty());

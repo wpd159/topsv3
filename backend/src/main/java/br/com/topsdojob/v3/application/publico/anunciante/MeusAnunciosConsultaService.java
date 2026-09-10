@@ -21,6 +21,7 @@ import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
@@ -30,6 +31,7 @@ import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
@@ -68,6 +70,7 @@ public class MeusAnunciosConsultaService {
     private final VisualizacaoTotalCanonicaService visualizacaoService;
     private final MeuAnuncioBeneficioConsultaService beneficioConsultaService;
     private final MeuAnuncioStoryConsultaService storyConsultaService;
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository;
 
     public MeusAnunciosConsultaService(
             UsuarioRepository usuarioRepository,
@@ -83,7 +86,8 @@ public class MeusAnunciosConsultaService {
             MidiaPublicaSeguraPolicy midiaSeguraPolicy,
             VisualizacaoTotalCanonicaService visualizacaoService,
             MeuAnuncioBeneficioConsultaService beneficioConsultaService,
-            MeuAnuncioStoryConsultaService storyConsultaService) {
+            MeuAnuncioStoryConsultaService storyConsultaService,
+            AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository) {
         this.usuarioRepository = usuarioRepository;
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
@@ -98,6 +102,7 @@ public class MeusAnunciosConsultaService {
         this.visualizacaoService = visualizacaoService;
         this.beneficioConsultaService = beneficioConsultaService;
         this.storyConsultaService = storyConsultaService;
+        this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
     }
 
     @Transactional(readOnly = true)
@@ -129,16 +134,62 @@ public class MeusAnunciosConsultaService {
     }
 
     public UsuarioEntity usuarioAutenticado(Authentication authentication) {
+        UUID usuarioId = principalId(authentication);
+        return validarUsuario(usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida")));
+    }
+
+    // Mutation callers enter here before loading an advertisement entity. Matching the
+    // moderation/legal order (owner -> advertisement) also serializes account suspension.
+    public UsuarioEntity usuarioAutenticadoParaAtualizacao(Authentication authentication) {
+        UUID usuarioId = principalId(authentication);
+        return validarUsuario(usuarioRepository.findByIdForUpdate(usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida")));
+    }
+
+    public AnuncioEntity anuncioDoUsuarioParaAtualizacao(String slug, Authentication authentication) {
+        return anuncioDoUsuarioParaAtualizacao(slug, authentication, false);
+    }
+
+    public AnuncioEntity anuncioDoUsuarioParaRemocaoMidia(String slug, Authentication authentication) {
+        return anuncioDoUsuarioParaAtualizacao(slug, authentication, true);
+    }
+
+    private AnuncioEntity anuncioDoUsuarioParaAtualizacao(
+            String slug, Authentication authentication, boolean incluirRemovido) {
+        UUID usuarioId = usuarioAutenticadoParaAtualizacao(authentication).getId();
+        AnuncioEntity anuncio = anuncioRepository.findBySlugForLifecycle(slugSeguro(slug))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        if (!usuarioId.equals(anuncio.getUsuarioId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "anuncio pertence a outro usuario");
+        }
+        if (!incluirRemovido
+                && (anuncio.getRemovidoEm() != null || anuncio.getStatus() == StatusAnuncio.REMOVIDO)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
+        }
+        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO
+                || bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(anuncio.getId()).isPresent()
+                || bloqueioJuridicoRepository.findAtivoPorUsuarioForUpdate(
+                        usuarioId, EscopoBloqueioJuridico.ANUNCIO_E_USUARIO).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "bloqueio juridico impede alteracao do anuncio");
+        }
+        return anuncio;
+    }
+
+    private UUID principalId(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof PublicUserPrincipal principal)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica obrigatoria");
         }
-        UsuarioEntity usuario = usuarioRepository.findById(principal.usuarioId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida"));
+        return principal.usuarioId();
+    }
+
+    private UsuarioEntity validarUsuario(UsuarioEntity usuario) {
         if (usuario.getStatus() != StatusUsuario.ATIVO
                 || usuario.getTipoConta() != TipoContaUsuario.ANUNCIANTE
-                || usuario.getDesativadoEm() != null) {
+                || usuario.getDesativadoEm() != null
+                || usuario.getExcluidoEm() != null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida");
         }
         return usuario;

@@ -94,15 +94,23 @@ public class MidiaRestritaDerivacaoService {
   }
 
   public ResultadoPreview resolverPreviewPublica(ArquivoMidiaEntity arquivo) {
-    String key = chavePublicaOuNula(arquivo);
-    if (key == null || arquivo == null || !arquivo.previewRestritoDisponivel()
-        || !previewIdentity.versaoPipeline().equals(arquivo.getPreviewRestritoPipelineVersao())
-        || !key.equals(arquivo.getPreviewRestritoChave())) {
-      return pendente(arquivo, "estado_persistido");
+    return resolverPreviewPublicaLeitura(
+        br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura.de(arquivo));
+  }
+
+  /** Persisted authority only: never repairs state or probes storage on a public GET. */
+  public ResultadoPreview resolverPreviewPublicaLeitura(
+      br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura arquivo) {
+    String key = arquivo == null ? null
+        : previewIdentity.chavePublicaOuNula(arquivo.id(), arquivo.sha256());
+    if (key == null || !arquivo.previewRestritoDisponivel()
+        || !previewIdentity.versaoPipeline().equals(arquivo.previewRestritoPipelineVersao())
+        || !key.equals(arquivo.previewRestritoChave())) {
+      return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
     }
     String base = properties == null ? null : properties.getPublicBaseUrl();
     if (base == null || base.isBlank()) {
-      return pendente(arquivo, "url_publica");
+      return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
     }
     String normalizedBase = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
     return new ResultadoPreview(normalizedBase + "/" + key, null);
@@ -184,10 +192,6 @@ public class MidiaRestritaDerivacaoService {
     return previewIdentity.chavePublica(arquivo);
   }
 
-  private String chavePublicaOuNula(ArquivoMidiaEntity arquivo) {
-    return previewIdentity.chavePublicaOuNula(arquivo);
-  }
-
   private boolean fotoR2Elegivel(ArquivoMidiaEntity arquivo) {
     return arquivo != null
         && "R2".equals(arquivo.getStorageProvider())
@@ -246,14 +250,6 @@ public class MidiaRestritaDerivacaoService {
     return properties != null && properties.isEnabled() && storageProvider != null
         ? storageProvider.getIfAvailable()
         : null;
-  }
-
-  private ResultadoPreview pendente(ArquivoMidiaEntity arquivo, String motivo) {
-    LOGGER.warn(
-        "Derivacao restrita indisponivel para arquivo {} ({})",
-        arquivo == null || arquivo.getId() == null ? "desconhecido" : arquivo.getId(),
-        motivo);
-    return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
   }
 
   private String mime(String cadastrado, String armazenado) {

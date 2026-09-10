@@ -31,6 +31,7 @@ $databaseGateSnapshot = Read-RepoFile "scripts/deploy/capturar-snapshot-gate-ban
 $databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.sh"
 $flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
 $flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
+$operationHelper = Read-RepoFile "scripts/deploy/proteger-operacao-production.sh"
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
 $ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
 $previewBackfill = Read-RepoFile "scripts/deploy/executar-backfill-previews-production.sh"
@@ -69,7 +70,7 @@ foreach ($required in @(
     "HostKeyAlias=",
     "flyway migrate </dev/null",
     "flyway validate </dev/null",
-    "rollback_application",
+    "proteger-operacao-production.sh",
     "snapshot_after",
     "snapshot_before",
     "validar-gate-banco-production.sh",
@@ -167,10 +168,10 @@ Add-Check "workflow preserva health e rollback no novo gate" (
   ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
   ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
   ($workflow -match 'bash\s+"\$\{database_gate\}"') -and
-  ($workflow -match 'test\s+"\$\{healthy\}"\s+-eq\s+1')
+  ($workflow.Contains('op_smoke "${release_sha}"'))
 )
 Add-Check "workflow deriva versao Flyway sem hardcode" (
-  ($workflow.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}" </dev/null)"')) -and
+  ($workflow.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"')) -and
   (-not ($workflow -match 'database_gate[^\r\n]*(051|052)')) -and
   (-not ($workflow -match 'flyway_gate[^\r\n]*(before|after)[^\r\n]*(051|052)'))
 )
@@ -184,7 +185,7 @@ Add-Check "workflow valida Flyway antes do startup" (
   ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.LastIndexOf('up -d --no-deps --force-recreate backend frontend gateway'))
 )
 Add-Check "workflow troca release somente depois de health e readiness" (
-  ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('test "${healthy}" -eq 1')) -and
+  ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('op_smoke "${release_sha}"')) -and
   ($workflow.Contains('curl -fsS http://127.0.0.1:28080/api/health/readiness'))
 )
 function Convert-ToLogicalShellLines {
@@ -214,11 +215,63 @@ Add-Check "leitura Flyway isola stdin e falha no primeiro erro SQL" (
   ($flywayReader.Contains('--command')) -and
   ($flywayReader.Contains('</dev/null'))
 )
-Add-Check "workflow restaura aplicacao anterior se startup falhar" (
-  ($workflow.Contains('application_started=0')) -and
-  ($workflow.Contains('application_started=1')) -and
-  ($workflow.Contains('if [ "${application_started}" -eq 1 ]; then'))
+function Read-ShellFunction {
+  param([string]$Content, [string]$Name)
+  $pattern = '(?ms)^(?<indent>[ \t]*)' + [regex]::Escape($Name) + '\(\) \{\r?\n.*?^\k<indent>\}[ \t]*\r?$'
+  return [regex]::Match($Content, $pattern).Value
+}
+$operationBegin = Read-ShellFunction $operationHelper 'op_begin'
+$operationManual = Read-ShellFunction $operationHelper '_op_manual'
+$operationRestore = Read-ShellFunction $operationHelper '_op_restore'
+$operationExit = Read-ShellFunction $operationHelper '_op_exit'
+$operationState = Read-ShellFunction $operationHelper '_op_state'
+$operationWatcher = Read-ShellFunction $operationHelper '_op_watch_parent'
+foreach ($name in @('op_begin', 'op_run', 'op_phase', 'op_expect_indexnow', 'op_expect_candidate', 'op_smoke', 'op_finish', '_op_manual', '_op_restore', '_op_exit')) {
+  Add-Check "helper define contrato $name" (-not [string]::IsNullOrWhiteSpace((Read-ShellFunction $operationHelper $name)))
+}
+Add-Check "helper compartilha lock entre ativacao e rollback manual sem readquirir na restauracao" (
+  ($operationBegin.Contains('_op_lock "$1"')) -and
+  ($operationManual.Contains('_op_lock "${root}"')) -and
+  ($operationHelper.Contains('flock -n "${OP_LOCK_FD}"')) -and
+  (-not $operationRestore.Contains('_op_lock')) -and
+  (-not ($operationHelper -match '(?m)^\s*flock\s+-u\b'))
 )
+Add-Check "helper persiste identidade e fase atomicamente" (
+  ($operationState.Contains('operations/active.state')) -and
+  ($operationState.Contains('mv -f -- "${temporary}"')) -and
+  ($operationState.Contains('"candidate=${OP_CANDIDATE}"')) -and
+  ($operationState.Contains('"previous=${OP_PREVIOUS_SHA:-}"')) -and
+  ($operationState.Contains('"phase=${OP_PHASE}"')) -and
+  ($operationState.Contains('"pid=${OP_PID}"')) -and
+  ($operationState.Contains('"start=${OP_START}"')) -and
+  ($operationState.Contains('"boot=${OP_BOOT}"')) -and
+  ($operationHelper.Contains('/proc/sys/kernel/random/boot_id')) -and
+  ($operationHelper.Contains('images.tsv')) -and
+  ($operationHelper.Contains('config.sha256'))
+)
+Add-Check "helper trata EXIT e sinais preservando erro e estado incompleto" (
+  ($operationHelper.Contains("trap '_op_signal 130' INT")) -and
+  ($operationHelper.Contains("trap '_op_signal 143' TERM")) -and
+  ($operationHelper.Contains("trap '_op_signal 129' HUP")) -and
+  ($operationHelper.Contains("trap '_op_signal 141' PIPE")) -and
+  ($operationHelper.Contains('trap ''_op_exit "$?"'' EXIT')) -and
+  ($operationExit.Contains('[ "${BASHPID}" = "${OP_PID:-}" ]')) -and
+  ($operationExit.Contains('OP_ORIGINAL_RC="${rc}"')) -and
+  ($operationExit.Contains('OP_RESULT=INCOMPLETE')) -and
+  ($operationExit.Contains('exit "${rc}"')) -and
+  ($operationWatcher.Contains('exec {OP_LOCK_FD}>&-'))
+)
+Add-Check "helper exige reconciliacao explicita e recupera sem reconstruir imagens" (
+  ($operationBegin.Contains('COMPLETED|ROLLED_BACK|ABORTED|RECONCILED')) -and
+  ($operationManual.Contains('--confirm-daemon-quiescent')) -and
+  ($operationManual.Contains('_op_alive')) -and
+  ($operationRestore.Contains('--no-build --pull never backend frontend gateway')) -and
+  ($operationRestore.Contains('sha256sum -c --status')) -and
+  ($operationRestore.Contains('_op_verify_runtime')) -and
+  ($operationRestore.Contains('op_smoke "${OP_PREVIOUS_SHA}"')) -and
+  ($operationRestore.Contains('"${OP_ROOT}/current"'))
+)
+
 Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
   $workflow.IndexOf('name: Upload immutable release')
@@ -227,7 +280,7 @@ Add-Check "workflow valida identidade canonica antes de qualquer mutacao remota"
   ($workflow.IndexOf('name: Validate canonical production target') -gt
     $workflow.IndexOf('name: Validate pinned SSH host key')) -and
   ($workflow.IndexOf('name: Validate canonical production target') -lt
-    $workflow.IndexOf('name: Synchronize IndexNow key in production runtime')) -and
+    $workflow.IndexOf('op_phase CONFIGURING')) -and
   ($workflow.IndexOf('name: Validate canonical production target') -lt
     $workflow.IndexOf('name: Upload immutable release'))
 )
@@ -258,7 +311,7 @@ Add-Check "workflow valida GA4 habilitado no runtime" (
   $workflow.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
 )
 Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
-  ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
+  ($workflow.Contains('op_expect_indexnow "${indexnow_key}"')) -and
   ($workflow.Contains("cat <<'REMOTE_HEAD'")) -and
   ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}"')) -and
   ($workflow.Contains("} | ssh")) -and
@@ -365,7 +418,7 @@ foreach ($required in @(
     "PostgreSQL init process complete; ready for start up.",
     "POSTGRES_EFEMERO_STABLE_PROBES",
     "--set=ON_ERROR_STOP=1",
-    "--command 'SELECT 1;' </dev/null",
+    "--command 'SELECT 1' </dev/null",
     "POSTGRES_EFEMERO_DIAGNOSTICO"
   )) {
   Add-Check "espera PostgreSQL efemero contem $required" ($ephemeralPostgresWaiter.Contains($required))
@@ -396,8 +449,8 @@ foreach ($required in @(
     "postgres:17.10-alpine",
     "BACKUP_STATUS=VALIDATED",
     "backup_restaurado_flyway_051",
-    "marcador_posterior_gate_backup",
-    "falha_real_postgres_bloqueia",
+    "POSTGRES_EFEMERO_READY=PASS probes=3",
+    "autenticacao_real_recusada",
     "pg_restore --list",
     "BACKUP_RESTORE_INTEGRATION_TEST=PASS"
   )) {

@@ -62,7 +62,7 @@ public class WizardProgressSyncService {
     if (request == null) {
       throw invalido("progresso do wizard obrigatorio");
     }
-    UsuarioEntity usuario = meusAnunciosService.usuarioAutenticado(authentication);
+    UsuarioEntity usuario = meusAnunciosService.usuarioAutenticadoParaAtualizacao(authentication);
     String sessaoId = texto(request.sessionId());
     if (!SESSION_ID.matcher(sessaoId).matches()) {
       throw invalido("identificador de sessao invalido");
@@ -74,7 +74,12 @@ public class WizardProgressSyncService {
     if (!STEPS.contains(step)) throw invalido("etapa do wizard invalida");
     if (!STATUS_PERMITIDOS.contains(status)) throw invalido("status do wizard invalido");
 
-    UUID anuncioId = anuncioDoUsuario(request.anuncioId(), usuario.getId());
+    UUID solicitadoId = parseAnuncioId(request.anuncioId());
+    UUID persistidoId = repository.findAnuncioIdPorSessao(usuario.getId(), sessaoId).orElse(null);
+    if (persistidoId != null && solicitadoId != null && !persistidoId.equals(solicitadoId)) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "sessao do wizard pertence a outro anuncio");
+    }
+    UUID anuncioId = anuncioDoUsuario(persistidoId != null ? persistidoId : solicitadoId, usuario.getId());
     if ("AGUARDANDO_MODERACAO".equals(status)
         && (!"CONCLUIDO".equals(step) || anuncioId == null)) {
       throw invalido("conclusao do wizard exige anuncio vinculado");
@@ -99,15 +104,18 @@ public class WizardProgressSyncService {
     return new SyncResponse(row.id(), row.status(), row.ultimoStep(), row.atualizadoEm());
   }
 
-  private UUID anuncioDoUsuario(String raw, UUID usuarioId) {
+  private UUID parseAnuncioId(String raw) {
     if (raw == null || raw.isBlank()) return null;
-    UUID id;
     try {
-      id = UUID.fromString(raw.trim());
+      return UUID.fromString(raw.trim());
     } catch (IllegalArgumentException exception) {
       throw invalido("anuncio do wizard invalido");
     }
-    AnuncioEntity anuncio = anuncioRepository.findById(id)
+  }
+
+  private UUID anuncioDoUsuario(UUID id, UUID usuarioId) {
+    if (id == null) return null;
+    AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(id)
         .orElseThrow(() -> new ResponseStatusException(
             HttpStatus.NOT_FOUND,
             "anuncio do wizard nao encontrado"));
@@ -115,6 +123,10 @@ public class WizardProgressSyncService {
       throw new ResponseStatusException(
           HttpStatus.FORBIDDEN,
           "anuncio do wizard pertence a outro usuario");
+    }
+    if (anuncio.getRemovidoEm() != null
+        || anuncio.getStatus() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio.REMOVIDO) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio encerrado nao pode concluir o wizard");
     }
     return id;
   }

@@ -85,6 +85,7 @@ class R2ObjectStorageTest {
         StorageArea.PRIVATE_DOCUMENT,
         "hml/documentos/doc.pdf"))
         .isEmpty();
+    assertThat(operations.calls).isEmpty();
   }
 
   @Test
@@ -97,6 +98,17 @@ class R2ObjectStorageTest {
         StorageArea.PUBLIC_MEDIA,
         "hml/midias-aprovadas/foto.jpg"))
         .isEmpty();
+    assertThat(operations.calls).isEmpty();
+  }
+
+  @Test
+  void urlPublicaRecusaChavesInvalidasSemHeadOuOutroAcessoRemoto() {
+    for (String key : List.of("outro/foto.jpg", "hml/midias-aprovadas/../foto.jpg",
+        "hml/midias-aprovadas/foto.jpg?privado=1", "hml/midias-aprovadas/")) {
+      assertThatThrownBy(() -> storage.publicUrl(StorageArea.PUBLIC_MEDIA, key))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+    assertThat(operations.calls).isEmpty();
   }
 
   @Test
