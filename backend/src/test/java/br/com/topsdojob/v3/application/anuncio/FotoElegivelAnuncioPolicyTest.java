@@ -78,6 +78,52 @@ class FotoElegivelAnuncioPolicyTest {
                 });
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("matrizAprovacao")
+    void matrizDeReativacaoExigeAprovadaSemExigirAusenciaDePendencias(
+            String cenario, int aprovadas, int aguardando, String mensagemAprovacao) {
+        when(anuncioMidiaRepository.findFotosAprovadasElegiveisIds(anuncioId))
+                .thenReturn(ids(aprovadas));
+        when(anuncioMidiaRepository.findFotosAguardandoDecisaoIds(anuncioId))
+                .thenReturn(ids(aguardando));
+
+        if (aprovadas > 0) {
+            assertThatCode(() -> policy.validarParaReativacao(anuncioId))
+                    .as(cenario).doesNotThrowAnyException();
+        } else {
+            assertThatThrownBy(() -> policy.validarParaReativacao(anuncioId))
+                    .as(cenario)
+                    .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                        assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                        assertThat(error.getReason()).isEqualTo(
+                                FotoElegivelAnuncioPolicy.MENSAGEM_SEM_FOTO_APROVADA_REATIVACAO);
+                    });
+        }
+        verify(anuncioMidiaRepository).findByAnuncioIdForUpdate(anuncioId);
+        verify(anuncioMidiaRepository).findFotosAprovadasElegiveisIds(anuncioId);
+        verify(anuncioMidiaRepository, never()).findFotosAguardandoDecisaoIds(anuncioId);
+    }
+
+    @Test
+    void reativacaoTravaVinculosEArquivosOrdenadosAntesDaConsultaCanonica() {
+        UUID arquivoMaior = UUID.fromString("00000000-0000-0000-0000-000000000022");
+        UUID arquivoMenor = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId)).thenReturn(List.of(
+                vinculo(UUID.randomUUID(), arquivoMaior),
+                vinculo(UUID.randomUUID(), arquivoMenor),
+                vinculo(UUID.randomUUID(), arquivoMaior)));
+        when(anuncioMidiaRepository.findFotosAprovadasElegiveisIds(anuncioId))
+                .thenReturn(List.of(UUID.randomUUID()));
+
+        assertThatCode(() -> policy.validarParaReativacao(anuncioId)).doesNotThrowAnyException();
+
+        InOrder ordem = inOrder(anuncioMidiaRepository, arquivoMidiaRepository);
+        ordem.verify(anuncioMidiaRepository).findByAnuncioIdForUpdate(anuncioId);
+        ordem.verify(arquivoMidiaRepository).findByIdInForUpdate(List.of(arquivoMenor, arquivoMaior));
+        ordem.verify(anuncioMidiaRepository).findFotosAprovadasElegiveisIds(anuncioId);
+        verify(anuncioMidiaRepository, never()).findFotosAguardandoDecisaoIds(anuncioId);
+    }
+
     @Test
     void fotoAprovadaSemPendenciasPermiteAprovacaoETravaArquivosEmOrdem() {
         UUID arquivoMaior = UUID.fromString("00000000-0000-0000-0000-000000000022");

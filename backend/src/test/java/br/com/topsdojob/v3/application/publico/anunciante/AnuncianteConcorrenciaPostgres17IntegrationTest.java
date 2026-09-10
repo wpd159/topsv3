@@ -315,19 +315,20 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
     void cincoUploadsConcorrentesRespeitamLimiteOrdemEIdempotenciaSemErroInterno()
             throws Exception {
         Authentication authentication = mock(Authentication.class);
-        when(consultaService.anuncioDoUsuario(eq(SLUG), eq(authentication)))
-                .thenAnswer(ignored -> anuncioFixture("Anuncio inicial QA"));
+        CyclicBarrier chamadasConcorrentes = new CyclicBarrier(5);
+        AtomicInteger consultas = new AtomicInteger();
+        when(consultaService.anuncioDoUsuarioParaAtualizacao(eq(SLUG), eq(authentication)))
+                .thenAnswer(ignored -> {
+                    // A partida e coordenada antes de qualquer lock, nunca dentro da secao serializada.
+                    if (consultas.incrementAndGet() <= 5) chamadasConcorrentes.await(5, TimeUnit.SECONDS);
+                    usuarioRepository.findByIdForUpdate(USUARIO_ID).orElseThrow();
+                    return anuncioRepository.findByIdForModeration(ANUNCIO_ID).orElseThrow();
+                });
         when(uploadValidator.validar(any())).thenReturn(uploadValidado());
         when(fotoProcessor.processar(any())).thenReturn(fotoProcessada());
 
-        CyclicBarrier leiturasConcorrentes = new CyclicBarrier(5);
-        AtomicInteger resolucoes = new AtomicInteger();
-        when(limiteService.resolver(ANUNCIO_ID)).thenAnswer(ignored -> {
-            if (resolucoes.incrementAndGet() <= 5) {
-                aguardarBarreira(leiturasConcorrentes);
-            }
-            return new LimiteMidiasAnuncioService.Resultado(4, 0, false, false);
-        });
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
         when(objectStorage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), anyString(), any(), anyString()))
                 .thenAnswer(invocation -> {
                     String key = invocation.getArgument(1);
@@ -357,6 +358,7 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     .toList();
         } finally {
             executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
         }
 
         assertThat(resultados)
@@ -388,7 +390,9 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
         when(usuario.getId()).thenReturn(USUARIO_ID);
         when(usuario.getTelefoneNormalizado()).thenReturn(null);
         when(consultaService.usuarioAutenticado(nullable(Authentication.class))).thenReturn(usuario);
-        when(consultaService.anuncioDoUsuario(eq(SLUG), nullable(Authentication.class)))
+        // Snapshot deliberadamente antigo: este caso preserva o contrato HTTP do conflito otimista.
+        // O protocolo pessimista real e exercitado na suite MinhasMidiasEncerramento.
+        when(consultaService.anuncioDoUsuarioParaAtualizacao(eq(SLUG), nullable(Authentication.class)))
                 .thenAnswer(ignored -> anuncioFixture("Anuncio inicial QA"));
         when(consultaService.detalhar(eq(SLUG), nullable(Authentication.class))).thenReturn(null);
 
@@ -440,6 +444,7 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     .toList();
         } finally {
             executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
         }
 
         assertThat(resultados)

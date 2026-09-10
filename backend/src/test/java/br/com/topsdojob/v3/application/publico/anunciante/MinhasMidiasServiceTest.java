@@ -30,7 +30,6 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
-import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
@@ -61,7 +60,7 @@ class MinhasMidiasServiceTest {
     private static final String SLUG = "anuncio-proprio";
 
     private final MeusAnunciosConsultaService consultaService = mock(MeusAnunciosConsultaService.class);
-    private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+    private final MeuAnuncioCicloVidaService cicloVidaService = mock(MeuAnuncioCicloVidaService.class);
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
@@ -80,8 +79,8 @@ class MinhasMidiasServiceTest {
     private final AnuncioMidiaUploadCoreService uploadCoreService = new AnuncioMidiaUploadCoreService(
             midiaRepository, arquivoRepository, validator, fotoProcessor, storageProperties, storageProvider);
     private final MinhasMidiasService service = new MinhasMidiasService(
-            consultaService, anuncioRepository, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
-            new MidiaUploadProperties(), storageProperties, storageProvider, uploadCoreService, fotoElegivelPolicy);
+            consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
+            new MidiaUploadProperties(), storageProperties, storageProvider, uploadCoreService, fotoElegivelPolicy, cicloVidaService);
 
     @BeforeEach
     void setUp() {
@@ -89,7 +88,11 @@ class MinhasMidiasServiceTest {
                 ANUNCIO_ID, UUID.randomUUID(), SLUG, "Perfil de teste", "Descricao publica de teste",
                 StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, OffsetDateTime.now(ZoneOffset.UTC));
         when(consultaService.anuncioDoUsuario(SLUG, authentication)).thenReturn(anuncio);
-        when(anuncioRepository.findByIdForModeration(ANUNCIO_ID)).thenReturn(java.util.Optional.of(anuncio));
+        when(consultaService.anuncioDoUsuarioParaAtualizacao(SLUG, authentication)).thenReturn(anuncio);
+        when(consultaService.anuncioDoUsuarioParaRemocaoMidia(SLUG, authentication)).thenReturn(anuncio);
+        when(midiaRepository.findFotosValidasAtivasIds(ANUNCIO_ID)).thenAnswer(ignored -> vinculos.stream()
+                .filter(item -> item.getTipo() == TipoAnuncioMidia.FOTO && item.getStatus() != StatusAnuncioMidia.REMOVIDA)
+                .map(AnuncioMidiaEntity::getId).toList());
         when(revisaoRepository.existsByAnuncioIdAndStatusIn(eq(ANUNCIO_ID), anyList())).thenReturn(false);
         when(limiteService.resolver(ANUNCIO_ID))
                 .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
@@ -180,9 +183,9 @@ class MinhasMidiasServiceTest {
 
         service.enviar(SLUG, multipart, "foto-lock", authentication);
 
-        var ordem = inOrder(anuncioRepository, midiaRepository, storage);
-        ordem.verify(anuncioRepository).findByIdForModeration(ANUNCIO_ID);
-        ordem.verify(midiaRepository).findByAnuncioId(ANUNCIO_ID);
+        var ordem = inOrder(consultaService, midiaRepository, storage);
+        ordem.verify(consultaService).anuncioDoUsuarioParaAtualizacao(SLUG, authentication);
+        ordem.verify(midiaRepository, org.mockito.Mockito.times(2)).findByAnuncioIdForUpdate(ANUNCIO_ID);
         ordem.verify(storage).putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), any());
     }
 
@@ -368,23 +371,25 @@ class MinhasMidiasServiceTest {
         AnuncioMidiaEntity vinculo = vinculo(TipoAnuncioMidia.FOTO, 0);
         vinculos.add(vinculo);
 
-        var response = service.remover(SLUG, vinculo.getId(), authentication);
+        var response = service.remover(SLUG, vinculo.getId(), authentication, "request-remocao");
 
         assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
         assertThat(response.midias()).isEmpty();
-        verify(fotoElegivelPolicy).validarRemocaoIndividual(any(AnuncioEntity.class), eq(vinculo.getId()));
+        verify(cicloVidaService).encerrarPorUltimaFoto(any(AnuncioEntity.class), eq(vinculo.getId()), eq("request-remocao"), any());
+        verify(fotoElegivelPolicy, never()).validarRemocaoIndividual(any(), any());
         verify(storage, never()).delete(any(), any());
     }
 
     @Test
-    void remocaoConsultaGuardDaUltimaFotoAntesDeAlterarVinculo() {
+    void remocaoConsultaGuardDaUltimaAprovadaQuandoRestaOutraFotoPendente() {
         AnuncioMidiaEntity vinculo = vinculo(TipoAnuncioMidia.FOTO, 0);
         vinculos.add(vinculo);
+        vinculos.add(vinculo(TipoAnuncioMidia.FOTO, 1));
         org.mockito.Mockito.doThrow(new FotoElegivelAnuncioPolicy.UltimaFotoAprovadaException())
                 .when(fotoElegivelPolicy)
                 .validarRemocaoIndividual(any(AnuncioEntity.class), eq(vinculo.getId()));
 
-        assertThatThrownBy(() -> service.remover(SLUG, vinculo.getId(), authentication))
+        assertThatThrownBy(() -> service.remover(SLUG, vinculo.getId(), authentication, "request-remocao"))
                 .isInstanceOfSatisfying(
                         FotoElegivelAnuncioPolicy.UltimaFotoAprovadaException.class,
                         exception -> assertThat(exception.getReason())
@@ -402,7 +407,7 @@ class MinhasMidiasServiceTest {
                 OffsetDateTime.now(ZoneOffset.UTC));
         vinculos.add(alheia);
 
-        assertThatThrownBy(() -> service.remover(SLUG, alheia.getId(), authentication))
+        assertThatThrownBy(() -> service.remover(SLUG, alheia.getId(), authentication, "request-remocao"))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
 

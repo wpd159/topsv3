@@ -53,6 +53,7 @@ jobs:
           PUBLIC_SEARCH_POSTGRES17_ENABLED: "true"
           ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
           ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
+          WIZARD_PROGRESS_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Preserve backend and cold JVM evidence
@@ -72,6 +73,18 @@ jobs:
           node-version: "22.13.1"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Prepare isolated browser regression tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_tools="$RUNNER_TEMP/reconciliation-browser-tools"
+          npm install --prefix "$browser_tools" --ignore-scripts --no-fund --no-audit --save-exact playwright@1.62.1
+          npm audit --prefix "$browser_tools" --audit-level=high
+          node "$browser_tools/node_modules/playwright/cli.js" install --with-deps chromium
+          mkdir -p "$RUNNER_TEMP/reconciliation-browser-evidence"
+          printf 'TOPS_PLAYWRIGHT_MODULE=%s/node_modules/playwright\n' "$browser_tools" >> "$GITHUB_ENV"
+          printf 'TOPS_UI_EVIDENCE_ROOT=%s/reconciliation-browser-evidence\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Run frontend dependency, lint and build gates
         working-directory: frontend
@@ -136,6 +149,7 @@ jobs:
           }
 
           npm ci --no-audit
+          npm audit --omit=dev --audit-level=high
           run_npm_audit
           npm run test:json-ld-security
           npm run test:public-ordering
@@ -149,6 +163,10 @@ jobs:
           node scripts/test-restricted-media-age-seo.mjs
           node scripts/test-story-age-gate-fail-closed.mjs
           node scripts/test-story-video-audio.mjs
+          node scripts/test-age-gate-storage.mjs
+          node scripts/test-wizard-minha-conta-seguranca.mjs
+          node scripts/test-sensitive-image-authorization.mjs
+          node scripts/test-ultima-foto-encerramento.mjs
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           npm run test:search-indexing
@@ -156,8 +174,17 @@ jobs:
           npm run test:seo-ai
           npm run test:sharp-security
           npm run lint
+          npx --no-install tsc --noEmit --incremental false
           npm run build
           node scripts/test-search-indexing-artifact.mjs blocked
+
+      - name: Preserve browser regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-reconciliation-evidence
+          path: ${{ runner.temp }}/reconciliation-browser-evidence
+          if-no-files-found: warn
 
       - name: Validate isolated infrastructure contract
         shell: pwsh

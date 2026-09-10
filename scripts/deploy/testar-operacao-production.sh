@@ -705,6 +705,14 @@ echo 'PASS: probe_real_clampa_timeout_ao_saldo_e_zero_nao_chama_curl'
   printf '%s\n' "$candidate_sha" > "${OP_ROOT}/releases/${candidate_sha}/.release-sha"
   cp "$helper" "${OP_ROOT}/releases/${candidate_sha}/scripts/deploy/"
   [[ "$(_op_release_profile "$previous_sha")" == legacy-a60 ]] || fail 'SHA legado nao reconhecido'
+  for published_sha in 324b9cd4d62990e5d7e553bdfdfc8c3fe6d6a700 b8a88cd7bb469717f09b5aa05a693e33a903cd72 7c2285d21a2d05c4ad9828734c0daebf9d40dd68 451a6cb90dd1e67c5c774a0618c984d6b73735f8; do
+    mkdir -p "${OP_ROOT}/releases/${published_sha}"
+    printf '%s\n' "$published_sha" > "${OP_ROOT}/releases/${published_sha}/.release-sha"
+    [[ "$(_op_release_profile "$published_sha")" == legacy-a60 ]] || fail 'descendente publicado perdeu contrato de origem'
+    printf '%s\n' "$candidate_sha" > "${OP_ROOT}/releases/${published_sha}/.release-sha"
+    if _op_release_profile "$published_sha"; then fail 'identidade divergente aceitou perfil legado'; fi
+  done
+  if _op_legacy_source_sha "$candidate_sha"; then fail 'SHA desconhecido aceitou linhagem legada'; fi
   if _op_release_profile "$candidate_sha"; then fail 'candidata sem endpoints aceitou contrato'; fi
   for endpoint in liveness readiness; do
     mkdir -p "${OP_ROOT}/releases/${candidate_sha}/frontend/src/app/health/${endpoint}"
@@ -729,6 +737,7 @@ echo 'PASS: probe_real_clampa_timeout_ao_saldo_e_zero_nao_chama_curl'
   [[ "$(cat "$calls")" == http://127.0.0.1:28080/api/health/readiness ]] || fail 'perfil legado usa endpoint inexistente'
 )
 echo 'PASS: perfil_por_identidade_sem_fallback_e_seis_sondas_obrigatorias'
+echo 'PASS: linhagem_publicada_ate_451a6cb9_sem_ampliar_permissoes_de_candidata'
 
 sha256sum "$helper"
 echo 'PRODUCTION_OPERATION_PROCESS_TESTS=PASS'

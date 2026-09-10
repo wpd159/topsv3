@@ -31,6 +31,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
@@ -39,6 +40,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -196,6 +199,58 @@ class ComplianceProtectedMediaServiceTest {
 
     assertThat(result.bytes()).isEqualTo(bytes);
     assertThat(result.mimeType()).isEqualTo("image/jpeg");
+    verify(anuncioRepository, never()).findById(org.mockito.ArgumentMatchers.any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"NAO_REMOVIDO", "STATUS_REMOVIDO", "DATA_REMOCAO"})
+  void storyLegadoConfereEncerramentoAntesDeConsultarStorage(String estadoRemocao) {
+    UUID storyId = UUID.randomUUID();
+    UUID anuncioId = UUID.randomUUID();
+    UUID midiaId = UUID.randomUUID();
+    UUID arquivoId = UUID.randomUUID();
+    UUID proprietarioId = UUID.randomUUID();
+    StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
+    set(story, "id", storyId);
+    set(story, "anuncioMidiaId", midiaId);
+    set(story, "status", StatusStoryAnuncio.PUBLICADO);
+    set(story, "inicioEm", OffsetDateTime.now().minusMinutes(1));
+    set(story, "fimEm", OffsetDateTime.now().plusHours(1));
+    AnuncioMidiaEntity vinculo = midia(midiaId, anuncioId, arquivoId, VisibilidadeMidia.RESTRITA_18);
+    set(vinculo, "tipo", TipoAnuncioMidia.STORY);
+    AnuncioEntity anuncio = anuncio(anuncioId);
+    set(anuncio, "usuarioId", proprietarioId);
+    if ("STATUS_REMOVIDO".equals(estadoRemocao)) {
+      set(anuncio, "status", StatusAnuncio.REMOVIDO);
+    } else if ("DATA_REMOCAO".equals(estadoRemocao)) {
+      set(anuncio, "removidoEm", OffsetDateTime.now().minusSeconds(1));
+    }
+    when(accessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
+    when(storyRepository.findByIdAndStatus(storyId, StatusStoryAnuncio.PUBLICADO))
+        .thenReturn(Optional.of(story));
+    when(midiaRepository.findById(midiaId)).thenReturn(Optional.of(vinculo));
+    when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+
+    if ("NAO_REMOVIDO".equals(estadoRemocao)) {
+      String key = PRIVATE_PREFIX + anuncioId + "/story.jpg";
+      byte[] bytes = "story-legado-protegido".getBytes(StandardCharsets.UTF_8);
+      when(usuarioRepository.findById(proprietarioId)).thenReturn(Optional.of(usuarioAtivo()));
+      when(arquivoRepository.findById(arquivoId))
+          .thenReturn(Optional.of(arquivo(arquivoId, key, PRIVATE_BUCKET)));
+      when(storage.get(StorageArea.PRIVATE_MEDIA, key)).thenReturn(new StoredObject(bytes, "image/jpeg"));
+
+      assertThat(service.carregarStory(storyId, request).bytes()).isEqualTo(bytes);
+      verify(storage).get(StorageArea.PRIVATE_MEDIA, key);
+    } else {
+      assertThatThrownBy(() -> service.carregarStory(storyId, request))
+          .isInstanceOfSatisfying(ResponseStatusException.class, error ->
+              assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+      verify(arquivoRepository, never()).findById(org.mockito.ArgumentMatchers.any());
+      verify(storage, never()).get(
+          org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+    }
+    assertThat(story.getStatus()).isEqualTo(StatusStoryAnuncio.PUBLICADO);
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
   }
 
   @Test

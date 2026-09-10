@@ -14,8 +14,10 @@ import { cn } from "@/lib/utils"
 import { publicApiUrl } from "@/lib/api-contract"
 import {
   AGE_VERIFICATION_CHANGED_EVENT,
+  obterGeracaoStatusVisitante,
   obterStatusVisitante,
   statusSatisfazEscopo,
+  type StatusVisitante,
 } from "@/lib/compliance/visitor-access"
 
 type SensitiveImageProps = {
@@ -51,50 +53,82 @@ export function SensitiveImage({
   onAbrirPaginaDoAnuncio,
   onError,
 }: SensitiveImageProps) {
-  const [verificationOpen, setVerificationOpen] = useState(false)
+  const [verificationContext, setVerificationContext] = useState<string | null>(null)
   const [erro, setErro] = useState(false)
-  const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
+  // A public media DTO is not proof of a verified visitor session.
+  const [sessionStatus, setSessionStatus] = useState<{
+    status: StatusVisitante
+    generation: number
+  } | null>(null)
   const [loadedProtectedSource, setLoadedProtectedSource] = useState<string | null>(null)
   const statusCheckedAfterError = useRef(false)
+  const contextKey = JSON.stringify([anuncioId, anuncioSlug, midia.id, midia.visibilidadeMidia])
+  const verificationOpen = verificationContext === contextKey
+  const contextRef = useRef(contextKey)
+  contextRef.current = contextKey
+  const requestSequence = useRef(0)
+  const refreshAfterError = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (midia.visibilidadeMidia !== "RESTRITA_18") return
     let active = true
-    const refresh = () => {
-      void obterStatusVisitante()
+    const refresh = (force = false) => {
+      const sequence = ++requestSequence.current
+      const generation = obterGeracaoStatusVisitante()
+      const request = force ? obterStatusVisitante(true) : obterStatusVisitante()
+      void request
         .then((status) => {
-          if (!active) return
-          setSessionAuthorized(statusSatisfazEscopo(
-            status,
-            "MIDIA_RESTRITA",
-            "REINFORCED",
-          ))
-          setErro(false)
+          if (!active || contextRef.current !== contextKey
+            || sequence !== requestSequence.current
+            || generation !== obterGeracaoStatusVisitante()) return
+          setSessionStatus({ status, generation })
+          if (!force) setErro(false)
         })
         .catch(() => {
           // Falha ao consultar o status não revoga uma autorização já conhecida.
         })
     }
+    const changed = () => {
+      setSessionStatus(null)
+      refresh()
+    }
+    refreshAfterError.current = () => refresh(true)
     refresh()
-    window.addEventListener(AGE_VERIFICATION_CHANGED_EVENT, refresh)
+    window.addEventListener(AGE_VERIFICATION_CHANGED_EVENT, changed)
     return () => {
       active = false
-      window.removeEventListener(AGE_VERIFICATION_CHANGED_EVENT, refresh)
+      requestSequence.current += 1
+      refreshAfterError.current = null
+      window.removeEventListener(AGE_VERIFICATION_CHANGED_EVENT, changed)
     }
-  }, [midia.visibilidadeMidia])
+  }, [contextKey, midia.visibilidadeMidia])
+
+  useEffect(() => {
+    if (!sessionStatus || !statusSatisfazEscopo(sessionStatus.status, "MIDIA_RESTRITA", "REINFORCED")) return
+    const expiresAt = Date.parse(sessionStatus.status.expiresAt!)
+    const timer = window.setTimeout(() => setSessionStatus(null),
+      Math.min(Math.max(0, expiresAt - Date.now()), 2_147_483_647))
+    return () => window.clearTimeout(timer)
+  }, [sessionStatus])
 
   useEffect(() => {
     setErro(false)
     setLoadedProtectedSource(null)
     statusCheckedAfterError.current = false
-    if (midia.autorizada) setSessionAuthorized(true)
-  }, [midia.autorizada, midia.id, midia.urlPublica])
+    setVerificationContext(null)
+  }, [contextKey, midia.autorizada, midia.urlPublica])
 
-  const autorizada = midia.autorizada || sessionAuthorized
+  // GENERAL/REINFORCED is a session grant, not tied to a gallery click. Keep a
+  // confirmed, unexpired grant across media changes, but never a DTO boolean.
+  const autorizada = midia.visibilidadeMidia === "LIVRE"
+    ? midia.autorizada
+    : Boolean(sessionStatus
+      && sessionStatus.generation === obterGeracaoStatusVisitante()
+      && statusSatisfazEscopo(sessionStatus.status, "MIDIA_RESTRITA", "REINFORCED"))
   const protegida = midia.visibilidadeMidia === "RESTRITA_18" && !autorizada
   const fonte = midia.visibilidadeMidia === "RESTRITA_18" && autorizada
     ? publicApiUrl(`/compliance/visitor/media/${encodeURIComponent(String(midia.id))}`)
-    : fontePublicaSegura(midia)
+    : fontePublicaSegura({ ...midia, autorizada })
   const fonteEhPreviewPublica =
     protegida &&
     !autorizada &&
@@ -126,26 +160,18 @@ export function SensitiveImage({
             className={cn("object-cover object-center transition duration-300", className)}
             onClick={protegida ? undefined : onImageClick}
             onLoad={() => {
+              if (contextRef.current !== contextKey) return
               if (midia.visibilidadeMidia === "RESTRITA_18") {
                 setLoadedProtectedSource(fonte)
               }
             }}
             onError={() => {
+              if (contextRef.current !== contextKey) return
               if (midia.visibilidadeMidia === "RESTRITA_18") {
                 setLoadedProtectedSource(null)
                 if (!statusCheckedAfterError.current) {
                   statusCheckedAfterError.current = true
-                  void obterStatusVisitante(true)
-                    .then((status) => {
-                      setSessionAuthorized(statusSatisfazEscopo(
-                        status,
-                        "MIDIA_RESTRITA",
-                        "REINFORCED",
-                      ))
-                    })
-                    .catch(() => {
-                      // Rede, 404 ou 5xx da mídia não revogam o token.
-                    })
+                  refreshAfterError.current?.()
                 }
               }
               setErro(true)
@@ -193,13 +219,14 @@ export function SensitiveImage({
 
         {protegida ? (
           <RestrictedMediaOverlay
-            onConfirm={() => setVerificationOpen(true)}
+            onConfirm={() => setVerificationContext(contextKey)}
             onAbrirPaginaDoAnuncio={onAbrirPaginaDoAnuncio}
           />
         ) : null}
       </div>
 
       <VisitorVerificationModal
+        key={contextKey}
         open={verificationOpen}
         level="REINFORCED"
         scope="MIDIA_RESTRITA"
@@ -208,13 +235,17 @@ export function SensitiveImage({
           route: anuncioSlug ? `/anuncios/${anuncioSlug}` : undefined,
           midiaId: String(midia.id),
         }}
-        onOpenChange={setVerificationOpen}
-        onVerified={() => {
+        onOpenChange={(open) => {
+          if (contextRef.current === contextKey) setVerificationContext(open ? contextKey : null)
+        }}
+        onVerified={(status) => {
+          if (contextRef.current !== contextKey) return
+          requestSequence.current += 1
           setLoadedProtectedSource(null)
-          setSessionAuthorized(true)
+          setSessionStatus({ status, generation: obterGeracaoStatusVisitante() })
           setErro(false)
           statusCheckedAfterError.current = false
-          setVerificationOpen(false)
+          setVerificationContext(null)
           onVerificationSuccess?.()
         }}
       />

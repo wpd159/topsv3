@@ -348,7 +348,7 @@ public class FotoElegivelAnuncioRepositoryPostgres17IntegrationTest {
         }
 
         public static synchronized void stop() throws Exception {
-            commandIgnoringFailure("docker", "rm", "-f", CONTAINER);
+            commandIgnoringFailure("docker", "rm", "-f", "-v", CONTAINER);
             commandIgnoringFailure("docker", "network", "rm", NETWORK);
             started = false;
         }

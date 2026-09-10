@@ -36,7 +36,7 @@ const singleUpload = api.slice(
 )
 const batchUpload = api.slice(
   api.indexOf('export async function enviarMinhasMidiasEmLote'),
-  api.indexOf('export function reordenarMinhasMidias'),
+  api.indexOf('export async function reordenarMinhasMidias'),
 )
 const createUpload = wizard.slice(
   wizard.indexOf('const arquivos = [...state.fotos, ...state.videos]'),
@@ -456,6 +456,53 @@ assert.equal(unknownFailure.error.message, safeSpecificMessage)
 assert.equal(unknownFailure.error.code, 'MIDIA_ASSINATURA_INVALIDA')
 assert.equal(unknownFailure.error.requestId, 'request-unknown-header')
 assert.doesNotMatch(unknownFailure.error.message, /JPG|PNG|WebP/)
+
+// A successful HTTP status alone is not a receipt of the advertisement state.
+const canonicalMedia = {
+  midias: [{ id: 'photo-contract', tipo: 'FOTO', status: 'PENDENTE' }],
+  limites: { fotosAtivas: 1, fotosDisponiveis: 3 },
+  fotosValidasAtivasTotal: 1,
+  anuncio: {
+    id: 'ad-contract', slug: 'anuncio', status: 'PENDENTE_REVISAO', statusModeracao: 'PENDENTE', atualizadoEm: null,
+    acoesPermitidas: { pausar: false, reativar: false, remover: true, corrigirEReenviar: false },
+  },
+}
+for (const invalidBody of [
+  null,
+  { midias: [], limites: {} },
+  { ...canonicalMedia, fotosValidasAtivasTotal: -1 },
+  { ...canonicalMedia, fotosValidasAtivasTotal: 2 },
+  { ...canonicalMedia, anuncio: { ...canonicalMedia.anuncio, slug: 'outro-anuncio' } },
+  { ...canonicalMedia, anuncio: { ...canonicalMedia.anuncio, status: 'ENCERRADO_INVENTADO' } },
+]) {
+  const failure = await expectRejectedUpload(
+    () => adapterRuntime.enviarMinhasMidiasEmLote('anuncio', photoBatch),
+    { status: 200, body: invalidBody },
+  )
+  assert.equal(failure.error.status, 502, 'DTO ausente/incoerente não fabrica um anúncio ativo.')
+}
+const invalidSuccessKey = xhrRequests.at(-1).headers.get('idempotency-key')
+pendingXhrResponses.push({ status: 200, body: canonicalMedia })
+const canonicalResult = await adapterRuntime.enviarMinhasMidiasEmLote('anuncio', photoBatch)
+assert.deepEqual(canonicalResult, canonicalMedia)
+assert.equal(xhrRequests.at(-1).headers.get('idempotency-key'), invalidSuccessKey, 'Resposta ambígua mantém chave para retry seguro.')
+
+const lifecycleRequests = []
+const closedMedia = {
+  ...canonicalMedia, midias: [], fotosValidasAtivasTotal: 0,
+  anuncio: { ...canonicalMedia.anuncio, status: 'REMOVIDO', acoesPermitidas: { pausar: false, reativar: false, remover: false, corrigirEReenviar: false } },
+}
+globalThis.fetch = async (url, options) => {
+  lifecycleRequests.push({ url, options })
+  return new Response(JSON.stringify(closedMedia), { status: 200, headers: { 'Content-Type': 'application/json' } })
+}
+const removed = await adapterRuntime.removerMinhaMidia('anuncio', 'photo-contract')
+assert.equal(lifecycleRequests.at(-1).url, '/minha-conta/anuncios/anuncio/midias/photo-contract')
+assert.equal(lifecycleRequests.at(-1).options.method, 'DELETE')
+assert.equal(removed.anuncio.status, 'REMOVIDO')
+assert.equal(removed.fotosValidasAtivasTotal, 0)
+assert.deepEqual((await adapterRuntime.listarMinhasMidias('anuncio')).anuncio, closedMedia.anuncio)
+assert.deepEqual((await adapterRuntime.reordenarMinhasMidias('anuncio', [])).anuncio, closedMedia.anuncio)
 
 for (const upload of [singleUpload, batchUpload]) {
   assert.match(upload, /new XMLHttpRequest\(\)/)

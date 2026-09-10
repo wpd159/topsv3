@@ -313,6 +313,9 @@ public class AnuncioEntity {
   }
 
   public void remeterParaRevisao(OffsetDateTime atualizadoEm) {
+    if (removidoEm != null || status == StatusAnuncio.REMOVIDO || status == StatusAnuncio.BLOQUEADO) {
+      throw new IllegalStateException("anuncio removido ou bloqueado nao pode voltar a revisao");
+    }
     this.status = StatusAnuncio.PENDENTE_REVISAO;
     this.statusModeracao = StatusModeracaoAnuncio.PENDENTE;
     this.atualizadoEm = atualizadoEm;

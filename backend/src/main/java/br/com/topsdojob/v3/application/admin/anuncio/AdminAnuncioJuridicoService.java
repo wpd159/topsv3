@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.admin.anuncio;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioOperacaoJuridicaDto;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminBloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminDesbloqueioJuridicoRequest;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -57,6 +58,7 @@ public class AdminAnuncioJuridicoService {
   private final StorySelecaoAdministrativaRepository storyAdminRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
   private final PublicSessionRegistry sessionRegistry;
+  private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy;
   private final ObjectMapper objectMapper;
 
   public AdminAnuncioJuridicoService(
@@ -68,6 +70,7 @@ public class AdminAnuncioJuridicoService {
       StorySelecaoAdministrativaRepository storyAdminRepository,
       AuditoriaEventoRepository auditoriaRepository,
       PublicSessionRegistry sessionRegistry,
+      FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy,
       ObjectMapper objectMapper) {
     this.anuncioRepository = anuncioRepository;
     this.usuarioRepository = usuarioRepository;
@@ -77,6 +80,7 @@ public class AdminAnuncioJuridicoService {
     this.storyAdminRepository = storyAdminRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.sessionRegistry = sessionRegistry;
+    this.fotoElegivelAnuncioPolicy = fotoElegivelAnuncioPolicy;
     this.objectMapper = objectMapper;
   }
 
@@ -96,6 +100,7 @@ public class AdminAnuncioJuridicoService {
         || anuncio.getRemovidoEm() != null) {
       throw conflito("anuncio nao pode ser reativado");
     }
+    fotoElegivelAnuncioPolicy.validarParaReativacao(anuncio.getId());
 
     OffsetDateTime agora = agora();
     StatusAnuncio statusAnterior = anuncio.getStatus();
@@ -349,9 +354,9 @@ public class AdminAnuncioJuridicoService {
   }
 
   private Contexto bloquearContexto(UUID anuncioId) {
-    AnuncioEntity referencia = anuncioRepository.findById(Objects.requireNonNull(anuncioId, "anuncioId obrigatorio"))
+    UUID usuarioId = anuncioRepository.findUsuarioIdById(Objects.requireNonNull(anuncioId, "anuncioId obrigatorio"))
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
-    UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(referencia.getUsuarioId())
+    UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(usuarioId)
         .orElseThrow(() -> conflito("proprietario do anuncio nao encontrado"));
     List<AnuncioEntity> anuncios = anuncioRepository.findByUsuarioIdForLegalBlock(usuario.getId());
     AnuncioEntity anuncio = anuncios.stream()

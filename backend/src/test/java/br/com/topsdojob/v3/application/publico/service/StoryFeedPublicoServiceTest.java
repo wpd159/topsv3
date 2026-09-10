@@ -49,7 +49,11 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.server.ResponseStatusException;
 
 class StoryFeedPublicoServiceTest {
 
@@ -360,6 +364,44 @@ class StoryFeedPublicoServiceTest {
                 .doesNotContain("X-Amz-");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void storyLegadoDoAnuncioEncerradoSaiDoFeedEViewerMesmoComVinculoValido(boolean somenteDataRemocao) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        UUID anuncioId = UUID.randomUUID();
+        UUID arquivoId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, UUID.randomUUID(), "story-encerrado");
+        if (somenteDataRemocao) {
+            set(anuncio, "removidoEm", OffsetDateTime.now().minusMinutes(1));
+        } else {
+            set(anuncio, "status", StatusAnuncio.REMOVIDO);
+        }
+        StoryAnuncioEntity story = story(0);
+        AnuncioMidiaEntity vinculo = vinculoStory(story.getAnuncioMidiaId(), anuncioId, arquivoId);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId, "image/jpeg");
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of(story));
+        when(midiaRepository.findByIdIn(any())).thenReturn(List.of(vinculo));
+        when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(midiaRepository.findById(vinculo.getId())).thenReturn(Optional.of(vinculo));
+        when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+
+        assertThat(service.listar(request)).isEmpty();
+        assertThatThrownBy(() -> service.buscar(story.getId().toString(), request))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error ->
+                        assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThat(story.getStatus()).isEqualTo(StatusStoryAnuncio.PUBLICADO);
+        assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+        verify(storyRepository, never()).save(any());
+        verify(urlService, never()).resolver(any(), any());
+        verify(urlService, never()).resolverPreviewRestrita(any());
+    }
+
     @Test
     void selecoesAdministrativasABCEntramJuntasSemDuplicidade() {
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -490,6 +532,7 @@ class StoryFeedPublicoServiceTest {
         assertThat(viewer.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
         assertThat(viewer.midiaUrl())
                 .isEqualTo("/api/public/compliance/visitor/media/stories/" + story.getId());
+        verify(anuncioRepository, never()).findById(any());
     }
 
     @Test

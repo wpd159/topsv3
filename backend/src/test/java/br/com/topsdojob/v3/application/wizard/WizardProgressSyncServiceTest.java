@@ -49,7 +49,7 @@ class WizardProgressSyncServiceTest {
         anuncioRepository,
         repository,
         clock);
-    when(meusAnunciosService.usuarioAutenticado(authentication)).thenReturn(usuario);
+    when(meusAnunciosService.usuarioAutenticadoParaAtualizacao(authentication)).thenReturn(usuario);
     when(usuario.getId()).thenReturn(usuarioId);
   }
 
@@ -111,7 +111,7 @@ class WizardProgressSyncServiceTest {
   void anuncioDeOutroUsuarioEhRecusado() {
     UUID anuncioId = UUID.randomUUID();
     AnuncioEntity anuncio = mock(AnuncioEntity.class);
-    when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+    when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
     when(anuncio.getUsuarioId()).thenReturn(UUID.randomUUID());
 
     assertThatThrownBy(() -> service.sincronizar(new SyncRequest(

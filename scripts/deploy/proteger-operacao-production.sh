@@ -3,11 +3,21 @@
 # This file never activates a release by itself and never restores a database.
 OP_HEALTH_CONTRACT=main-v1
 
+_op_legacy_source_sha() {
+  # Published descendants of a60 retain its readiness-only contract. This fixed
+  # lineage is selected before probing; an unknown SHA or failed main probe
+  # must never acquire the legacy profile.
+  case "$1" in
+    a60b1e74978017a5bba1577f58804933b347c790|324b9cd4d62990e5d7e553bdfdfc8c3fe6d6a700|b8a88cd7bb469717f09b5aa05a693e33a903cd72|7c2285d21a2d05c4ad9828734c0daebf9d40dd68|451a6cb90dd1e67c5c774a0618c984d6b73735f8) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 _op_release_profile() {
   local sha="$1" release="${OP_ROOT}/releases/$1"
   _op_sha "${sha}" || return 2
   [ "$(cat "${release}/.release-sha")" = "${sha}" ] || return 1
-  if [ "${sha}" = a60b1e74978017a5bba1577f58804933b347c790 ]; then
+  if _op_legacy_source_sha "${sha}"; then
     printf 'legacy-a60\n'
   else
     # Explicit release contract, never inferred from a failed/404 probe.
@@ -351,7 +361,7 @@ op_smoke() {
   IFS='|' read -r profile_sha profile < "${profile_file}"
   [ "${profile_sha}" = "${sha}" ] || return 1
   case "${profile}" in main-v1|legacy-a60) ;; *) return 1 ;; esac
-  [ "${profile}" != legacy-a60 ] || [ "${sha}" = a60b1e74978017a5bba1577f58804933b347c790 ] || return 1
+  [ "${profile}" != legacy-a60 ] || _op_legacy_source_sha "${sha}" || return 1
   [ "${sha}" = "${OP_PREVIOUS_SHA}" ] || [ "${profile}" = main-v1 ] || return 1
   printf 'HEALTH_PROFILE sha=%s profile=%s snapshot=%s\n' "${sha}" "${profile}" "${profile_file##*/}"
   if [ "${OP_RECOVERING:-0}" -eq 1 ] && [ "${sha}" = "${OP_PREVIOUS_SHA}" ]; then

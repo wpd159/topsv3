@@ -114,7 +114,7 @@ class MeuAnuncioAtualizacaoServiceTest {
                 ANUNCIO_ID, ESTADO_ID, CIDADE_ID, null, PUBLICADO_EM);
         MeuAnuncioDto resposta = mock(MeuAnuncioDto.class);
 
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio);
         when(estadoRepository.findByUfIgnoreCase("GO")).thenReturn(Optional.of(estado));
         when(cidadeRepository.findByEstadoIdAndSlug(ESTADO_ID, "goiania")).thenReturn(Optional.of(cidade));
         when(bairroRepository.findByCidadeIdAndSlug(CIDADE_ID, "setor-bueno")).thenReturn(Optional.of(bairro));
@@ -156,7 +156,7 @@ class MeuAnuncioAtualizacaoServiceTest {
 
     @Test
     void payloadInvalidoRetorna400SemPersistir() {
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio());
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio());
         MeuAnuncioAtualizacaoRequestDto invalido = new MeuAnuncioAtualizacaoRequestDto(
                 "curto",
                 "descricao curta",
@@ -180,7 +180,7 @@ class MeuAnuncioAtualizacaoServiceTest {
     @Test
     void tituloComConteudoAtivoNaoAlteraAnuncio() {
         AnuncioEntity anuncio = anuncio();
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio);
 
         assertThatThrownBy(() -> service.atualizar(
                 "slug-preservado",
@@ -203,21 +203,21 @@ class MeuAnuncioAtualizacaoServiceTest {
 
     @Test
     void preservaStatus401DaSessao() {
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication))
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication))
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED));
         assertStatus(401, () -> service.atualizar("slug-preservado", requestValido(), authentication));
     }
 
     @Test
     void preservaStatus403ParaAnuncioAlheio() {
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication))
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication))
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
         assertStatus(403, () -> service.atualizar("slug-preservado", requestValido(), authentication));
     }
 
     @Test
     void preservaStatus404ParaSlugInexistente() {
-        when(consultaService.anuncioDoUsuario("slug-inexistente", authentication))
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-inexistente", authentication))
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
         assertStatus(404, () -> service.atualizar("slug-inexistente", requestValido(), authentication));
     }
@@ -272,7 +272,7 @@ class MeuAnuncioAtualizacaoServiceTest {
 
     @Test
     void revisaoEmAnaliseBloqueiaCorridaCom409() {
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio());
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio());
         when(revisaoRepository.existsByAnuncioIdAndStatusIn(eq(ANUNCIO_ID), any())).thenReturn(true);
 
         assertStatus(409, () -> service.atualizar("slug-preservado", requestValido(), authentication));
@@ -283,7 +283,7 @@ class MeuAnuncioAtualizacaoServiceTest {
     @Test
     void kycAusenteBloqueiaEdicaoAntesDePersistir() {
         AnuncioEntity anuncio = anuncio();
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio);
         org.mockito.Mockito.doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT))
                 .when(kycService).garantirProntoParaAnuncio(USUARIO_ID);
 
@@ -305,7 +305,7 @@ class MeuAnuncioAtualizacaoServiceTest {
                 null,
                 "Endereço sintético local",
                 PUBLICADO_EM);
-        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
+        when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio);
         when(estadoRepository.findByUfIgnoreCase("GO")).thenReturn(Optional.of(estado));
         when(cidadeRepository.findByEstadoIdAndSlug(ESTADO_ID, "goiania")).thenReturn(Optional.of(cidade));
         when(localizacaoRepository.findByAnuncioId(ANUNCIO_ID)).thenReturn(Optional.of(localizacao));

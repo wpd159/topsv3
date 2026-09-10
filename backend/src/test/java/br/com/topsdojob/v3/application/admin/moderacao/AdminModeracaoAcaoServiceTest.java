@@ -128,7 +128,7 @@ class AdminModeracaoAcaoServiceTest {
                 UUID.randomUUID(),
                 OffsetDateTime.parse("2026-08-01T12:00:00Z"));
 
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(anuncioRepository.findUsuarioIdById(anuncioId)).thenReturn(Optional.of(usuarioId));
         when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
         when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
         when(documentoRepository
