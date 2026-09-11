@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Local unit proofs; no Docker, network, files outside a temporary directory or DB."""
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -39,6 +41,73 @@ def journal(mode="APPLY"):
     pairs += [("SUCCEEDED", commit)]
     return [{"mode": mode, "stage": stage, "commit": value, "time_utc": "2026-01-01T00:00:00Z"}
             for stage, value in pairs]
+
+
+SINCE = "2026-01-01T00:00:59.000000001Z"
+UNTIL = "2026-01-01T00:01:00.000000009Z"
+CURRENT = "2026-01-01T00:00:59.123456789Z "
+SUCCESS = CURRENT + "Graceful shutdown complete\n"
+
+
+def exercise_stopped(test, stdout, stderr, *, accepted=False, rc=0,
+                     capture_failure=None, child_code=None, child_timeout=None):
+    """Real observer/receipt, synthetic Docker identity/SQL; optional REAL child."""
+    with tempfile.TemporaryDirectory() as folder:
+        current = source()
+        current["State"]["Running"] = False
+        current["State"]["FinishedAt"] = UNTIL
+        before = {"id": current["Id"], "image": current["Image"],
+                  "started_at": current["State"]["StartedAt"], "restart_count": 0,
+                  "allowed_runtime": {}}
+        (Path(folder) / "preview-source.json").write_text(json.dumps(before))
+        pg = {"Config": {"Env": ["POSTGRES_USER=synthetic", "POSTGRES_DB=synthetic"]}}
+        real_run = subprocess.run
+        log_calls = []
+
+        def run_boundary(args, **kwargs):
+            if args[:2] == ["docker", "logs"]:
+                test.assertEqual(args, ["docker", "logs", "--timestamps", "--since", SINCE,
+                                        "--until", UNTIL, current["Id"]])
+                test.assertEqual(kwargs["timeout"], 15)
+                log_calls.append(args)
+                if capture_failure is not None:
+                    raise capture_failure
+                if child_code is not None:
+                    if child_timeout is not None:
+                        kwargs["timeout"] = child_timeout
+                    return real_run([sys.executable, "-c", child_code], **kwargs)
+                return subprocess.CompletedProcess(args, rc, stdout, stderr)
+            test.assertEqual(args[:5], ["docker", "exec", "-i", RUNTIME.PREFIX + "postgres", "psql"])
+            test.assertIn("BEGIN READ ONLY;", kwargs["input"])
+            test.assertIn("ROLLBACK;", kwargs["input"])
+            return subprocess.CompletedProcess(args, 0, "0\n", "")
+
+        observed_output = io.StringIO()
+        with patch.object(RUNTIME, "inspect", side_effect=[current, pg]), \
+                patch.object(RUNTIME, "no_other_producers", return_value=3) as producers, \
+                patch.object(RUNTIME.subprocess, "run", side_effect=run_boundary), \
+                contextlib.redirect_stdout(observed_output):
+            if accepted:
+                RUNTIME.stopped(folder, SINCE)
+            else:
+                with test.assertRaises(RuntimeError) as error:
+                    RUNTIME.stopped(folder, SINCE)
+                test.assertRegex(str(error.exception), r"^[a-z_]+$")
+                test.assertNotIn("private-fixture-value", str(error.exception))
+                producers.assert_not_called()
+        test.assertEqual(len(log_calls), 1)
+        receipt = Path(folder) / "preview-drained.json"
+        test.assertEqual(receipt.exists(), accepted)
+        if accepted:
+            data = json.loads(receipt.read_text())
+            test.assertEqual(data["since"], SINCE)
+            test.assertEqual(data["until"], UNTIL)
+            test.assertEqual(len(data["logs_stdout_sha256"]), 64)
+            test.assertEqual(len(data["logs_stderr_sha256"]), 64)
+            test.assertNotIn("Graceful shutdown", receipt.read_text())
+            test.assertEqual(observed_output.getvalue(), "PREVIEW_PRODUCERS_DRAINED=PASS\n")
+        else:
+            test.assertEqual(observed_output.getvalue(), "")
 
 
 class TransitionTests(unittest.TestCase):
@@ -130,16 +199,92 @@ class TransitionTests(unittest.TestCase):
             stopped = copy.deepcopy(before)
             stopped["State"]["Running"] = False
             since = "2026-01-01T00:00:59Z"
-            for output in ("", "Graceful shutdown aborted with active requests"):
-                with patch.object(RUNTIME, "inspect", return_value=stopped), patch.object(RUNTIME, "call", return_value=output) as calls:
+            for output in ("", CURRENT + "Graceful shutdown aborted with active requests\n"):
+                result = subprocess.CompletedProcess([], 0, output, "")
+                with patch.object(RUNTIME, "inspect", return_value=stopped), patch.object(RUNTIME.subprocess, "run", return_value=result) as calls:
                     with self.assertRaisesRegex(RuntimeError, "graceful"):
                         RUNTIME.stopped(folder, since)
-                    self.assertEqual(calls.call_args.args[0], ["docker", "logs", "--since", since, before["Id"]])
+                    self.assertEqual(calls.call_args.args[0], ["docker", "logs", "--timestamps", "--since", since,
+                                                             "--until", stopped["State"]["FinishedAt"], before["Id"]])
             stopped["State"]["ExitCode"] = 137
             with patch.object(RUNTIME, "inspect", return_value=stopped), patch.object(RUNTIME, "call") as calls:
                 with self.assertRaisesRegex(RuntimeError, "not_drained"):
                     RUNTIME.stopped(folder, since)
                 calls.assert_not_called()
+
+    def test_real_subprocess_stdout_success_stderr_timeout_is_rejected(self):
+        warning = CURRENT + "Timed out while waiting for executor 'applicationTaskExecutor' to terminate\n"
+        child = "import sys; sys.stdout.write(" + repr(SUCCESS) + "); sys.stderr.write(" + repr(warning) + ")"
+        exercise_stopped(self, None, None, child_code=child)
+
+    def test_real_subprocess_valid_completion_and_both_stream_hashes(self):
+        diagnostic = CURRENT + "Accepted tasks completed\n"
+        child = "import sys; sys.stdout.write(" + repr(SUCCESS) + "); sys.stderr.write(" + repr(diagnostic) + ")"
+        exercise_stopped(self, None, None, accepted=True, child_code=child)
+        exercise_stopped(self, "", SUCCESS, accepted=True)
+        exercise_stopped(self, SUCCESS, SUCCESS, accepted=True)
+
+    def test_timeout_and_abort_in_any_stream_reject_without_receipt(self):
+        for failure in ("Timed out while waiting for executor 'applicationTaskExecutor' to terminate",
+                        "Graceful shutdown aborted with active requests", "GRACEFUL SHUTDOWN ABORTED",
+                        "shutdown phase timed out"):
+            warning = CURRENT + failure + "\n"
+            for out, err in ((SUCCESS + warning, ""), ("", SUCCESS + warning),
+                             (SUCCESS, warning), (warning, SUCCESS), (SUCCESS + warning, warning)):
+                with self.subTest(failure=failure, stdout=bool(out), stderr=bool(err)):
+                    exercise_stopped(self, out, err)
+
+    def test_history_future_and_nanosecond_edges_are_checked_not_trusted(self):
+        for invalid in ("2026-01-01T00:00:58Z", "2026-01-01T00:00:59.000000000Z",
+                        "2026-01-01T00:01:00.000000010Z", "2026-01-01T00:01:01Z"):
+            with self.subTest(timestamp=invalid):
+                history = invalid + " Graceful shutdown complete\n"
+                exercise_stopped(self, history, "")
+                exercise_stopped(self, SUCCESS, history)
+        for valid in (SINCE, UNTIL, "2025-12-31T21:00:59.123456789-03:00"):
+            exercise_stopped(self, valid + " Graceful shutdown complete\n", "", accepted=True)
+
+    def test_incomplete_stream_or_untimestamped_diagnostic_rejects(self):
+        for out, err in ((SUCCESS.rstrip("\n"), ""), (SUCCESS, CURRENT + "unfinished"),
+                         (SUCCESS, None), (None, ""), (SUCCESS.encode(), ""),
+                         (SUCCESS, "private-fixture-value: Docker daemon warning\n"),
+                         ("Graceful shutdown complete\n", ""), (SUCCESS, "\n")):
+            with self.subTest(stdout_type=type(out).__name__, stderr_type=type(err).__name__):
+                exercise_stopped(self, out, err)
+
+    def test_failed_return_and_collection_failures_never_create_receipt(self):
+        for status in (1, 42, -15):
+            exercise_stopped(self, SUCCESS, "", rc=status)
+        for failure in (subprocess.TimeoutExpired("private-fixture-value", 15, output=SUCCESS),
+                        OSError("private-fixture-value"), UnicodeError("private-fixture-value")):
+            exercise_stopped(self, SUCCESS, "", capture_failure=failure)
+
+    def test_receipt_window_must_belong_to_current_source(self):
+        for started, finished in (("2026-01-01T00:01:00Z", UNTIL),
+                                  ("2026-01-01T00:00:00Z", "2026-01-01T00:00:58Z")):
+            with tempfile.TemporaryDirectory() as folder:
+                current = source()
+                current["State"].update(Running=False, StartedAt=started, FinishedAt=finished)
+                before = {"id": current["Id"], "image": current["Image"],
+                          "started_at": started, "restart_count": 0, "allowed_runtime": {}}
+                (Path(folder) / "preview-source.json").write_text(json.dumps(before))
+                with patch.object(RUNTIME, "inspect", return_value=current), \
+                        patch.object(RUNTIME.subprocess, "run") as calls:
+                    with self.assertRaisesRegex(RuntimeError, "drain_log_window"):
+                        RUNTIME.stopped(folder, SINCE)
+                    calls.assert_not_called()
+                self.assertFalse((Path(folder) / "preview-drained.json").exists())
+
+    def test_real_subprocess_timeout_after_partial_success_rejects(self):
+        child = "import sys,time; sys.stdout.write(" + repr(SUCCESS) + "); sys.stdout.flush(); time.sleep(2)"
+        exercise_stopped(self, None, None, child_code=child, child_timeout=0.1)
+
+    def test_general_call_retains_pure_json_and_sql_stdout(self):
+        for payload in ('{"result":0}\n', "0\n"):
+            child = "import sys; sys.stdout.write(" + repr(payload) + "); sys.stderr.write('synthetic diagnostic\\n')"
+            result = RUNTIME.call([sys.executable, "-c", child])
+            self.assertEqual(result, payload)
+            self.assertNotIn("diagnostic", result)
 
     def test_workflow_order_and_no_nested_docker_wrapper(self):
         workflow = (ROOT / ".github/workflows/deploy-production.yml").read_text()

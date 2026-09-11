@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -30,6 +31,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.LifecycleMethodExecutionExceptionHandler;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -49,8 +54,7 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
   private static final Path MIGRATIONS = Path.of(
       "src", "main", "resources", "db", "migration").toAbsolutePath().normalize();
   private static final String SUFFIX = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-  private static final String NETWORK = "topsv3-preview-apply-" + SUFFIX + "-net";
-  private static final String CONTAINER = "topsv3-preview-apply-" + SUFFIX + "-pg17";
+  private static final String CONTAINER = "topsv3-preview-apply-" + SUFFIX + "-postgres";
   private static final String FAULT_SCHEMA = "preview_apply_fault_" + SUFFIX;
   private static final String CREDENTIAL = UUID.randomUUID().toString() + UUID.randomUUID();
   private static final String PUBLIC_PREFIX = "hml/preview-apply/publicas/";
@@ -62,32 +66,31 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
   private static MidiaRestritaRegularizacaoService service;
   private static JdbcTemplate jdbc;
   private static int port;
-  private static boolean networkCreated;
-  private static boolean containerCreated;
+  private static PreviewBackfillOwnedDockerResources owned;
+  @RegisterExtension
+  static final FirstFailure firstFailure = new FirstFailure();
 
   private UUID userId;
   private UUID adId;
   private final List<Photo> photos = new ArrayList<>();
 
   @BeforeAll
-  static void startOwnedPostgresAndDedicatedBootstrap() throws Exception {
-    command("docker", "network", "create", NETWORK);
-    networkCreated = true;
+  static void startOwnedPostgresAndDedicatedBootstrap() throws Throwable {
+    owned = new PreviewBackfillOwnedDockerResources("topsv3-preview-apply-" + SUFFIX);
     try {
-      command(Map.of("POSTGRES_PASSWORD", CREDENTIAL),
-          "docker", "run", "--pull=never", "-d", "--name", CONTAINER,
-          "--label", "topsv3.test=preview-apply-" + SUFFIX,
-          "--network", NETWORK, "-p", "127.0.0.1::5432",
+      owned.createNetwork();
+      String postgresId = owned.createContainer("postgres", Map.of("POSTGRES_PASSWORD", CREDENTIAL),
+          "-p", "127.0.0.1::5432",
           "-e", "POSTGRES_DB=topsv3_preview_apply", "-e", "POSTGRES_USER=topsv3test",
           "-e", "POSTGRES_PASSWORD", "postgres:17-alpine");
-      containerCreated = true;
+      command("docker", "start", postgresId);
       awaitPostgres();
-      command(Map.of("FLYWAY_PASSWORD", CREDENTIAL),
-          "docker", "run", "--pull=never", "--rm", "--network", NETWORK,
+      String flywayId = owned.createContainer("flyway", Map.of("FLYWAY_PASSWORD", CREDENTIAL),
           "-e", "FLYWAY_PASSWORD", "-v", MIGRATIONS + ":/flyway/sql:ro",
           "flyway/flyway:12.10.0",
           "-url=jdbc:postgresql://" + CONTAINER + ":5432/topsv3_preview_apply",
           "-user=topsv3test", "-locations=filesystem:/flyway/sql", "migrate");
+      command("docker", "start", "--attach", flywayId);
       String mapping = command("docker", "port", CONTAINER, "5432/tcp").trim();
       port = Integer.parseInt(mapping.substring(mapping.lastIndexOf(':') + 1));
       jdbc = new JdbcTemplate(new DriverManagerDataSource(jdbcUrl(), "topsv3test", CREDENTIAL));
@@ -116,29 +119,29 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
       service = context.getBean(MidiaRestritaRegularizacaoService.class);
       assertThat(jdbc.queryForObject("select version()", String.class)).startsWith("PostgreSQL 17.");
       assertThat(jdbc.queryForObject("select count(*) from arquivo_midia", Long.class)).isZero();
-    } catch (Exception | AssertionError failure) {
-      cleanupOwnedResources();
-      throw failure;
+    } catch (Throwable failure) {
+      firstFailure.remember(failure);
+      throw cleanupWithPrimary(failure);
     }
   }
 
   @AfterAll
-  static void cleanupOwnedResources() throws Exception {
-    if (context != null) {
-      context.close();
-      context = null;
+  static void cleanupOwnedResources() throws Throwable {
+    Throwable cleanup = cleanupWithPrimary(null);
+    if (cleanup != null) {
+      Throwable original = firstFailure.failure.get();
+      if (original != null && original != cleanup) original.addSuppressed(cleanup);
+      // JUnit also reports cleanup separately; an earlier test/setup error is never replaced.
+      throw cleanup;
     }
-    try {
-      if (containerCreated) {
-        command("docker", "rm", "-f", CONTAINER);
-        containerCreated = false;
-      }
-    } finally {
-      if (networkCreated) {
-        command("docker", "network", "rm", NETWORK);
-        networkCreated = false;
-      }
-    }
+  }
+
+  private static Throwable cleanupWithPrimary(Throwable primary) {
+    ConfigurableApplicationContext closing = context;
+    context = null;
+    return PreviewBackfillOwnedDockerResources.cleanupPreserving(primary,
+        () -> { if (closing != null) closing.close(); },
+        () -> { if (owned != null) owned.close(); });
   }
 
   @BeforeEach
@@ -163,14 +166,18 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
   }
 
   @AfterEach
-  void removeOnlyOwnedSyntheticRows() {
-    dropFault();
-    if (adId != null) jdbc.update("delete from anuncio_midia where anuncio_id=?", adId);
-    for (Photo photo : photos) jdbc.update("delete from arquivo_midia where id=?", photo.fileId());
-    if (adId != null) jdbc.update("delete from anuncio where id=?", adId);
-    if (userId != null) jdbc.update("delete from usuario where id=?", userId);
+  void removeOnlyOwnedSyntheticRows() throws Throwable {
+    List<PreviewBackfillOwnedDockerResources.Action> actions = new ArrayList<>();
+    actions.add(this::dropFault);
+    if (adId != null) actions.add(() -> jdbc.update("delete from anuncio_midia where anuncio_id=?", adId));
+    for (Photo photo : photos) actions.add(() -> jdbc.update("delete from arquivo_midia where id=?", photo.fileId()));
+    if (adId != null) actions.add(() -> jdbc.update("delete from anuncio where id=?", adId));
+    if (userId != null) actions.add(() -> jdbc.update("delete from usuario where id=?", userId));
+    Throwable failure = PreviewBackfillOwnedDockerResources.cleanupPreserving(null,
+        actions.toArray(PreviewBackfillOwnedDockerResources.Action[]::new));
     photos.clear();
     INVENTORY_KEYS.set(List.of());
+    if (failure != null) throw failure;
   }
 
   @Test
@@ -418,21 +425,30 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
   }
 
   private static String command(Map<String, String> environment, String... arguments) throws Exception {
-    ProcessBuilder builder = new ProcessBuilder(arguments).redirectErrorStream(true);
-    builder.environment().putAll(environment);
-    Process process = builder.start();
-    String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    int exit = process.waitFor();
-    if (exit != 0) throw new IllegalStateException(String.join(" ", arguments) + " failed: " + output);
-    return output;
+    return owned.command(environment, Duration.ofSeconds(120),
+        java.util.Arrays.copyOfRange(arguments, 1, arguments.length));
   }
 
   private static int commandExit(Map<String, String> environment, String... arguments) throws Exception {
-    ProcessBuilder builder = new ProcessBuilder(arguments).redirectErrorStream(true);
-    builder.environment().putAll(environment);
-    Process process = builder.start();
-    process.getInputStream().readAllBytes();
-    return process.waitFor();
+    return owned.invoke(environment, Duration.ofSeconds(5),
+        java.util.Arrays.copyOfRange(arguments, 1, arguments.length)).exit();
+  }
+
+  static final class FirstFailure implements TestExecutionExceptionHandler, LifecycleMethodExecutionExceptionHandler {
+    private final AtomicReference<Throwable> failure = new AtomicReference<>();
+    void remember(Throwable original) { failure.compareAndSet(null, original); }
+    @Override public void handleTestExecutionException(ExtensionContext ignored, Throwable original) throws Throwable {
+      remember(original);
+      throw original;
+    }
+    @Override public void handleBeforeEachMethodExecutionException(ExtensionContext ignored, Throwable original) throws Throwable {
+      remember(original);
+      throw original;
+    }
+    @Override public void handleAfterEachMethodExecutionException(ExtensionContext ignored, Throwable original) throws Throwable {
+      remember(original);
+      throw original;
+    }
   }
 
   private record Photo(UUID fileId, UUID linkId, String previewKey) { }

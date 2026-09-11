@@ -41,6 +41,56 @@ def call(args, *, stdin=None, timeout=15):
     return result.stdout
 
 
+def log_time_ns(value):
+    """Parse Docker RFC3339Nano without rounding a boundary to microseconds."""
+    match = re.fullmatch(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})", value)
+    demand(match is not None, "drain_log_timestamp_invalid")
+    try:
+        instant = datetime.datetime.fromisoformat(match[1] + match[3].replace("Z", "+00:00"))
+        epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+        delta = instant - epoch
+    except ValueError:
+        raise RuntimeError("drain_log_timestamp_invalid") from None
+    return (delta.days * 86400 + delta.seconds) * 1000000000 + int((match[2] or "").ljust(9, "0"))
+
+
+def drain_logs(source_id, since, until, *, timeout=15):
+    """Complete, bounded docker-log capture; never expose private log payloads.
+
+    Unlike JSON/SQL call(), BOTH streams are evidence. Docker timestamps must
+    independently corroborate the requested window, including nanosecond edges.
+    EOF after a partial record is not a complete Spring logger observation.
+    """
+    lower, upper = log_time_ns(since), log_time_ns(until)
+    demand(lower <= upper, "drain_log_window_invalid")
+    args = ["docker", "logs", "--timestamps", "--since", since, "--until", until, source_id]
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
+                                errors="strict", timeout=timeout, check=False)
+    except (subprocess.TimeoutExpired, OSError, UnicodeError):
+        raise RuntimeError("drain_logs_collection_failed") from None
+    demand(result.returncode == 0, "drain_logs_command_failed")
+    streams = {"stdout": result.stdout, "stderr": result.stderr}
+    payloads = []
+    for stream in streams.values():
+        demand(isinstance(stream, str) and (not stream or stream.endswith("\n")),
+               "drain_logs_capture_incomplete")
+        for line in stream.splitlines():
+            timestamp, separator, payload = line.partition(" ")
+            demand(bool(separator), "drain_log_record_invalid")
+            recorded = log_time_ns(timestamp)
+            demand(lower <= recorded <= upper, "drain_log_record_outside_window")
+            payloads.append(payload)
+    logs = "\n".join(payloads)
+    demand("Graceful shutdown complete" in logs and
+           not re.search(r"Graceful shutdown aborted|Timed out while waiting for executor|shutdown.*timed out", logs, re.IGNORECASE),
+           "current_graceful_completion_unproven")
+    return {"logs_sha256": digest(json.dumps(streams, sort_keys=True)),
+            "logs_stdout_sha256": digest(streams["stdout"]),
+            "logs_stderr_sha256": digest(streams["stderr"]),
+            "log_records": len(payloads)}
+
+
 def inspect(target):
     values = json.loads(call(["docker", "inspect", target]))
     demand(len(values) == 1, "runtime_identity_ambiguous")
@@ -178,11 +228,9 @@ def stopped(directory, since):
            and source["RestartCount"] == before["restart_count"], "source_identity_changed")
     demand(not state["Running"] and not state.get("Paused") and not state.get("Restarting")
            and not state.get("OOMKilled") and state["ExitCode"] in (0, 143), "source_not_drained")
-    logs = call(["docker", "logs", "--since", since, before["id"]])
-    demand("Graceful shutdown complete" in logs and
-           "Graceful shutdown aborted" not in logs and
-           not re.search(r"Timed out while waiting for executor|shutdown.*timed out", logs, re.IGNORECASE),
-           "current_graceful_completion_unproven")
+    demand(log_time_ns(since) >= log_time_ns(state["StartedAt"]), "drain_log_window_before_source_start")
+    until = state["FinishedAt"]
+    logs_proof = drain_logs(before["id"], since, until)
     count = no_other_producers(source, stopped=True, allowed_runtime=before["allowed_runtime"])
     # This is a complementary DB proof, never the proof of request drainage.
     pg = environment(inspect(PREFIX + "postgres"))
@@ -193,8 +241,8 @@ def stopped(directory, since):
                    "--no-password", "--set=ON_ERROR_STOP=1", "-U", pg["POSTGRES_USER"],
                    "-d", pg["POSTGRES_DB"]], stdin=sql)
     demand(output.strip() == "0", "database_clients_remain")
-    emit_file(directory, "preview-drained.json", {"source_id": before["id"], "since": since,
-              "exit_code": state["ExitCode"], "logs_sha256": digest(logs),
+    emit_file(directory, "preview-drained.json", {"source_id": before["id"], "since": since, "until": until,
+              "exit_code": state["ExitCode"], **logs_proof,
               "containers_checked": count, "database_clients": 0})
     print("PREVIEW_PRODUCERS_DRAINED=PASS")
 
