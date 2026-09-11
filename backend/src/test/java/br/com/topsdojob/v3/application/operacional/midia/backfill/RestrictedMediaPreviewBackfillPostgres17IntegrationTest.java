@@ -155,7 +155,8 @@ class RestrictedMediaPreviewBackfillPostgres17IntegrationTest {
     ObjectStorageInventory inventory = mock(ObjectStorageInventory.class);
     when(inventory.list(any(), any(), isNull(), anyInt()))
         .thenReturn(new StoredObjectPage(java.util.List.of(), null, false));
-    Path report = Files.createTempFile("topsv3-preview-plan-", ".tsv");
+    Path reportDirectory = Files.createTempDirectory("topsv3-preview-plan-");
+    Path report = reportDirectory.resolve("plan.tsv");
 
     try {
       SpringApplication application = RestrictedMediaPreviewBackfillBootstrap.application();
@@ -188,7 +189,9 @@ class RestrictedMediaPreviewBackfillPostgres17IntegrationTest {
           1_000);
       verifyNoMoreInteractions(inventory);
     } finally {
+      Files.deleteIfExists(Path.of(report + ".state.jsonl"));
       Files.deleteIfExists(report);
+      Files.deleteIfExists(reportDirectory);
     }
   }
 

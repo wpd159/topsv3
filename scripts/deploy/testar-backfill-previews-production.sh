@@ -89,6 +89,17 @@ mkdir -p "${target}"
 MOCK
 chmod 0700 "${mock_bin}/install"
 
+cat > "${mock_bin}/python3" <<'MOCK'
+#!/usr/bin/env bash
+# Only the runtime observer is mocked; the real coordinator has separate tests.
+case "$2" in
+  pin) printf 'PREVIEW_IMAGE_PIN=PASS\n' ;;
+  terminal) printf 'PREVIEW_JOB_TERMINAL=PASS\n' ;;
+  *) exit 1 ;;
+esac
+MOCK
+chmod 0700 "${mock_bin}/python3"
+
 run_fixture() {
   local name="$1"
   local mode="$2"
@@ -102,7 +113,16 @@ run_fixture() {
     BACKFILL_FIXTURE_EVENT_LOG="${events}" \
     BACKFILL_FIXTURE_APPLY_UPDATED="${updated}" \
     BACKFILL_FIXTURE_FAIL_APPLY="${fail_apply}" \
-    bash "${helper}" "${mode}" initial \
+    bash -c '\
+      helper="$1"; shift
+      source "$helper"
+      op_run() { shift; "$@"; }
+      OP_ACTIVE=1 OP_SNAPSHOT_READY=1 OP_PHASE=PREVIEW_APPLY OP_ID=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+      OP_PREVIEW_DIR="$BACKFILL_FIXTURE_OPERATION"
+      mkdir -p "$OP_PREVIEW_DIR/final"
+      : > "$OP_PREVIEW_DIR/final/preview-drained.json"
+      preview_backfill_main "$@"
+    ' fixture "${helper}" "${mode}" initial \
       aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
       "${release_dir}" "${env_file}" \
       topsv3-production topsv3-production topsv3-production-net \
@@ -119,7 +139,20 @@ run_fixture() {
   fi
   grep -Fq -- '--app.bootstrap=restricted-media-preview-backfill' "${events}" ||
     fail "${name} nao selecionou o bootstrap dedicado"
+  grep -Fq -- '--pull never' "${events}" || fail "${name} permite pull implicito"
+  grep -Fq -- '/pinned-backfill.compose.yml' "${events}" || fail "${name} ignora pin fisico"
 }
+
+export BACKFILL_FIXTURE_OPERATION="${temporary}/operation"
+
+# The standalone APPLY route must fail before invoking Docker; no drain by assertion.
+if PATH="${mock_bin}:${PATH}" bash "${helper}" APPLY initial \
+  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "${release_dir}" "${env_file}" \
+  topsv3-production topsv3-production topsv3-production-net "${report_dir}" \
+  > "${temporary}/standalone-apply.output" 2>&1; then
+  fail "APPLY isolado deveria ser recusado"
+fi
+grep -Fq 'APPLY exige coordenacao e drenagem comprovada' "${temporary}/standalone-apply.output"
 
 run_fixture plan PLAN
 grep -Fq 'mode=PLAN status=OK eligible=1344' "${temporary}/plan.output"

@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -49,7 +50,24 @@ class PreviewRestritoBackfillJdbcRepositoryTest {
         "chave_objeto",
         "mime_type",
         "sha256");
+    String where = update.substring(update.indexOf("WHERE "));
+    assertThat(where).contains("preview_restrito_status = 'DESCONHECIDO'",
+        "preview_restrito_tipo IS NULL", "preview_restrito_chave IS NULL",
+        "preview_restrito_pipeline_versao IS NULL", "preview_restrito_confirmado_em IS NULL");
+    assertThat(where).doesNotContain("COALESCE", "'PENDENTE'", " OR ");
     assertThat(atualizados).isEqualTo(1);
+  }
+
+  @Test
+  void recusaContagemDeEscritaNaoComprovada() {
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.batchUpdate(anyString(), any(BatchPreparedStatementSetter.class)))
+        .thenReturn(new int[] {java.sql.Statement.SUCCESS_NO_INFO});
+    var repository = new PreviewRestritoBackfillJdbcRepository(jdbc);
+    assertThatThrownBy(() -> repository.marcarDisponiveis(List.of(
+        new PreviewRestritoBackfillJdbcRepository.Atualizacao(UUID.randomUUID(),
+            "preview.jpg", "v1", OffsetDateTime.now()))))
+        .isInstanceOf(IllegalStateException.class).hasMessageContaining("nao comprovada");
   }
 
   @Test

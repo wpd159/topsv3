@@ -35,6 +35,9 @@ $operationHelper = Read-RepoFile "scripts/deploy/proteger-operacao-production.sh
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
 $ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
 $previewBackfill = Read-RepoFile "scripts/deploy/executar-backfill-previews-production.sh"
+$previewTransition = Read-RepoFile "scripts/deploy/coordenar-transicao-previews-production.sh"
+$previewRuntime = Read-RepoFile "scripts/deploy/validar-transicao-previews-runtime.py"
+$previewPublicSql = Read-RepoFile "scripts/deploy/validar-previews-publicos-production.sql"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
 $ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
@@ -462,6 +465,52 @@ Add-Check "compose preserva shutdown gracioso e timeouts SMTP" (
   ($compose.Contains('OUTBOX_SMTP_CONNECTION_TIMEOUT_MS: "5000"')) -and
   ($compose.Contains('OUTBOX_SMTP_TIMEOUT_MS: "10000"')) -and
   ($compose.Contains('OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"'))
+)
+Add-Check "transicao falha fechada antes de configuracao ou parada" (
+  $workflow.Contains('op_preview_preflight') -and
+  ($workflow.IndexOf('op_preview_preflight') -lt $workflow.IndexOf('op_phase CONFIGURING')) -and
+  $previewRuntime.Contains('source_graceful_configuration_unproven')
+)
+Add-Check "transicao drena depois do build e valida antes da ativacao" (
+  ($workflow.IndexOf('op_phase BUILDING') -lt $workflow.IndexOf('op_preview_drain_and_reconcile')) -and
+  ($workflow.IndexOf('op_preview_drain_and_reconcile') -lt $workflow.IndexOf('op_phase ACTIVATING')) -and
+  $previewTransition.Contains('PLAN:delta APPLY:delta VALIDATE:final') -and
+  $previewTransition.Contains('PUBLIC_CONTRACT')
+)
+Add-Check "backfill supervisiona Docker real e exige receipt de drain" (
+  $previewBackfill.Contains('runner=(op_run mutating)') -and
+  $previewBackfill.Contains('preview-drained.json') -and
+  $previewBackfill.Contains('PREVIEW_APPLY') -and
+  $previewRuntime.Contains('private_before_snapshot_identity_unproven')
+)
+Add-Check "imagem do backfill fica pinada antes de executar" (
+  $previewBackfill.Contains('pinned_compose=(-f') -and
+  $previewBackfill.Contains('--pull never') -and
+  $previewRuntime.Contains('build: !reset null') -and
+  $previewRuntime.Contains('backfill_image_pin_unproven') -and
+  ($previewBackfill.IndexOf('pin "${REPORT_DIR}"') -lt $previewBackfill.IndexOf('"${runner[@]}" env'))
+)
+Add-Check "drenagem nao usa SIGKILL nem apaga ambiguidade" (
+  $previewTransition.Contains('timeout --signal=TERM 150s docker stop --time=-1') -and
+  (-not $previewTransition.Contains('--kill-after')) -and
+  (-not $previewTransition.Contains('OP_AMBIGUOUS=0'))
+)
+Add-Check "gate SQL conserva selecao 4/10 e contrato integral" (
+  $previewPublicSql.Contains('THEN 10 ELSE 4') -and
+  $previewPublicSql.Contains('pf.posicao_foto <= a.limite_fotos') -and
+  $previewPublicSql.Contains('preview_restrito_confirmado_em IS NOT NULL') -and
+  $previewPublicSql.Contains('PUBLIC_PREVIEW_CONTRACT_QUERY_COMPLETE') -and
+  $previewRuntime.Contains('public_contract_totals_inconsistent')
+)
+Add-Check "CI e deploy exercitam transicao e selecao com PostgreSQL" (
+  $workflow.Contains('testar-transicao-previews-production.py') -and
+  $workflow.Contains('testar-gate-previews-publicos-production.sh') -and
+  $ciWorkflow.Contains('testar-transicao-previews-production.py') -and
+  $ciWorkflow.Contains('testar-gate-previews-publicos-production')
+)
+Add-Check "compose aguarda executor de moderacao alem do scheduler" (
+  $compose.Contains('SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION: "true"') -and
+  $compose.Contains('SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION_PERIOD: 120s')
 )
 Add-Check "snapshot Flyway ignora repeatables" (
   ($databaseGateSnapshot.Contains("version ~ '^[0-9]+$'")) -and

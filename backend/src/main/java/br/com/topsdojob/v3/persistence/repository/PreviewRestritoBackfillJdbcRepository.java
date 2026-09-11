@@ -5,6 +5,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,20 +25,64 @@ public class PreviewRestritoBackfillJdbcRepository {
           preview_restrito_status = 'DISPONIVEL',
           preview_restrito_confirmado_em = ?
       WHERE id = ?
-        AND COALESCE(preview_restrito_status, 'DESCONHECIDO')
-            IN ('DESCONHECIDO', 'PENDENTE')
-        AND (preview_restrito_tipo IS NULL
-             OR preview_restrito_tipo = 'PREVIEW_RESTRITO')
-        AND (preview_restrito_chave IS NULL
-             OR preview_restrito_chave = ?)
-        AND (preview_restrito_pipeline_versao IS NULL
-             OR preview_restrito_pipeline_versao = ?)
+        AND preview_restrito_status = 'DESCONHECIDO'
+        AND preview_restrito_tipo IS NULL
+        AND preview_restrito_chave IS NULL
+        AND preview_restrito_pipeline_versao IS NULL
+        AND preview_restrito_confirmado_em IS NULL
       """;
 
   private final JdbcTemplate jdbcTemplate;
 
   public PreviewRestritoBackfillJdbcRepository(JdbcTemplate jdbcTemplate) {
     this.jdbcTemplate = jdbcTemplate;
+  }
+
+  public void limitarEsperaTransacional() {
+    jdbcTemplate.execute("SET LOCAL lock_timeout = '1s'");
+    jdbcTemplate.execute("SET LOCAL statement_timeout = '5s'");
+  }
+
+  /** Fingerprints stay in memory: neither original values nor storage identities are logged. */
+  public Map<UUID, EstadoArquivo> capturarArquivos(Collection<UUID> ids) {
+    if (ids.isEmpty()) return Map.of();
+    String sql = """
+        SELECT ar.id,
+          encode(sha256(convert_to(to_jsonb(ar)::text, 'UTF8')), 'hex') AS completo,
+          encode(sha256(convert_to((to_jsonb(ar) - ARRAY[
+            'preview_restrito_tipo', 'preview_restrito_chave',
+            'preview_restrito_pipeline_versao', 'preview_restrito_status',
+            'preview_restrito_confirmado_em'])::text, 'UTF8')), 'hex') AS nao_preview,
+          ar.preview_restrito_status,
+          (ar.preview_restrito_status = 'DESCONHECIDO'
+            AND ar.preview_restrito_tipo IS NULL AND ar.preview_restrito_chave IS NULL
+            AND ar.preview_restrito_pipeline_versao IS NULL
+            AND ar.preview_restrito_confirmado_em IS NULL) AS metadados_ausentes
+        FROM arquivo_midia ar WHERE ar.id IN (%s) ORDER BY ar.id
+        """.formatted(String.join(",", Collections.nCopies(ids.size(), "?")));
+    Map<UUID, EstadoArquivo> resultado = new LinkedHashMap<>();
+    jdbcTemplate.query(sql, (rs, row) -> new EstadoArquivo(
+        rs.getObject("id", UUID.class), rs.getString("completo"),
+        rs.getString("nao_preview"), rs.getString("preview_restrito_status"),
+        rs.getBoolean("metadados_ausentes")), ids.toArray())
+        .forEach(estado -> resultado.put(estado.arquivoId(), estado));
+    return Map.copyOf(resultado);
+  }
+
+  /** Same whole eligible universe as PLAN, including historical/non-public and FOTO/STORY purpose. */
+  public List<EstadoVinculo> capturarVinculosElegiveis(boolean bloquear) {
+    String sql = """
+        SELECT am.id, am.arquivo_midia_id,
+          encode(sha256(convert_to(to_jsonb(am)::text, 'UTF8')), 'hex') AS completo
+        FROM anuncio_midia am JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+        WHERE am.tipo = 'FOTO' AND am.status = 'PUBLICAVEL'
+          AND am.visibilidade_midia = 'RESTRITA_18'
+          AND ar.status_arquivo = 'VALIDADO' AND lower(ar.mime_type) LIKE 'image/%'
+        ORDER BY am.id
+        """ + (bloquear ? " FOR UPDATE OF am" : "");
+    return jdbcTemplate.query(sql, (rs, row) -> new EstadoVinculo(
+        rs.getObject("id", UUID.class), rs.getObject("arquivo_midia_id", UUID.class),
+        rs.getString("completo")));
   }
 
   public int marcarDisponiveis(List<Atualizacao> atualizacoes) {
@@ -51,8 +99,6 @@ public class PreviewRestritoBackfillJdbcRepository {
             statement.setString(2, atualizacao.pipelineVersao());
             statement.setObject(3, atualizacao.confirmadoEm());
             statement.setObject(4, atualizacao.arquivoId());
-            statement.setString(5, atualizacao.chave());
-            statement.setString(6, atualizacao.pipelineVersao());
           }
 
           @Override
@@ -62,8 +108,10 @@ public class PreviewRestritoBackfillJdbcRepository {
         });
     int atualizados = 0;
     for (int resultado : resultados) {
-      if (resultado == 1 || resultado == Statement.SUCCESS_NO_INFO) {
+      if (resultado == 1) {
         atualizados++;
+      } else if (resultado == Statement.SUCCESS_NO_INFO) {
+        throw new IllegalStateException("Quantidade escrita nao comprovada durante o APPLY");
       }
     }
     return atualizados;
@@ -74,5 +122,13 @@ public class PreviewRestritoBackfillJdbcRepository {
       String chave,
       String pipelineVersao,
       OffsetDateTime confirmadoEm) {
+  }
+
+  public record EstadoArquivo(
+      UUID arquivoId, String completo, String naoPreview, String statusPreview,
+      boolean metadadosAusentes) {
+  }
+
+  public record EstadoVinculo(UUID vinculoId, UUID arquivoId, String completo) {
   }
 }

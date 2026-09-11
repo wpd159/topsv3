@@ -11,6 +11,8 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.PreviewRestritoBackfillJdbcRepository;
 import br.com.topsdojob.v3.persistence.repository.PreviewRestritoBackfillJdbcRepository.Atualizacao;
+import br.com.topsdojob.v3.persistence.repository.PreviewRestritoBackfillJdbcRepository.EstadoArquivo;
+import br.com.topsdojob.v3.persistence.repository.PreviewRestritoBackfillJdbcRepository.EstadoVinculo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDerivadoMidia;
@@ -23,14 +25,20 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Comparator;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class MidiaRestritaRegularizacaoService {
@@ -71,7 +79,7 @@ public class MidiaRestritaRegularizacaoService {
     this.clock = clock;
   }
 
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public Resultado planejar() {
     List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findFotosRestritasPublicaveis(
         TipoAnuncioMidia.FOTO,
@@ -98,19 +106,56 @@ public class MidiaRestritaRegularizacaoService {
       String esperada = previewIdentity.chavePublica(arquivo);
       itens.add(new Item(arquivo, esperada, classificar(arquivo, esperada, listagem)));
     }
-    return Resultado.de(vinculos.size(), arquivos.size(), listagem.paginas(), itens);
+    Snapshot snapshot = new Snapshot(
+        backfillRepository.capturarArquivos(arquivos.keySet()),
+        backfillRepository.capturarVinculosElegiveis(false));
+    if (!snapshot.arquivos().keySet().equals(arquivos.keySet())
+        || !snapshot.arquivos().keySet().equals(snapshot.arquivosDosVinculos())) {
+      throw new IllegalStateException("Snapshot do universo elegivel nao comprovado");
+    }
+    return Resultado.de(vinculos.size(), arquivos.size(), listagem.paginas(), itens)
+        .comSnapshot(snapshot);
   }
 
   @Transactional
   public Aplicacao aplicar(Resultado plano, int batchSize) {
+    return executarAplicacao(plano, batchSize);
+  }
+
+  @Transactional
+  public Aplicacao aplicar(Resultado plano, int batchSize, Consumer<EstadoCommit> observador) {
+    Objects.requireNonNull(observador, "Observador transacional obrigatorio");
+    if (!TransactionSynchronizationManager.isActualTransactionActive()
+        || !TransactionSynchronizationManager.isSynchronizationActive()) {
+      throw new IllegalStateException("APPLY observado exige transacao efetiva");
+    }
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+      @Override
+      public void afterCompletion(int status) {
+        observador.accept(switch (status) {
+          case STATUS_COMMITTED -> EstadoCommit.COMMITTED;
+          case STATUS_ROLLED_BACK -> EstadoCommit.ROLLED_BACK;
+          default -> EstadoCommit.UNKNOWN;
+        });
+      }
+    });
+    return executarAplicacao(plano, batchSize);
+  }
+
+  private Aplicacao executarAplicacao(Resultado plano, int batchSize) {
     validarPlanoComprovado(plano);
     validarBatchSize(batchSize);
+    Snapshot snapshot = exigirSnapshot(plano);
+    backfillRepository.limitarEsperaTransacional();
+    conferirVinculos(snapshot, true);
     OffsetDateTime agora = OffsetDateTime.now(clock);
     int atualizados = 0;
     int inalterados = 0;
     int lotes = 0;
 
-    for (List<Item> lote : particionar(plano.itens(), batchSize)) {
+    List<Item> ordenados = plano.itens().stream()
+        .sorted(Comparator.comparing(item -> item.arquivo().getId().toString())).toList();
+    for (List<Item> lote : particionar(ordenados, batchSize)) {
       lotes++;
       List<UUID> ids = lote.stream().map(item -> item.arquivo().getId()).toList();
       Map<UUID, ArquivoMidiaEntity> bloqueados = arquivoMidiaRepository
@@ -119,13 +164,20 @@ public class MidiaRestritaRegularizacaoService {
       if (bloqueados.size() != ids.size()) {
         throw new IllegalStateException("Arquivo do plano nao encontrado durante o APPLY");
       }
+      Map<UUID, EstadoArquivo> estadosAtuais = backfillRepository.capturarArquivos(ids);
 
       List<Atualizacao> atualizacoes = new ArrayList<>();
       for (Item item : lote) {
         ArquivoMidiaEntity atual = bloqueados.get(item.arquivo().getId());
+        EstadoArquivo anterior = snapshot.arquivos().get(atual.getId());
+        EstadoArquivo estadoAtual = estadosAtuais.get(atual.getId());
+        if (!Objects.equals(anterior, estadoAtual) || !elegivel(atual)
+            || !item.chaveEsperada().equals(previewIdentity.chavePublica(atual))) {
+          throw new IllegalStateException("Fonte, estado ou identidade mudou depois do PLAN");
+        }
         if (previewDisponivelExato(atual, item.chaveEsperada())) {
           inalterados++;
-        } else if (estadoAplicavel(atual, item.chaveEsperada())) {
+        } else if (estadoAtual.metadadosAusentes() && estadoAplicavel(atual)) {
           atualizacoes.add(new Atualizacao(
               atual.getId(),
               item.chaveEsperada(),
@@ -145,10 +197,40 @@ public class MidiaRestritaRegularizacaoService {
       }
       atualizados += aplicados;
     }
+    conferirVinculos(snapshot, false);
+    Map<UUID, EstadoArquivo> depois = backfillRepository.capturarArquivos(snapshot.arquivos().keySet());
+    if (!depois.keySet().equals(snapshot.arquivos().keySet())) {
+      throw new IllegalStateException("Conjunto de arquivos mudou durante o APPLY");
+    }
+    for (EstadoArquivo antes : snapshot.arquivos().values()) {
+      EstadoArquivo atual = depois.get(antes.arquivoId());
+      if (!antes.naoPreview().equals(atual.naoPreview())
+          || (!antes.metadadosAusentes() && !antes.completo().equals(atual.completo()))) {
+        throw new IllegalStateException("Registro regular ou campo nao-preview mudou durante o APPLY");
+      }
+    }
     return new Aplicacao(atualizados, inalterados, lotes);
   }
 
-  @Transactional(readOnly = true)
+  private Snapshot exigirSnapshot(Resultado plano) {
+    Snapshot snapshot = plano.snapshot();
+    Set<UUID> ids = plano.itens().stream().map(item -> item.arquivo().getId())
+        .collect(Collectors.toSet());
+    if (snapshot == null || ids.size() != plano.arquivos()
+        || !ids.equals(snapshot.arquivos().keySet())
+        || !ids.equals(snapshot.arquivosDosVinculos())) {
+      throw new IllegalStateException("APPLY exige snapshot completo do PLAN atual");
+    }
+    return snapshot;
+  }
+
+  private void conferirVinculos(Snapshot snapshot, boolean bloquear) {
+    if (!snapshot.vinculos().equals(backfillRepository.capturarVinculosElegiveis(bloquear))) {
+      throw new IllegalStateException("Universo ou estado dos vinculos mudou depois do PLAN");
+    }
+  }
+
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public Validacao validarPersistencia(Resultado plano, int batchSize) {
     validarPlanoComprovado(plano);
     validarBatchSize(batchSize);
@@ -163,7 +245,8 @@ public class MidiaRestritaRegularizacaoService {
           .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
       for (Item item : lote) {
         ArquivoMidiaEntity arquivo = persistidos.get(item.arquivo().getId());
-        if (arquivo == null) {
+        if (arquivo == null || !elegivel(arquivo)
+            || !item.chaveEsperada().equals(previewIdentity.chavePublica(arquivo))) {
           inconsistentes++;
           continue;
         }
@@ -246,12 +329,12 @@ public class MidiaRestritaRegularizacaoService {
     };
   }
 
-  private boolean estadoAplicavel(ArquivoMidiaEntity arquivo, String chaveEsperada) {
-    return switch (arquivo.getPreviewRestritoStatus()) {
-      case DESCONHECIDO -> estadoDesconhecidoCompativel(arquivo, chaveEsperada);
-      case PENDENTE -> estadoPendenteExato(arquivo, chaveEsperada);
-      case DISPONIVEL, FALHA, REMOVIDO -> false;
-    };
+  private boolean estadoAplicavel(ArquivoMidiaEntity arquivo) {
+    return arquivo.getPreviewRestritoStatus() == StatusDerivadoMidia.DESCONHECIDO
+        && arquivo.getPreviewRestritoTipo() == null
+        && arquivo.getPreviewRestritoChave() == null
+        && arquivo.getPreviewRestritoPipelineVersao() == null
+        && arquivo.getPreviewRestritoConfirmadoEm() == null;
   }
 
   private boolean estadoDesconhecidoCompativel(
@@ -339,7 +422,19 @@ public class MidiaRestritaRegularizacaoService {
       int inconsistentes,
       int naoComprovados,
       int paginasR2,
-      List<Item> itens) {
+      List<Item> itens,
+      Snapshot snapshot) {
+
+    public Resultado(int vinculos, int arquivos, int disponiveis, int ausentes,
+        int inconsistentes, int naoComprovados, int paginasR2, List<Item> itens) {
+      this(vinculos, arquivos, disponiveis, ausentes, inconsistentes, naoComprovados,
+          paginasR2, itens, null);
+    }
+
+    public Resultado comSnapshot(Snapshot estado) {
+      return new Resultado(vinculos, arquivos, disponiveis, ausentes, inconsistentes,
+          naoComprovados, paginasR2, itens, estado);
+    }
 
     static Resultado de(int vinculos, int arquivos, int paginas, List<Item> itens) {
       return new Resultado(
@@ -359,6 +454,19 @@ public class MidiaRestritaRegularizacaoService {
   }
 
   public record Aplicacao(int atualizados, int inalterados, int lotes) {
+  }
+
+  public enum EstadoCommit { NOT_STARTED, UNKNOWN, COMMITTED, ROLLED_BACK }
+
+  public record Snapshot(Map<UUID, EstadoArquivo> arquivos, List<EstadoVinculo> vinculos) {
+    public Snapshot {
+      arquivos = Map.copyOf(arquivos);
+      vinculos = List.copyOf(vinculos);
+    }
+
+    Set<UUID> arquivosDosVinculos() {
+      return vinculos.stream().map(EstadoVinculo::arquivoId).collect(Collectors.toSet());
+    }
   }
 
   public record Validacao(

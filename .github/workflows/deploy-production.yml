@@ -209,6 +209,8 @@ jobs:
           bash ./scripts/deploy/testar-gate-flyway-production.sh
           bash ./scripts/deploy/testar-stdin-deploy-production.sh
           bash ./scripts/deploy/testar-backfill-previews-production.sh
+          python3 ./scripts/deploy/testar-transicao-previews-production.py
+          bash ./scripts/deploy/testar-gate-previews-publicos-production.sh
           for backup_restore_run in $(seq 1 10); do
             bash ./scripts/deploy/testar-backup-validado-production.sh
           done
@@ -444,6 +446,9 @@ jobs:
           env_file=/opt/topsv3/secrets/production.env
           source "${release_dir}/scripts/deploy/proteger-operacao-production.sh"
           op_begin "${deploy_root}" "${release_sha}"
+          source "${release_dir}/scripts/deploy/coordenar-transicao-previews-production.sh"
+          # Must reject an unproven source before IndexNow, Flyway or service changes.
+          op_preview_preflight
           previous_release="$(readlink -f "${deploy_root}/current")"
           previous_sha="$(cat "${previous_release}/.release-sha")"
           postgres_id_before="$(docker inspect topsv3-production-postgres --format '{{.Id}}')"
@@ -587,6 +592,7 @@ jobs:
           op_phase BUILDING
           op_run mutating "${compose[@]}" build backend frontend
           op_expect_candidate
+          op_preview_drain_and_reconcile
           op_phase ACTIVATING
           op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
 
