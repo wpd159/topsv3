@@ -37,7 +37,7 @@ candidate_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 previous_key=INDEXNOW-SYNTHETIC-PREVIOUS
 candidate_key=INDEXNOW-SYNTHETIC-CANDIDATE
 attached=0
-preview_negative_checked=0
+source_observer_checked=0
 touch "$resources"
 record() { printf '%s|%s|%s\n' "$1" "$2" "${3:-$operation_owner_id}" >> "$resources"; }
 cleanup() {
@@ -93,6 +93,7 @@ record container "${prefix}-postgres"
 postgres_id="$("$real_docker" run -d --pull never --name "${prefix}-postgres" \
   --network "$network" --label "topsv3.operation.test=${operation_owner_id}" \
   --volume "${pg_volume}:/var/lib/postgresql/data" --env POSTGRES_HOST_AUTH_METHOD=trust \
+  --env POSTGRES_USER=postgres --env POSTGRES_DB=postgres \
   --health-cmd='pg_isready -U postgres' --health-interval=1s --health-timeout=1s --health-retries=30 \
   postgres:17.10-alpine)"
 deadline=$((SECONDS + 40))
@@ -189,6 +190,21 @@ if [[ "${args[0]:-}" == inspect && "$joined" == *'"com.docker.compose.project"'*
   exit 0
 fi
 if [[ "${args[0]:-}" == exec && "$joined" == *' psql '* ]]; then
+  if [[ "$joined" == *' --set=public_media_prefix=synthetic-public/ '* ]]; then
+    sql_input="$(cat)"
+    [[ "$sql_input" == *'BEGIN READ ONLY;'* && "$sql_input" == *'PUBLIC_PREVIEW_CONTRACT_QUERY_COMPLETE'* \
+       && "$sql_input" == *'ROLLBACK;' ]] || exit 91
+    # Synthetic empty public universe; the real aggregate classifier still runs.
+    for scope in PUBLICO_GALERIA_DTO_SELECIONADO PUBLICO_CARD_DTO_SELECIONADO; do
+      printf '2026-09-11T00:00:00Z\t%s\tTOTAL\tUNIVERSO\t0\t0\t0\t0\n' "$scope"
+      for category in ACEITA_COMPLETO NAO_ACEITA_OU_NAO_COMPROVADO; do
+        printf '2026-09-11T00:00:00Z\t%s\tCONTRATO\t%s\t0\t0\t0\t0\n' "$scope" "$category"
+      done
+    done
+    printf 'PUBLIC_PREVIEW_CONTRACT_QUERY_COMPLETE\n'
+    printf 'CONTROLLED_BOUNDARY preview_public_sql_synthetic\n' >> "$TEST_EVENTS"
+    exit 0
+  fi
   if [[ "$joined" == *' --command '* ]]; then printf '053|0|1\n'; else cat >/dev/null; cat "$TEST_SNAPSHOT"; fi
   printf 'CONTROLLED_BOUNDARY psql\n' >> "$TEST_EVENTS"
   exit 0
@@ -332,7 +348,39 @@ for scenario in "${scenarios[@]}"; do
     cp "$helper" "${script_dir}/validar-gate-banco-production.sh" "${script_dir}/validar-gate-flyway-production.sh" \
       "${script_dir}/capturar-snapshot-gate-banco-production.sql" \
       "${script_dir}/coordenar-transicao-previews-production.sh" \
-      "${script_dir}/validar-transicao-previews-runtime.py" "${release}/scripts/deploy/"
+      "${script_dir}/validar-transicao-previews-runtime.py" \
+      "${script_dir}/validar-previews-publicos-production.sql" "${release}/scripts/deploy/"
+    # Named boundary: the Node image cannot run the Java regularizer. Produce
+    # synthetic VALIDATE journal data, but use a real terminal owned container
+    # and the unchanged runtime terminal/public/cleanup predicates.
+    cat > "${release}/scripts/deploy/executar-backfill-previews-production.sh" <<'SYNTHETIC_VALIDATE_BOUNDARY'
+preview_backfill_main() {
+  [[ "$#" -eq 9 && "$1" == VALIDATE && "$2" == final && "$3" == "$OP_CANDIDATE" \
+     && "$4" == "$OP_ROOT/releases/$OP_CANDIDATE" && "$5" == "$OP_SECRETS/production.env" \
+     && "$6" == topsv3-production && "$7" == topsv3-production && "$8" == topsv3-production-net \
+     && "$9" == "$OP_DIR/previews/validate" ]] || return 91
+  local report="$9" stage
+  JOB_CONTAINER="$TEST_PREFIX-preview-validate-$OP_ID"
+  printf 'CONTROLLED_BOUNDARY preview_validate_synthetic\n' >> "$TEST_EVENTS"
+  printf 'container|%s|%s\n' "$JOB_CONTAINER" "$TEST_OWNER_ID" >> "$TEST_RESOURCES"
+  printf '{"image":"%s"}\n' "$TEST_CANDIDATE_IMAGE" > "$report/image-pin.json"
+  for stage in STARTED PLAN_READY VALIDATION_PASSED SUCCEEDED; do
+    printf '{"stage":"%s","mode":"VALIDATE","commit":"NOT_STARTED"}\n' "$stage"
+  done > "$report/final-validate.tsv.state.jsonl"
+  op_run mutating docker create --pull never --network none --restart no \
+    --name "$JOB_CONTAINER" --label "topsv3.operation.test=$TEST_OWNER_ID" \
+    --label "topsv3.preview.operation=$OP_ID" \
+    --env R2_PUBLIC_MEDIA_PREFIX=synthetic-public/ --env R2_PUBLIC_BASE_URL=https://synthetic.invalid \
+    --entrypoint node "$TEST_CANDIDATE_IMAGE" -e 'process.exit(0)' -- \
+    --app.restricted-media-preview-reconciliation.mode=VALIDATE \
+    --app.restricted-media-preview-reconciliation.apply-confirmed=false >/dev/null || return $?
+  op_run mutating docker start --attach "$JOB_CONTAINER" || return $?
+  op_run readonly python3 "$4/scripts/deploy/validar-transicao-previews-runtime.py" \
+    outcome "$report" "$JOB_CONTAINER" "$OP_ID" VALIDATE final-validate.tsv.state.jsonl || return $?
+  op_run readonly python3 "$4/scripts/deploy/validar-transicao-previews-runtime.py" \
+    terminal "$report" "$JOB_CONTAINER" "$OP_ID" VALIDATE final-validate.tsv.state.jsonl
+}
+SYNTHETIC_VALIDATE_BOUNDARY
     if [[ "$sha" != "$legacy_sha" ]]; then
       mkdir -p "${release}/frontend/src/app/health/liveness" "${release}/frontend/src/app/health/readiness"
       cp "${repo_root}/frontend/src/app/health/liveness/route.ts" "${release}/frontend/src/app/health/liveness/route.ts"
@@ -372,13 +420,13 @@ COMPOSE_SERVICE
   write_snapshot "${case_dir}/database.snapshot" 100 100 70 30 35000 053 UP 1000 500
   sed -i '/^META|health|/d' "${case_dir}/database.snapshot"
   export TEST_ROOT="$test_root" TEST_SCENARIO="$scenario" TEST_SNAPSHOT="${case_dir}/database.snapshot" TEST_EVENTS="${case_dir}/events"
+  export TEST_CANDIDATE_IMAGE="$candidate_image"
   touch "$TEST_EVENTS"
   TOPSV3_RELEASE_SHA="$previous_sha" docker compose --env-file "${secrets}/production.env" \
     -f "${test_root}/releases/${previous_sha}/deploy/production/docker-compose.yml" -p topsv3-production \
     up -d --no-deps --force-recreate --no-build --pull never backend frontend gateway >/dev/null
   before_ids="$("$real_docker" inspect "${prefix}-backend" "${prefix}-frontend" "${prefix}-gateway" --format '{{.Id}}')"
-  # Preserve the complete streamed body for a real, negative transition test.
-  # The Node fixtures do not implement Spring's producer-drain contract.
+  # Extract the complete activation body, changing only the private fixture root.
   section=0 block=none
   while IFS= read -r line; do
     line="${line%$'\r'}"
@@ -393,86 +441,13 @@ COMPOSE_SERVICE
     line="${line//\/opt\/topsv3\/production/$test_root}"
     line="${line//\/opt\/topsv3\/secrets/$secrets}"
     printf '%s\n' "$line"
-  done < "$workflow" > "${case_dir}/activation.full.sh"
-  bash -n "${case_dir}/activation.full.sh"
-  # These existing Docker scenarios cover only core activation and recovery.
-  # Project out exactly the three preview hook lines, never replace real gates
-  # with success stubs. Every other byte and every timing/assertion stays intact.
-  python3 - "${case_dir}/activation.full.sh" "${case_dir}/activation.sh" <<'CORE_SCOPE_PROJECTION'
-import hashlib
-from pathlib import Path
-import sys
-
-source = Path(sys.argv[1]).read_bytes()
-hooks = (
-    b'source "${release_dir}/scripts/deploy/coordenar-transicao-previews-production.sh"\n',
-    b'op_preview_preflight\n',
-    b'op_preview_drain_and_reconcile\n',
-)
-lines = source.splitlines(keepends=True)
-if any(lines.count(hook) != 1 for hook in hooks):
-    raise SystemExit("CORE_SCOPE_ERROR: expected exactly one of each preview hook")
-if any(b"op_preview_" in line and line not in hooks for line in lines):
-    raise SystemExit("CORE_SCOPE_ERROR: unreviewed preview hook")
-positions = [lines.index(hook) for hook in hooks]
-if positions != sorted(positions):
-    raise SystemExit("CORE_SCOPE_ERROR: preview hook order changed")
-projected = b"".join(line for line in lines if line not in hooks)
-with Path(sys.argv[2]).open("xb") as output:
-    output.write(projected)
-print("OPERATION_TEST_SCOPE=core_activation_recovery preview_hooks_removed=3 "
-      "other_bytes_unchanged=true full_sha256=" + hashlib.sha256(source).hexdigest()
-      + " core_sha256=" + hashlib.sha256(projected).hexdigest())
-CORE_SCOPE_PROJECTION
+  done < "$workflow" > "${case_dir}/activation.sh"
   bash -n "${case_dir}/activation.sh"
-  if [[ "$preview_negative_checked" -eq 0 ]]; then
-    identity_before_preflight="$(application_identity)"
-    runtime_before_preflight="$("$real_docker" inspect "${prefix}-backend" "${prefix}-frontend" "${prefix}-gateway" "${prefix}-postgres" \
-      --format '{{.Id}} {{.State.Running}} {{.State.StartedAt}} {{.RestartCount}}')"
-    cp "$TEST_EVENTS" "${case_dir}/preview-events.before"
-    if timeout --kill-after=5s 60s bash "${case_dir}/activation.full.sh" "$candidate_sha" \
-        > "${case_dir}/preview-preflight-negative.log" 2>&1; then
-      fail 'workflow integral aprovou origem Node sem contrato de drenagem'
-    else
-      negative_rc=$?
-    fi
-    [[ "$negative_rc" -eq 1 ]] || fail "preflight negativo: exit=${negative_rc}, esperado=1"
-    grep -Fxq 'PREVIEW_TRANSITION=FAIL reason=source_name_mismatch' "${case_dir}/preview-preflight-negative.log" \
-      || fail 'preflight negativo nao chegou ao predicado real de identidade'
-    negative_state="${test_root}/operations/active.state"
-    for field in result=ABORTED mutated=0 migration_started=0 original_rc=1; do
-      grep -Fxq "$field" "$negative_state" || fail "preflight negativo: journal sem ${field}"
-    done
-    negative_operation="$(sed -n 's/^id=//p' "$negative_state")"
-    cp "$negative_state" "${case_dir}/preview-preflight-negative.state"
-    [[ ! -e "${test_root}/operations/${negative_operation}/previews/preflight/preview-source.json" ]] \
-      || fail 'preflight negativo produziu receipt de aprovacao'
-    [[ ! -e "${test_root}/operations/${negative_operation}/previews/final" ]] \
-      || fail 'preflight negativo alcancou drenagem'
-    [[ ! -e "${test_root}/candidate-runtime" ]] || fail 'preflight negativo ativou candidata'
-    [[ "$(application_identity)" == "$identity_before_preflight" ]] || fail 'preflight negativo alterou imagens/config/current'
-    [[ "$("$real_docker" inspect "${prefix}-backend" "${prefix}-frontend" "${prefix}-gateway" "${prefix}-postgres" \
-      --format '{{.Id}} {{.State.Running}} {{.State.StartedAt}} {{.RestartCount}}')" == "$runtime_before_preflight" ]] \
-      || fail 'preflight negativo parou/reiniciou runtime'
-    [[ "$("$real_docker" inspect "${prefix}-backend" "${prefix}-frontend" "${prefix}-gateway" --format '{{.Id}}')" == "$before_ids" ]] \
-      || fail 'preflight negativo recriou servicos'
-    [[ "$("$real_docker" inspect "${prefix}-postgres" --format '{{.Id}}')" == "$postgres_id" ]] || fail 'preflight negativo alterou PostgreSQL'
-    # op_begin legitimately emits baseline HTTP observations. Preserve the
-    # original log and accept only those two exact trace categories as a delta;
-    # any DB, Compose, utility, restore or unknown event still fails this proof.
-    python3 - "${case_dir}/preview-events.before" "$TEST_EVENTS" <<'PREFLIGHT_EVENT_DELTA'
-from pathlib import Path
-import sys
-
-before, after = (Path(value).read_bytes() for value in sys.argv[1:])
-assert after.startswith(before), "preflight changed original event evidence"
-delta = after[len(before):].splitlines()
-assert all(line.startswith((b"PROBE_TRACE ", b"CONTENT_TRACE ")) for line in delta), \
-    "preflight reached mutating/DB/unknown boundary"
-PREFLIGHT_EVENT_DELTA
-    # The full workflow above rejects the private namespace first. Prove the
-    # independent Node incompatibility with its real inspect, changing only the
-    # explicitly verified fixture Name, never entrypoint, env, signals or state.
+  # Execute the complete workflow. Only the named backfill and SQL boundaries
+  # below are synthetic; no workflow line or public gate is projected away.
+  if [[ "$source_observer_checked" -eq 0 ]]; then
+    # Retain the real Node/source observer regression independently of deployment.
+    # Normalize only the explicitly verified fixture Name, never its runtime.
     "$real_docker" inspect "${prefix}-backend" > "${case_dir}/node-runtime.json"
     python3 - "$script_dir" "${case_dir}/node-runtime.json" "$prefix" <<'NODE_SOURCE_REJECTION'
 import importlib.util
@@ -494,8 +469,7 @@ else:
     raise AssertionError("real Node fixture accepted as a Spring source")
 print("PREVIEW_NODE_SOURCE_REJECTION=PASS real_inspect=true name_only_normalized=true")
 NODE_SOURCE_REJECTION
-    printf 'PREVIEW_FULL_WORKFLOW_NEGATIVE=PASS result=ABORTED mutated=0 original_rc=1 receipts=0 runtime_unchanged=true\n'
-    preview_negative_checked=1
+    source_observer_checked=1
   fi
   started=$SECONDS
   case_timeout=220
@@ -504,6 +478,9 @@ NODE_SOURCE_REJECTION
   expected=1
   [[ "$scenario" != success && "$scenario" != benign_success ]] || expected=0
   [[ "$rc" -eq "$expected" ]] || fail "${scenario}: exit=${rc}, esperado=${expected}"
+  [[ "$(grep -c '^CONTROLLED_BOUNDARY preview_validate_synthetic$' "$TEST_EVENTS")" -eq 1 ]] || fail 'VALIDATE sintetico nao foi executado exatamente uma vez'
+  [[ "$(grep -c '^CONTROLLED_BOUNDARY preview_public_sql_synthetic$' "$TEST_EVENTS")" -eq 1 ]] || fail 'gate publico real nao consultou a fronteira SQL exatamente uma vez'
+  grep -Fxq 'PREVIEW_TRANSITION_READY=PASS readonly=true' "${work_dir}/last-operation.log" || fail 'gate readonly nao concluiu antes da ativacao'
   [[ -s "${test_root}/candidate-runtime" ]] || fail 'candidata nunca alterou os tres servicos'
   [[ "$(wc -l < "${test_root}/candidate-runtime")" -eq 3 ]] || fail 'nao observou troca de tres servicos'
   grep -Fq "$candidate_image" "${test_root}/candidate-runtime" || fail 'runtime nunca usou imagem candidata'
@@ -521,6 +498,8 @@ NODE_SOURCE_REJECTION
     grep -q 'LOCALIDADES_REQUEST' <<< "$backend_logs" || fail 'frontend nao consultou backend/localidades'
   fi
   operation_id="$(sed -n 's/^id=//p' "${test_root}/operations/active.state")"
+  preview_remaining="$("$real_docker" container ls --all --quiet --filter "label=topsv3.preview.operation=${operation_id}")" || fail 'ausencia do job VALIDATE nao comprovada'
+  [[ -z "$preview_remaining" ]] || fail 'job VALIDATE proprio permaneceu depois do gate'
   snapshot="${test_root}/operations/${operation_id}"
   [[ "$(stat -c '%u %a' "${snapshot}/env.copy")" == "${EUID} 600" ]] || fail 'snapshot nao pertence ao UID nao-zero com modo0600'
   if [[ "$scenario" == *benign* ]]; then
@@ -667,5 +646,5 @@ NODE_SOURCE_REJECTION
     "$scenario" "$((SECONDS - started))" "$EUID" "$previous_image" "$candidate_image" "$previous_image"
 done
 sha256sum "$helper" "$workflow"
-echo 'OPERATION_TEST_COVERAGE core=real_containers transition=negative_only positive_transition=separate_coordinator_fixture'
+echo 'OPERATION_TEST_COVERAGE core=real_containers workflow=integral backfill=synthetic_validate sql=synthetic_aggregate public_predicate=real no_real_spring_or_storage_claim=true'
 echo 'PRODUCTION_OPERATION_CONTAINER_TESTS=PASS'

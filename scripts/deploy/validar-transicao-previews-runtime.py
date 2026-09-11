@@ -276,58 +276,182 @@ def check_journal(events, mode):
                "backfill_commit_sequence_unproven")
 
 
-def terminal(directory, container, operation, mode, journal_name):
-    runtime = inspect(container)
-    state = runtime["State"]
+def owned_job(directory, container, operation, runtime=None):
+    if runtime is None:
+        runtime = inspect(container)
     demand(runtime["Config"]["Labels"].get("topsv3.preview.operation") == operation,
            "backfill_owner_mismatch")
-    images = (Path(directory).parents[1] / "candidate.images.tsv").read_text().splitlines()
-    backend = [line.split("\t") for line in images if line.startswith("backend\t")]
-    demand(len(backend) == 1 and runtime["Image"] == backend[0][1]
-           and runtime["Config"]["Image"] == backend[0][1], "backfill_candidate_image_mismatch")
-    demand(not state["Running"] and not state.get("Restarting") and not state.get("Paused")
-           and not state.get("OOMKilled") and state["ExitCode"] == 0, "backfill_not_terminal_success")
-    demand(re.fullmatch(r"(initial|delta|final)-(plan|apply|validate)\.tsv\.state\.jsonl", journal_name),
+    pin_path = Path(directory) / "image-pin.json"
+    demand(pin_path.is_file() and not pin_path.is_symlink(), "backfill_image_pin_absent")
+    pinned = json.loads(pin_path.read_text(encoding="utf-8"))["image"]
+    demand(re.fullmatch(r"sha256:[a-f0-9]{64}", pinned), "candidate_image_id_invalid")
+    demand(runtime["Image"] == pinned and runtime["Config"]["Image"] == pinned,
+           "backfill_candidate_image_mismatch")
+    demand(runtime["HostConfig"]["RestartPolicy"]["Name"] == "no",
+           "backfill_restart_policy_unproven")
+    return runtime
+
+
+def read_journal(directory, mode, journal_name):
+    demand(mode in ("PLAN", "APPLY", "VALIDATE") and
+           re.fullmatch(r"(initial|delta|final)-" + mode.lower() + r"\.tsv\.state\.jsonl", journal_name),
            "backfill_journal_path_invalid")
     journal = Path(directory) / journal_name
     demand(journal.is_file() and not journal.is_symlink(), "backfill_journal_absent")
     contents = journal.read_text(encoding="utf-8")
+    demand(contents.endswith("\n"), "backfill_journal_incomplete")
     events = [json.loads(line) for line in contents.splitlines()]
+    demand(bool(events), "backfill_journal_empty")
+    return contents, events
+
+
+def before_identity(directory, journal_name, events):
+    before_path = Path(directory) / (journal_name.removesuffix(".state.jsonl") + ".before.json")
+    demand(before_path.is_file() and not before_path.is_symlink(), "private_before_snapshot_absent")
+    before_digest = hashlib.sha256(before_path.read_bytes()).hexdigest()
+    captured = [index for index, event in enumerate(events) if event["stage"] == "BEFORE_CAPTURED"]
+    demand(len(captured) == 1 and all(event.get("before_sha256") == before_digest
+           for event in events[captured[0]:]), "private_before_snapshot_identity_unproven")
+    return before_digest
+
+
+def terminal(directory, container, operation, mode, journal_name):
+    runtime = owned_job(directory, container, operation)
+    state = runtime["State"]
+    demand(not state["Running"] and not state.get("Restarting") and not state.get("Paused")
+           and not state.get("OOMKilled") and state["ExitCode"] == 0, "backfill_not_terminal_success")
+    contents, events = read_journal(directory, mode, journal_name)
     check_journal(events, mode)
     if mode == "APPLY":
-        before_path = Path(directory) / journal_name.removesuffix(".state.jsonl")
-        before_path = Path(str(before_path) + ".before.json")
-        demand(before_path.is_file() and not before_path.is_symlink(), "private_before_snapshot_absent")
-        before_digest = hashlib.sha256(before_path.read_bytes()).hexdigest()
-        captured = [event for event in events if event["stage"] == "BEFORE_CAPTURED"]
-        demand(len(captured) == 1 and captured[0].get("before_sha256") == before_digest
-               and events[-1].get("before_sha256") == before_digest, "private_before_snapshot_identity_unproven")
+        before_identity(directory, journal_name, events)
     emit_file(directory, "container-terminal.json", {"id": runtime["Id"], "image": runtime["Image"],
               "exit_code": state["ExitCode"], "finished_at": state["FinishedAt"], "operation": operation,
-              "journal_sha256": digest(contents)})
+              "mode": mode, "journal_name": journal_name,
+              "journal_sha256": digest(contents), "commit": events[-1]["commit"]})
     print("PREVIEW_JOB_TERMINAL=PASS")
+
+
+def journal_outcome(events, mode):
+    """Accept only a complete runner prefix, optionally followed by FAILED.
+
+    A post-commit validation/close error remains COMMITTED. An interrupted
+    APPLY_STARTED observation remains UNKNOWN, never permission to retry.
+    """
+    stages = [("STARTED", "NOT_STARTED"), ("PLAN_READY", "NOT_STARTED")]
+    if mode == "APPLY":
+        stages += [("BEFORE_CAPTURED", "NOT_STARTED"), ("APPLY_STARTED", "UNKNOWN"),
+                   ("APPLY_FINISHED", "COMMITTED")]
+    final_commit = "COMMITTED" if mode == "APPLY" else "NOT_STARTED"
+    if mode != "PLAN":
+        stages += [("VALIDATION_PASSED", final_commit)]
+    stages += [("SUCCEEDED", final_commit)]
+    commit = "NOT_STARTED"
+    for index, event in enumerate(events):
+        demand(event["mode"] == mode, "backfill_journal_mode_mismatch")
+        if event["stage"] == "FAILED":
+            permitted = {commit}
+            if mode == "APPLY" and commit == "UNKNOWN":
+                permitted |= {"COMMITTED", "ROLLED_BACK"}
+            demand(index == len(events) - 1 and event["commit"] in permitted,
+                   "backfill_failure_commit_unproven")
+            return event["commit"]
+        demand(index < len(stages) and (event["stage"], event["commit"]) == stages[index],
+               "backfill_journal_sequence_unproven")
+        commit = event["commit"]
+    return commit
+
+
+def outcome(directory, container, operation, mode, journal_name):
+    """Best-effort evidence, not a success gate or automatic retry authority."""
+    value = {"operation": operation, "mode": mode, "commit": "UNKNOWN", "terminal": False,
+             "identity_verified": False, "retry_allowed": False}
+    # Preserve hashes even if the independent container observation fails.
+    try:
+        contents, events = read_journal(directory, mode, journal_name)
+        value["journal_sha256"] = digest(contents)
+        commit = journal_outcome(events, mode)
+        if mode == "APPLY" and any(event["stage"] == "BEFORE_CAPTURED" for event in events):
+            value["before_sha256"] = before_identity(directory, journal_name, events)
+        runtime = owned_job(directory, container, operation)
+        state = runtime["State"]
+        value.update(identity_verified=True, id=runtime["Id"], image=runtime["Image"],
+                     exit_code=state["ExitCode"], finished_at=state["FinishedAt"])
+        value["terminal"] = not (state["Running"] or state.get("Restarting") or state.get("Paused"))
+        if value["terminal"]:
+            value["commit"] = commit
+    except Exception as error:
+        value["reason"] = str(error) if isinstance(error, RuntimeError) else "observation_failed"
+    emit_file(directory, "outcome.json", value)
+    print("PREVIEW_JOB_OUTCOME=" + value["commit"] + " terminal=" + str(value["terminal"]).lower())
+
+
+def readonly_validate_job(runtime):
+    arguments = runtime["Config"].get("Cmd", [])
+    for name, value in (("mode", "VALIDATE"), ("apply-confirmed", "false")):
+        flag = "--app.restricted-media-preview-reconciliation." + name + "="
+        demand([argument for argument in arguments if argument.startswith(flag)] == [flag + value],
+               "cleanup_readonly_validate_unproven")
+
+
+def cleanup_proof(directory, container, operation):
+    """Prove one owned readonly VALIDATE job removable; never remove it here.
+
+    Failed validation is not failed cleanup: a terminal, non-restarting readonly
+    job can be removed while its private journal and original error are retained.
+    An inspect error alone never establishes that the job is absent.
+    """
+    demand(re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,127}", container), "cleanup_container_name_invalid")
+    demand(re.fullmatch(r"[a-f0-9-]{36}", operation), "cleanup_operation_invalid")
+    try:
+        runtime = inspect(container)
+    except Exception:
+        remaining = call(["docker", "container", "ls", "--all", "--quiet", "--no-trunc",
+                          "--filter", "name=^/" + re.escape(container) + "$"])
+        demand(not remaining.strip(), "cleanup_absence_unproven")
+        emit_file(directory, "cleanup-proof.json", {"operation": operation, "container": container,
+                  "decision": "ABSENT", "observation": "successful_exact_container_list"})
+        print("PREVIEW_JOB_CLEANUP=ABSENT")
+        return
+    owned_job(directory, container, operation, runtime)
+    demand(runtime["Name"] == "/" + container and re.fullmatch(r"[a-f0-9]{64}", runtime["Id"]),
+           "cleanup_container_identity_unproven")
+    readonly_validate_job(runtime)
+    state = runtime["State"]
+    demand(not (state["Running"] or state.get("Restarting") or state.get("Paused")),
+           "cleanup_job_not_terminal")
+    emit_file(directory, "cleanup-proof.json", {"decision": "REMOVE", "operation": operation,
+              "id": runtime["Id"], "image": runtime["Image"], "mode": "VALIDATE",
+              "exit_code": state["ExitCode"], "finished_at": state["FinishedAt"]})
+    print("PREVIEW_JOB_CLEANUP=REMOVE id=" + runtime["Id"])
 
 
 def validate_pin(config, image):
     service = config["services"]["backend"]
     demand(service.get("image") == image and service.get("build") is None
-           and service.get("pull_policy") == "never", "backfill_image_pin_unproven")
+           and service.get("pull_policy") == "never" and service.get("restart") == "no",
+           "backfill_image_pin_unproven")
 
 
-def pin(directory, sha, compose_file, env_file, project, prefix, network):
+def pin(directory, sha, compose_file, env_file, project, prefix, network, physical=""):
     demand(re.fullmatch(r"[a-f0-9]{40}", sha), "candidate_sha_invalid")
-    images = (Path(directory).parents[1] / "candidate.images.tsv").read_text().splitlines()
-    backend = [line.split("\t") for line in images if line.startswith("backend\t")]
-    demand(len(backend) == 1 and backend[0][2] == PREFIX + "backend:" + sha,
-           "candidate_image_snapshot_invalid")
-    physical = backend[0][1]
+    reference = prefix + "-backend:" + sha
+    origin = "explicit" if physical else "operation_snapshot"
+    if not physical:
+        images = (Path(directory).parents[1] / "candidate.images.tsv").read_text().splitlines()
+        backend = [line.split("\t") for line in images if line.startswith("backend\t")]
+        demand(len(backend) == 1 and backend[0][2] == reference,
+               "candidate_image_snapshot_invalid")
+        physical = backend[0][1]
     demand(re.fullmatch(r"sha256:[a-f0-9]{64}", physical), "candidate_image_id_invalid")
     observed = call(["docker", "image", "inspect", physical, "--format", "{{.Id}}"])
     demand(observed.strip() == physical, "candidate_physical_image_unavailable")
+    evaluated = call(["docker", "image", "inspect", reference, "--format", "{{.Id}}"])
+    demand(evaluated.strip() == physical, "candidate_reference_image_mismatch")
     target = Path(directory) / "pinned-backfill.compose.yml"
     # No resolved environment/credentials are copied. !reset is deliberately
     # verified below: unsupported Compose must reject before running any job.
-    payload = 'services:\n  backend:\n    image: "' + physical + '"\n    build: !reset null\n    pull_policy: never\n'
+    payload = ('services:\n  backend:\n    image: "' + physical +
+               '"\n    build: !reset null\n    pull_policy: never\n    restart: "no"\n')
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(payload)
@@ -340,7 +464,8 @@ def pin(directory, sha, compose_file, env_file, project, prefix, network):
             "-p", project, "config", "--format", "json"]
     config = json.loads(call(args))
     validate_pin(config, physical)
-    emit_file(directory, "image-pin.json", {"image": physical, "override_sha256": digest(payload)})
+    emit_file(directory, "image-pin.json", {"image": physical, "sha": sha, "reference": reference,
+              "origin": origin, "override_sha256": digest(payload)})
     print("PREVIEW_IMAGE_PIN=PASS")
 
 
@@ -373,12 +498,30 @@ def check_aggregate(output):
 
 
 def public_gate(directory, sql_path, container):
-    candidate = inspect(container)
-    receipt = json.loads((Path(directory) / "validate" / "container-terminal.json").read_text())
+    report = Path(directory) / "validate"
+    proofs = []
+    for name in ("container-terminal.json", "outcome.json"):
+        target = report / name
+        demand(target.is_file() and not target.is_symlink(), "validate_receipt_absent")
+        proofs.append(json.loads(target.read_text(encoding="utf-8")))
+    receipt, observed = proofs
+    demand(receipt["mode"] == "VALIDATE" and receipt["commit"] == "NOT_STARTED",
+           "validate_success_receipt_unproven")
+    candidate = owned_job(str(report), container, receipt["operation"])
+    readonly_validate_job(candidate)
     demand(candidate["Id"] == receipt["id"] and candidate["Image"] == receipt["image"],
            "validate_container_identity_changed")
-    demand(not candidate["State"]["Running"] and candidate["State"]["ExitCode"] == 0,
+    state = candidate["State"]
+    demand(not (state["Running"] or state.get("Restarting") or state.get("Paused") or state.get("OOMKilled"))
+           and state["ExitCode"] == 0 and state["FinishedAt"] == receipt["finished_at"],
            "validate_container_not_terminal")
+    demand(observed["identity_verified"] is True and observed["terminal"] is True
+           and all(observed[field] == receipt[field] for field in
+                   ("id", "image", "operation", "mode", "commit", "journal_sha256", "finished_at"))
+           and observed["exit_code"] == receipt["exit_code"] == 0, "validate_outcome_unproven")
+    contents, events = read_journal(str(report), "VALIDATE", receipt["journal_name"])
+    check_journal(events, "VALIDATE")
+    demand(digest(contents) == receipt["journal_sha256"], "validate_journal_identity_changed")
     env = environment(candidate)
     prefix, base = env.get("R2_PUBLIC_MEDIA_PREFIX", ""), env.get("R2_PUBLIC_BASE_URL", "")
     demand(prefix.strip() and base.strip(), "candidate_preview_configuration_absent")
@@ -399,7 +542,7 @@ if __name__ == "__main__":
     try:
         action, *arguments = sys.argv[1:]
         {"preflight": preflight, "stopped": stopped, "terminal": terminal,
-         "public": public_gate, "pin": pin}[action](*arguments)
+         "public": public_gate, "pin": pin, "outcome": outcome, "cleanup-proof": cleanup_proof}[action](*arguments)
     except Exception as error:
         # No subprocess stderr/configuration values reach runner logs.
         reason = str(error) if isinstance(error, RuntimeError) else "observation_failed"

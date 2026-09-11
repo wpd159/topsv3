@@ -466,32 +466,69 @@ Add-Check "compose preserva shutdown gracioso e timeouts SMTP" (
   ($compose.Contains('OUTBOX_SMTP_TIMEOUT_MS: "10000"')) -and
   ($compose.Contains('OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"'))
 )
-Add-Check "transicao falha fechada antes de configuracao ou parada" (
-  $workflow.Contains('op_preview_preflight') -and
-  ($workflow.IndexOf('op_preview_preflight') -lt $workflow.IndexOf('op_phase CONFIGURING')) -and
-  $previewRuntime.Contains('source_graceful_configuration_unproven')
+Add-Check "workflow nao exige drenagem global nem executa regularizacao mutante" (
+  (-not $workflow.Contains('op_preview_preflight')) -and
+  (-not $workflow.Contains('op_preview_drain_and_reconcile')) -and
+  (-not $previewTransition.Contains('APPLY:delta')) -and
+  $previewTransition.Contains('preview_backfill_main VALIDATE final')
 )
-Add-Check "transicao drena depois do build e valida antes da ativacao" (
-  ($workflow.IndexOf('op_phase BUILDING') -lt $workflow.IndexOf('op_preview_drain_and_reconcile')) -and
-  ($workflow.IndexOf('op_preview_drain_and_reconcile') -lt $workflow.IndexOf('op_phase ACTIVATING')) -and
-  $previewTransition.Contains('PLAN:delta APPLY:delta VALIDATE:final') -and
-  $previewTransition.Contains('PUBLIC_CONTRACT')
+Add-Check "transicao valida metadados e contrato publico antes da ativacao" (
+  $workflow.Contains('op_preview_validate_before_activation') -and
+  ($workflow.IndexOf('op_expect_candidate') -lt $workflow.IndexOf('op_preview_validate_before_activation')) -and
+  ($workflow.IndexOf('op_preview_validate_before_activation') -lt $workflow.IndexOf('op_phase ACTIVATING')) -and
+  $previewTransition.Contains('candidate.images.tsv') -and
+  $previewTransition.Contains('op_run readonly python3 "${OP_PREVIEW_HELPER}" public') -and
+  $previewTransition.Contains('[ "${rc}" -eq 0 ] || return "${rc}"')
 )
-Add-Check "backfill supervisiona Docker real e exige receipt de drain" (
-  $previewBackfill.Contains('runner=(op_run mutating)') -and
-  $previewBackfill.Contains('preview-drained.json') -and
-  $previewBackfill.Contains('PREVIEW_APPLY') -and
+$previewMain = Read-ShellFunction $previewBackfill 'preview_backfill_main'
+$previewRun = Read-ShellFunction $previewBackfill 'run_backfill'
+$previewLock = Read-ShellFunction $previewBackfill 'standalone_lock'
+$previewExit = Read-ShellFunction $previewBackfill 'on_exit'
+$previewCleanup = Read-ShellFunction $previewBackfill 'cleanup_job'
+Add-Check "APPLY independente exige confirmacao explicita do SHA e preserva supervisor readonly" (
+  $previewRun.Contains('runner=(op_run mutating)') -and
+  $previewMain.Contains('[ "${OP_ACTIVE:-0}" -ne 1 ]') -and
+  $previewMain.Contains('[ "${TOPSV3_PREVIEW_BACKFILL_CONFIRM:-}" = "APPLY:${RELEASE_SHA}" ]') -and
+  $previewRun.Contains('[ "${TOPSV3_PREVIEW_BACKFILL_CONFIRM:-}" = "APPLY:${RELEASE_SHA}" ]') -and
+  $previewRun.Contains('local apply_confirmed=false') -and
+  (-not $previewMain.Contains('preview-drained.json')) -and
   $previewRuntime.Contains('private_before_snapshot_identity_unproven')
+)
+Add-Check "backfill independente compartilha mutex e bloqueia operacao sem resultado apurado" (
+  $previewLock.Contains('_op_lock "${root}"') -and
+  $previewLock.Contains('_op_validate_state "${state}"') -and
+  $previewLock.Contains('docker ps --all --quiet --filter label=topsv3.preview.operation') -and
+  $previewRun.Contains('operations/preview-backfill.pending') -and
+  $previewRun.Contains('set -o noclobber') -and
+  $operationHelper.Contains('operations/preview-backfill.pending') -and
+  ($previewRun.IndexOf('set -o noclobber') -lt $previewRun.IndexOf('"${runner[@]}" env'))
+)
+Add-Check "backfill observa journal antes de aceitar terminal e nao limpa falha automaticamente" (
+  $previewMain.Contains('outcome "${REPORT_DIR}"') -and
+  $previewMain.Contains('terminal "${REPORT_DIR}"') -and
+  ($previewMain.IndexOf('outcome "${REPORT_DIR}"') -lt $previewMain.IndexOf('terminal "${REPORT_DIR}"')) -and
+  $previewMain.Contains('[ "${rc}" -eq 0 ] || return "${rc}"') -and
+  $previewExit.Contains('[ "${JOB_VERIFIED:-0}" -eq 1 ] && [ "${rc}" -eq 0 ]') -and
+  $previewExit.Contains('retry_allowed=false') -and
+  $previewCleanup.Contains('terminal_success_unproven') -and
+  $previewCleanup.Contains('"${actual_owner}" != "${JOB_OWNER}"') -and
+  (-not $previewCleanup.Contains('docker stop'))
 )
 Add-Check "imagem do backfill fica pinada antes de executar" (
   $previewBackfill.Contains('pinned_compose=(-f') -and
+  $previewMain.Contains('TOPSV3_PREVIEW_BACKFILL_IMAGE_ID:-') -and
+  $previewRun.Contains('pin_arguments=("${TOPSV3_PREVIEW_BACKFILL_IMAGE_ID}")') -and
   $previewBackfill.Contains('--pull never') -and
   $previewRuntime.Contains('build: !reset null') -and
   $previewRuntime.Contains('backfill_image_pin_unproven') -and
   ($previewBackfill.IndexOf('pin "${REPORT_DIR}"') -lt $previewBackfill.IndexOf('"${runner[@]}" env'))
 )
-Add-Check "drenagem nao usa SIGKILL nem apaga ambiguidade" (
-  $previewTransition.Contains('timeout --signal=TERM 150s docker stop --time=-1') -and
+Add-Check "gate readonly limpa somente job terminal comprovado e preserva ambiguidade" (
+  $previewTransition.Contains('cleanup-proof') -and
+  $previewTransition.Contains('op_run mutating docker rm "${identifier}"') -and
+  $previewTransition.Contains('op_preview_cleanup_validate "${report}" || cleanup_rc=$?') -and
+  $previewTransition.Contains('OP_AMBIGUOUS=1') -and
+  (-not $previewTransition.Contains('docker stop')) -and
   (-not $previewTransition.Contains('--kill-after')) -and
   (-not $previewTransition.Contains('OP_AMBIGUOUS=0'))
 )

@@ -38,7 +38,9 @@ result_value() {
 
 cleanup_job() {
   local container_id actual_owner
-  if [ -n "${JOB_CONTAINER:-}" ] && docker inspect "${JOB_CONTAINER}" >/dev/null 2>&1; then
+  if [ -n "${JOB_CONTAINER:-}" ]; then
+    # An inspect error is not proof that the owned job disappeared.
+    docker inspect "${JOB_CONTAINER}" >/dev/null 2>&1 || return 1
     container_id="$(docker inspect "${JOB_CONTAINER}" --format '{{.Id}}')" || return 1
     [[ "${container_id}" =~ ^[a-f0-9]{64}$ ]] || return 1
     actual_owner="$(docker inspect "${container_id}" --format '{{index .Config.Labels "topsv3.preview.operation"}}')" || return 1
@@ -46,39 +48,84 @@ cleanup_job() {
       log "CLEANUP=DEFERRED reason=ownership_unproven"
       return 1
     fi
-    if [ "$(docker inspect "${container_id}" --format '{{.State.Running}}')" = true ]; then
-      docker stop --time 180 "${container_id}" >/dev/null || {
-        log "CLEANUP=DEFERRED reason=graceful_shutdown_failed"
-        return 1
-      }
-    fi
+    [ "${JOB_VERIFIED:-0}" -eq 1 ] \
+      && [ "$(docker inspect "${container_id}" --format '{{.State.Running}}')" = false ] \
+      || { log "CLEANUP=DEFERRED reason=terminal_success_unproven"; return 1; }
     [ "$(docker inspect "${container_id}" --format '{{index .Config.Labels "topsv3.preview.operation"}}')" = "${JOB_OWNER}" ] || return 1
     docker rm "${container_id}" >/dev/null || return 1
+  else
+    return 1
   fi
 }
 
 on_exit() {
   local rc=$?
   rm -f -- "${RAW_OUTPUT:-}"
-  if ! cleanup_job; then
-    [ "${rc}" -ne 0 ] || rc=1
+  if [ "${JOB_VERIFIED:-0}" -eq 1 ] && [ "${rc}" -eq 0 ]; then
+    if cleanup_job; then
+      if [ -n "${PENDING_FILE:-}" ]; then
+        [ "$(head -1 -- "${PENDING_FILE}")" = "${JOB_OWNER}" ] \
+          && rm -- "${PENDING_FILE}" || rc=1
+      fi
+    else
+      rc=1
+    fi
+  elif [ -n "${PENDING_FILE:-}" ]; then
+    log "CLEANUP=DEFERRED reason=operation_requires_investigation retry_allowed=false"
   fi
   exit "${rc}"
 }
 
+standalone_lock() {
+  # Reuse the exact mutex of activation/recovery, not a caller-selected lock.
+  local root state result existing
+  root="$(dirname -- "$(dirname -- "${RELEASE_DIR}")")"
+  [ "${root}" = /opt/topsv3/production ] \
+    && [ "${RELEASE_DIR}" = "${root}/releases/${RELEASE_SHA}" ] \
+    && [ "$(cat "${RELEASE_DIR}/.release-sha")" = "${RELEASE_SHA}" ] \
+    || { fail "identidade da release independente divergente"; return 1; }
+  source "${RELEASE_DIR}/scripts/deploy/proteger-operacao-production.sh"
+  _op_lock "${root}" || return $?
+  state="${OP_ROOT}/operations/active.state"
+  if [ -e "${state}" ]; then
+    _op_validate_state "${state}" || { fail "journal de deploy invalido"; return 1; }
+    result="$(_op_read result "${state}")" || return 1
+    case "${result}" in COMPLETED|ROLLED_BACK|ABORTED|RECONCILED) ;;
+      *) fail "operacao de deploy pendente"; return 1 ;;
+    esac
+  fi
+  [ "$(readlink -f -- "${ENV_FILE}")" = "${OP_SECRETS}/production.env" ] \
+    && [ "${COMPOSE_PROJECT}" = topsv3-production ] \
+    && [ "${APP_PREFIX}" = topsv3-production ] \
+    && [ "${APP_NETWORK}" = topsv3-production-net ] \
+    || { fail "destino independente nao canonico"; return 1; }
+  existing="$(docker ps --all --quiet --filter label=topsv3.preview.operation)" || return 1
+  [ -z "${existing}" ] || { fail "job de previews preexistente; apuracao obrigatoria"; return 1; }
+}
+
 run_backfill() {
   local apply_confirmed=false
-  [ "${MODE}" = APPLY ] && apply_confirmed=true
-  local -a runner=() lifecycle=(--rm) ownership=(--label "topsv3.preview.operation=${JOB_OWNER}")
-  local -a pinned_compose=()
+  if [ "${MODE}" = APPLY ]; then
+    [ "${TOPSV3_PREVIEW_BACKFILL_CONFIRM:-}" = "APPLY:${RELEASE_SHA}" ] || return 1
+    apply_confirmed=true
+  fi
+  local -a runner=() ownership=(--label "topsv3.preview.operation=${JOB_OWNER}")
+  local -a pin_arguments=() pinned_compose=(-f "${REPORT_DIR}/pinned-backfill.compose.yml")
   if [ "${OP_ACTIVE:-0}" -eq 1 ]; then
     declare -F op_run >/dev/null || { fail "supervisor da operacao ausente"; return 1; }
     runner=(op_run mutating)
-    lifecycle=()
-    python3 "${RELEASE_DIR}/scripts/deploy/validar-transicao-previews-runtime.py" \
-      pin "${REPORT_DIR}" "${RELEASE_SHA}" "${COMPOSE_FILE}" "${ENV_FILE}" \
-      "${COMPOSE_PROJECT}" "${APP_PREFIX}" "${APP_NETWORK}" || return $?
-    pinned_compose=(-f "${REPORT_DIR}/pinned-backfill.compose.yml")
+  else
+    pin_arguments=("${TOPSV3_PREVIEW_BACKFILL_IMAGE_ID}")
+  fi
+  python3 "${RELEASE_DIR}/scripts/deploy/validar-transicao-previews-runtime.py" \
+    pin "${REPORT_DIR}" "${RELEASE_SHA}" "${COMPOSE_FILE}" "${ENV_FILE}" \
+    "${COMPOSE_PROJECT}" "${APP_PREFIX}" "${APP_NETWORK}" "${pin_arguments[@]}" || return $?
+  if [ "${OP_ACTIVE:-0}" -ne 1 ]; then
+    PENDING_FILE="${OP_ROOT}/operations/preview-backfill.pending"
+    # Persist intent before Docker can detach. Keep it on ALL failed outcomes;
+    # neither a new report directory nor a lost CLI authorizes a second APPLY.
+    (umask 077; set -o noclobber; printf '%s\n' "${JOB_OWNER}" "${RELEASE_SHA}" "${MODE}" "${REPORT_DIR}" > "${PENDING_FILE}") || return 1
+    sync -f "${PENDING_FILE}" || return 1
   fi
   set +e
   "${runner[@]}" env \
@@ -94,7 +141,7 @@ run_backfill() {
       -f "${COMPOSE_FILE}" \
       "${pinned_compose[@]}" \
       -p "${COMPOSE_PROJECT}" \
-      run "${lifecycle[@]}" -T --no-deps \
+      run -T --no-deps \
       --pull never \
       "${ownership[@]}" \
       --name "${JOB_CONTAINER}" \
@@ -183,11 +230,13 @@ preview_backfill_main() {
 
   [[ "${MODE}" =~ ^(PLAN|APPLY|VALIDATE)$ ]] || { fail "modo invalido"; return 2; }
   if [ "${MODE}" = APPLY ]; then
-    [ "${OP_ACTIVE:-0}" -eq 1 ] && [ "${OP_SNAPSHOT_READY:-0}" -eq 1 ] \
-      && [ "${OP_PHASE:-}" = PREVIEW_APPLY ] \
-      && [ -f "${OP_PREVIEW_DIR:-}/final/preview-drained.json" ] \
-      && declare -F op_run >/dev/null \
-      || { fail "APPLY exige coordenacao e drenagem comprovada da mesma operacao"; return 1; }
+    [ "${OP_ACTIVE:-0}" -ne 1 ] \
+      && [ "${TOPSV3_PREVIEW_BACKFILL_CONFIRM:-}" = "APPLY:${RELEASE_SHA}" ] \
+      || { fail "APPLY exige entrada independente e confirmacao explicita do SHA"; return 1; }
+  fi
+  if [ "${OP_ACTIVE:-0}" -ne 1 ]; then
+    [[ "${TOPSV3_PREVIEW_BACKFILL_IMAGE_ID:-}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+      || { fail "identidade fisica avaliada da imagem obrigatoria"; return 1; }
   fi
   [[ "${PHASE}" =~ ^(initial|delta|final)$ ]] || { fail "fase invalida"; return 2; }
   [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]] || { fail "SHA invalido"; return 2; }
@@ -207,7 +256,15 @@ preview_backfill_main() {
   case "${REPORT_DIR}/" in
     "${RELEASE_DIR}/"*) fail "relatorio deve permanecer fora da release"; return 2 ;;
   esac
-  install -d -m 0750 "${REPORT_DIR}" || return 1
+  install -d -m 0700 "${REPORT_DIR}" || return 1
+  JOB_VERIFIED=0 PENDING_FILE=
+  if [ "${OP_ACTIVE:-0}" -ne 1 ]; then
+    trap on_exit EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    standalone_lock || return $?
+  fi
 
   local mode_lower
   mode_lower="${MODE,,}"
@@ -215,7 +272,7 @@ preview_backfill_main() {
   if [ "${OP_ACTIVE:-0}" -eq 1 ]; then
     JOB_OWNER="${OP_ID}"
   else
-    JOB_OWNER="$(cat /proc/sys/kernel/random/uuid)" || return 1
+    JOB_OWNER="$(python3 -c 'import uuid; print(uuid.uuid4())')" || return 1
   fi
   [[ "${JOB_OWNER}" =~ ^[a-f0-9-]{36}$ ]] || { fail "identidade de ownership invalida"; return 1; }
   if docker inspect "${JOB_CONTAINER}" >/dev/null 2>&1; then
@@ -227,20 +284,21 @@ preview_backfill_main() {
     || { fail "evidencia de backfill preexistente; retomada exige apuracao"; return 1; }
   RAW_OUTPUT="$(mktemp)" || return 1
   RESULT_LINE=""
-  if [ "${OP_ACTIVE:-0}" -ne 1 ]; then
-    trap on_exit EXIT
-  fi
-
-  run_backfill || return $?
+  local rc=0
+  run_backfill || rc=$?
+  # Observe even a failed/ambiguous Docker response. Never overwrite original rc
+  # or interpret an after-commit failure as a transaction rollback.
+  python3 "${RELEASE_DIR}/scripts/deploy/validar-transicao-previews-runtime.py" \
+    outcome "${REPORT_DIR}" "${JOB_CONTAINER}" "${JOB_OWNER}" "${MODE}" \
+    "${PHASE}-${mode_lower}.tsv.state.jsonl" || { [ "${rc}" -ne 0 ] || rc=1; }
+  [ "${rc}" -eq 0 ] || return "${rc}"
   validate_result || return $?
-  if [ "${OP_ACTIVE:-0}" -eq 1 ]; then
-    # Retain the exact terminal container until the public-contract proof. Never
-    # replace the operation's EXIT trap or hide nested Docker from op_run.
-    python3 "${RELEASE_DIR}/scripts/deploy/validar-transicao-previews-runtime.py" \
-      terminal "${REPORT_DIR}" "${JOB_CONTAINER}" "${OP_ID}" "${MODE}" \
-      "${PHASE}-${mode_lower}.tsv.state.jsonl" || return $?
-    rm -f -- "${RAW_OUTPUT}"
-  fi
+  python3 "${RELEASE_DIR}/scripts/deploy/validar-transicao-previews-runtime.py" \
+    terminal "${REPORT_DIR}" "${JOB_CONTAINER}" "${JOB_OWNER}" "${MODE}" \
+    "${PHASE}-${mode_lower}.tsv.state.jsonl" || return $?
+  JOB_VERIFIED=1
+  # Supervised readonly jobs stay available for the existing public gate.
+  rm -f -- "${RAW_OUTPUT}"
   log "R2_MUTATIONS=0 DB_SCOPE=preview_columns_only REPORT=external_sanitized"
 }
 

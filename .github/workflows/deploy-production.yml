@@ -142,10 +142,13 @@ jobs:
         timeout-minutes: 15
         run: |
           set -euo pipefail
-          for test_image in postgres:17.10-alpine postgres:17-alpine flyway/flyway:12.10.0 eclipse-temurin:17.0.13_11-jre node:22.13.1-alpine nginx:1.27-alpine; do
+          for test_image in postgres:17.10-alpine postgres:17-alpine flyway/flyway:12.10.0 eclipse-temurin:17.0.13_11-jre node:22.13.1-alpine nginx:1.27-alpine python:3.12-slim-bookworm; do
             timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
             docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$test_image"
           done
+          fixture_image_id="$(docker image inspect --format '{{.Id}}' python:3.12-slim-bookworm)"
+          [[ "$fixture_image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'TOPSV3_BACKFILL_FIXTURE_IMAGE_ID=%s\n' "$fixture_image_id" >> "$GITHUB_ENV"
 
       - name: Run full backend Maven gate
         working-directory: backend
@@ -448,8 +451,6 @@ jobs:
           source "${release_dir}/scripts/deploy/proteger-operacao-production.sh"
           op_begin "${deploy_root}" "${release_sha}"
           source "${release_dir}/scripts/deploy/coordenar-transicao-previews-production.sh"
-          # Must reject an unproven source before IndexNow, Flyway or service changes.
-          op_preview_preflight
           previous_release="$(readlink -f "${deploy_root}/current")"
           previous_sha="$(cat "${previous_release}/.release-sha")"
           postgres_id_before="$(docker inspect topsv3-production-postgres --format '{{.Id}}')"
@@ -593,7 +594,7 @@ jobs:
           op_phase BUILDING
           op_run mutating "${compose[@]}" build backend frontend
           op_expect_candidate
-          op_preview_drain_and_reconcile
+          op_preview_validate_before_activation
           op_phase ACTIVATING
           op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
 

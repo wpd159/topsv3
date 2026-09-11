@@ -69,20 +69,20 @@ public class PreviewRestritoBackfillJdbcRepository {
     return Map.copyOf(resultado);
   }
 
-  /** Same whole eligible universe as PLAN, including historical/non-public and FOTO/STORY purpose. */
-  public List<EstadoVinculo> capturarVinculosElegiveis(boolean bloquear) {
+  /** Include every link of the selected files, even links currently outside public eligibility. */
+  public List<EstadoVinculo> capturarVinculosDosArquivos(Collection<UUID> ids, boolean bloquear) {
+    if (ids.isEmpty()) return List.of();
     String sql = """
         SELECT am.id, am.arquivo_midia_id,
           encode(sha256(convert_to(to_jsonb(am)::text, 'UTF8')), 'hex') AS completo
-        FROM anuncio_midia am JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
-        WHERE am.tipo = 'FOTO' AND am.status = 'PUBLICAVEL'
-          AND am.visibilidade_midia = 'RESTRITA_18'
-          AND ar.status_arquivo = 'VALIDADO' AND lower(ar.mime_type) LIKE 'image/%'
+        FROM anuncio_midia am
+        WHERE am.arquivo_midia_id IN (%s)
         ORDER BY am.id
-        """ + (bloquear ? " FOR UPDATE OF am" : "");
+        """.formatted(String.join(",", Collections.nCopies(ids.size(), "?")))
+        + (bloquear ? " FOR UPDATE OF am" : "");
     return jdbcTemplate.query(sql, (rs, row) -> new EstadoVinculo(
         rs.getObject("id", UUID.class), rs.getObject("arquivo_midia_id", UUID.class),
-        rs.getString("completo")));
+        rs.getString("completo")), ids.toArray());
   }
 
   public int marcarDisponiveis(List<Atualizacao> atualizacoes) {

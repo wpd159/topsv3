@@ -16,6 +16,8 @@ import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -45,6 +47,8 @@ import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Real local commits/rollbacks; only the read-only object inventory is synthetic. */
 @EnabledIfEnvironmentVariable(named = "PREVIEW_BACKFILL_POSTGRES17_ENABLED", matches = "true")
@@ -73,6 +77,7 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
   private UUID userId;
   private UUID adId;
   private final List<Photo> photos = new ArrayList<>();
+  private final List<UUID> additionalAdIds = new ArrayList<>();
 
   @BeforeAll
   static void startOwnedPostgresAndDedicatedBootstrap() throws Throwable {
@@ -152,12 +157,7 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
         insert into usuario(id,nome,status,tipo_conta,criado_em,atualizado_em,versao)
         values (?,'Pessoa sintetica preview','ATIVO','ANUNCIANTE',?,?,0)
         """, userId, STAMP, STAMP);
-    jdbc.update("""
-        insert into anuncio(id,usuario_id,slug,titulo,status,status_moderacao,categoria,
-          publicado_em,ultima_publicacao_em,criado_em,atualizado_em,versao)
-        values (?, ?, ?, 'Anuncio sintetico preview', 'PUBLICADO','APROVADO',
-          'ACOMPANHANTE_FEMININA',?,?,?,?,0)
-        """, adId, userId, "preview-apply-" + adId, STAMP, STAMP, STAMP, STAMP);
+    insertAd(adId);
     photo(false, "RESTRITA_18");
     photo(false, "RESTRITA_18");
     photo(true, "RESTRITA_18");
@@ -170,12 +170,19 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
     List<PreviewBackfillOwnedDockerResources.Action> actions = new ArrayList<>();
     actions.add(this::dropFault);
     if (adId != null) actions.add(() -> jdbc.update("delete from anuncio_midia where anuncio_id=?", adId));
+    for (UUID additionalAdId : additionalAdIds) {
+      actions.add(() -> jdbc.update("delete from anuncio_midia where anuncio_id=?", additionalAdId));
+    }
     for (Photo photo : photos) actions.add(() -> jdbc.update("delete from arquivo_midia where id=?", photo.fileId()));
     if (adId != null) actions.add(() -> jdbc.update("delete from anuncio where id=?", adId));
+    for (UUID additionalAdId : additionalAdIds) {
+      actions.add(() -> jdbc.update("delete from anuncio where id=?", additionalAdId));
+    }
     if (userId != null) actions.add(() -> jdbc.update("delete from usuario where id=?", userId));
     Throwable failure = PreviewBackfillOwnedDockerResources.cleanupPreserving(null,
         actions.toArray(PreviewBackfillOwnedDockerResources.Action[]::new));
     photos.clear();
+    additionalAdIds.clear();
     INVENTORY_KEYS.set(List.of());
     if (failure != null) throw failure;
   }
@@ -251,7 +258,7 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
       case "vinculo" -> jdbc.update("update anuncio_midia set status='PENDENTE' where id=?", target.linkId());
       case "arquivo_id" -> jdbc.update("update anuncio_midia set arquivo_midia_id=? where id=?",
           photos.get(2).fileId(), target.linkId());
-      case "novo_vinculo" -> { photo(false, "RESTRITA_18"); completeInventory(); }
+      case "novo_vinculo" -> additionalLink(target.fileId(), "PUBLICAVEL");
       default -> throw new AssertionError("Unknown synthetic mutation");
     }
     Snapshot afterConcurrentChange = snapshot();
@@ -262,6 +269,146 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
 
     assertThat(completion).containsExactly(EstadoCommit.ROLLED_BACK);
     assertThat(snapshot()).isEqualTo(afterConcurrentChange);
+  }
+
+  @Test
+  void novoArquivoEAnuncioIndependentesDepoisDoPlanNaoBloqueiamAlvosPlanejados() {
+    var plan = service.planejar();
+    UUID unrelatedAdId = UUID.randomUUID();
+    additionalAdIds.add(unrelatedAdId);
+    insertAd(unrelatedAdId);
+    Photo unrelated = photo(unrelatedAdId, false, "RESTRITA_18");
+    completeInventory();
+    Snapshot afterConcurrentChange = snapshot();
+    String unrelatedAd = jdbc.queryForObject(
+        "select to_jsonb(a)::text from anuncio a where id=?", String.class, unrelatedAdId);
+    String unrelatedLink = jdbc.queryForObject(
+        "select to_jsonb(a)::text from anuncio_midia a where id=?", String.class, unrelated.linkId());
+    List<EstadoCommit> completion = new ArrayList<>();
+
+    var result = service.aplicar(plan, 1, completion::add);
+
+    assertThat(completion).containsExactly(EstadoCommit.COMMITTED);
+    assertThat(result.atualizados()).isEqualTo(2);
+    assertThat(result.inalterados()).isEqualTo(1);
+    Snapshot after = snapshot();
+    assertThat(after.nonPreview()).isEqualTo(afterConcurrentChange.nonPreview());
+    assertThat(after.links()).isEqualTo(afterConcurrentChange.links());
+    assertThat(after.ad()).isEqualTo(afterConcurrentChange.ad());
+    assertThat(after.user()).isEqualTo(afterConcurrentChange.user());
+    for (int index = 0; index < photos.size(); index++) {
+      Photo photo = photos.get(index);
+      if (index < 2) assertCompleteMetadata(photo);
+      else assertThat(after.files().get(photo.fileId()))
+          .isEqualTo(afterConcurrentChange.files().get(photo.fileId()));
+    }
+    assertThat(jdbc.queryForObject("select to_jsonb(a)::text from anuncio a where id=?",
+        String.class, unrelatedAdId)).isEqualTo(unrelatedAd);
+    assertThat(jdbc.queryForObject("select to_jsonb(a)::text from anuncio_midia a where id=?",
+        String.class, unrelated.linkId())).isEqualTo(unrelatedLink);
+    assertThat(jdbc.queryForObject("select preview_restrito_status from arquivo_midia where id=?",
+        String.class, unrelated.fileId())).isEqualTo("DESCONHECIDO");
+  }
+
+  @Test
+  void edicaoConcorrenteDeArquivoJaRegularEPreservadaSemBloquearOsAlvos() {
+    var plan = service.planejar();
+    Photo regular = photos.get(2);
+    jdbc.update("""
+        update arquivo_midia set nome_original='synthetic-regular-concurrent.jpg',
+          preview_restrito_confirmado_em=? where id=?
+        """, STAMP.minusDays(1), regular.fileId());
+    Snapshot afterConcurrentChange = snapshot();
+    List<EstadoCommit> completion = new ArrayList<>();
+
+    var result = service.aplicar(plan, 1, completion::add);
+
+    assertThat(completion).containsExactly(EstadoCommit.COMMITTED);
+    assertThat(result.atualizados()).isEqualTo(2);
+    assertThat(result.inalterados()).isEqualTo(1);
+    Snapshot after = snapshot();
+    assertThat(after.files().get(regular.fileId()))
+        .isEqualTo(afterConcurrentChange.files().get(regular.fileId()));
+    assertThat(after.files().get(photos.get(3).fileId()))
+        .isEqualTo(afterConcurrentChange.files().get(photos.get(3).fileId()));
+    assertThat(after.nonPreview()).isEqualTo(afterConcurrentChange.nonPreview());
+    assertThat(after.links()).isEqualTo(afterConcurrentChange.links());
+    assertThat(after.ad()).isEqualTo(afterConcurrentChange.ad());
+    assertThat(after.user()).isEqualTo(afterConcurrentChange.user());
+    assertCompleteMetadata(photos.get(0));
+    assertCompleteMetadata(photos.get(1));
+  }
+
+  @Test
+  void mudancaEmVinculoNaoElegivelDoMesmoArquivoAlvoTambemReverteApply() {
+    Photo target = photos.get(0);
+    UUID nonEligibleLink = additionalLink(target.fileId(), "PENDENTE");
+    var plan = service.planejar();
+    assertThat(plan.vinculos()).isEqualTo(3);
+    jdbc.update("update anuncio_midia set ordem=ordem+20, atualizado_em=? where id=?",
+        STAMP.plusSeconds(1), nonEligibleLink);
+    Snapshot afterConcurrentChange = snapshot();
+    List<EstadoCommit> completion = new ArrayList<>();
+
+    assertThatThrownBy(() -> service.aplicar(plan, 1, completion::add))
+        .isInstanceOf(RuntimeException.class);
+
+    assertThat(completion).containsExactly(EstadoCommit.ROLLED_BACK);
+    assertThat(snapshot()).isEqualTo(afterConcurrentChange);
+  }
+
+  @Test
+  void updateIndependenteNoAlvoExigeLockTimeoutRealEReverteTodasAsEscritas() throws Throwable {
+    Snapshot before = snapshot();
+    var plan = service.planejar();
+    Photo target = photos.get(0);
+    List<EstadoCommit> completion = new ArrayList<>();
+    JdbcTemplate transactionJdbc = context.getBean(JdbcTemplate.class);
+    TransactionTemplate transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
+    Connection concurrent = new DriverManagerDataSource(jdbcUrl(), "topsv3test", CREDENTIAL).getConnection();
+    Throwable primary = null;
+    try {
+      concurrent.setAutoCommit(false);
+      int concurrentPid;
+      long concurrentTransaction;
+      try (var statement = concurrent.createStatement();
+           var result = statement.executeQuery("select pg_backend_pid(), txid_current()")) {
+        assertThat(result.next()).isTrue();
+        concurrentPid = result.getInt(1);
+        concurrentTransaction = result.getLong(2);
+      }
+      try (var update = concurrent.prepareStatement("""
+          update arquivo_midia set nome_original='synthetic-held-uncommitted.jpg' where id=?
+          """)) {
+        update.setObject(1, target.fileId());
+        assertThat(update.executeUpdate()).isEqualTo(1);
+      }
+
+      assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+        assertThat(transactionJdbc.queryForObject("select pg_backend_pid()", Integer.class))
+            .isNotEqualTo(concurrentPid);
+        assertThat(transactionJdbc.queryForObject("select txid_current()", Long.class))
+            .isNotEqualTo(concurrentTransaction);
+        transactionJdbc.execute("SET LOCAL lock_timeout = '1s'");
+        assertThat(transactionJdbc.queryForObject("show lock_timeout", String.class)).isEqualTo("1s");
+        service.aplicar(plan, 1, completion::add);
+      })).hasRootCauseInstanceOf(SQLException.class).satisfies(failure -> {
+        Throwable cause = failure;
+        while (cause.getCause() != null) cause = cause.getCause();
+        assertThat(((SQLException) cause).getSQLState()).isEqualTo("55P03");
+      });
+      assertThat(completion).containsExactly(EstadoCommit.ROLLED_BACK);
+    } catch (Throwable failure) {
+      primary = failure;
+      throw failure;
+    } finally {
+      Throwable cleanup = PreviewBackfillOwnedDockerResources.cleanupPreserving(primary,
+          () -> { if (!concurrent.isClosed() && !concurrent.getAutoCommit()) concurrent.rollback(); },
+          concurrent::close);
+      if (primary == null && cleanup != null) throw cleanup;
+    }
+    // Both real transactions ended; the held UPDATE and every APPLY write are absent.
+    assertThat(snapshot()).isEqualTo(before);
   }
 
   @Test
@@ -289,6 +436,10 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
   }
 
   private Photo photo(boolean regular, String visibility) {
+    return photo(adId, regular, visibility);
+  }
+
+  private Photo photo(UUID ownerAdId, boolean regular, String visibility) {
     UUID fileId = UUID.randomUUID();
     UUID linkId = UUID.randomUUID();
     String key = expectedPreviewKey(fileId);
@@ -302,7 +453,7 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
         insert into anuncio_midia(id,anuncio_id,arquivo_midia_id,tipo,finalidade,ordem,
           status,visibilidade_midia,criado_em,atualizado_em)
         values (?,?,?,'FOTO',?,?,'PUBLICAVEL',?,?,?)
-        """, linkId, adId, fileId, order == 0 ? "CAPA" : "GALERIA", order, visibility, STAMP, STAMP);
+        """, linkId, ownerAdId, fileId, order == 0 ? "CAPA" : "GALERIA", order, visibility, STAMP, STAMP);
     if (regular) {
       jdbc.update("""
           update arquivo_midia set preview_restrito_tipo='PREVIEW_RESTRITO',preview_restrito_chave=?,
@@ -313,6 +464,25 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
     Photo photo = new Photo(fileId, linkId, key);
     photos.add(photo);
     return photo;
+  }
+
+  private void insertAd(UUID id) {
+    jdbc.update("""
+        insert into anuncio(id,usuario_id,slug,titulo,status,status_moderacao,categoria,
+          publicado_em,ultima_publicacao_em,criado_em,atualizado_em,versao)
+        values (?, ?, ?, 'Anuncio sintetico preview', 'PUBLICADO','APROVADO',
+          'ACOMPANHANTE_FEMININA',?,?,?,?,0)
+        """, id, userId, "preview-apply-" + id, STAMP, STAMP, STAMP, STAMP);
+  }
+
+  private UUID additionalLink(UUID fileId, String status) {
+    UUID linkId = UUID.randomUUID();
+    jdbc.update("""
+        insert into anuncio_midia(id,anuncio_id,arquivo_midia_id,tipo,finalidade,ordem,
+          status,visibilidade_midia,criado_em,atualizado_em)
+        values (?,?,?,'FOTO','GALERIA',99,?,'RESTRITA_18',?,?)
+        """, linkId, adId, fileId, status, STAMP, STAMP);
+    return linkId;
   }
 
   private void completeInventory() {

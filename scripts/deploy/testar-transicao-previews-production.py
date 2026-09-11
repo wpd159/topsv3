@@ -28,6 +28,7 @@ def source():
                        "Labels": {"com.docker.compose.project": "topsv3-production"}},
             "State": {"Running": True, "Paused": False, "Restarting": False, "OOMKilled": False,
                       "StartedAt": "2026-01-01T00:00:00Z", "FinishedAt": "2026-01-01T00:01:00Z", "ExitCode": 0},
+            "HostConfig": {"RestartPolicy": {"Name": "no"}},
             "NetworkSettings": {"Networks": {RUNTIME.NETWORK: {}}}}
 
 
@@ -288,15 +289,19 @@ class TransitionTests(unittest.TestCase):
 
     def test_workflow_order_and_no_nested_docker_wrapper(self):
         workflow = (ROOT / ".github/workflows/deploy-production.yml").read_text()
-        positions = [workflow.index(value) for value in ("op_preview_preflight", "op_phase CONFIGURING",
-                     "op_phase BUILDING", "op_preview_drain_and_reconcile", "op_phase ACTIVATING")]
+        positions = [workflow.index(value) for value in ("op_begin", "op_phase CONFIGURING",
+                     "op_phase BUILDING", "op_expect_candidate",
+                     "op_preview_validate_before_activation", "op_phase ACTIVATING")]
         self.assertEqual(positions, sorted(positions))
+        for obsolete in ("op_preview_preflight", "op_preview_drain_and_reconcile"):
+            self.assertNotIn(obsolete, workflow)
         coordinator = (ROOT / "scripts/deploy/coordenar-transicao-previews-production.sh").read_text()
-        self.assertIn("timeout --signal=TERM 150s docker stop --time=-1", coordinator)
-        self.assertNotIn("OP_AMBIGUOUS=0", coordinator)
-        self.assertNotIn("--kill-after", coordinator)
-        self.assertNotIn("docker kill", coordinator)
-        self.assertEqual(coordinator.count("APPLY:delta"), 1)
+        for forbidden in ("OP_AMBIGUOUS=0", "--kill-after", "docker kill", "docker stop", "APPLY:delta"):
+            self.assertNotIn(forbidden, coordinator)
+        self.assertIn("preview_backfill_main VALIDATE final", coordinator)
+        self.assertIn('op_run readonly python3', coordinator)
+        self.assertIn(' public ', coordinator)
+        self.assertIn('cleanup-proof', coordinator)
         self.assertIn('runner=(op_run mutating)', (ROOT / "scripts/deploy/executar-backfill-previews-production.sh").read_text())
 
     def test_public_gate_images_are_prepared_in_each_job(self):
@@ -309,64 +314,48 @@ class TransitionTests(unittest.TestCase):
             self.assertIn('timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"', preparation)
             self.assertLess(workflow.index("for test_image in "), workflow.index("testar-gate-previews-publicos-production"))
 
-    def test_core_fixture_projection_preserves_every_other_byte(self):
+    def test_core_fixture_executes_integral_workflow_with_declared_boundaries(self):
         fixture = (ROOT / "scripts/deploy/testar-operacao-containers-production.sh").read_text()
-        projection = fixture.split("<<'CORE_SCOPE_PROJECTION'\n", 1)[1].split("\nCORE_SCOPE_PROJECTION\n", 1)[0]
-        hooks = [b'source "${release_dir}/scripts/deploy/coordenar-transicao-previews-production.sh"\n',
-                 b'op_preview_preflight\n', b'op_preview_drain_and_reconcile\n']
-        segments = [b'#!/bin/bash\nset -Eeuo pipefail\nop_begin "$root" "$sha"\n',
-                    b'# unchanged comment\n', b'op_phase CONFIGURING\nprintf " keep  spacing "\n',
-                    b'op_phase ACTIVATING\nop_smoke "$sha"\nop_finish\n']
-        original = segments[0] + hooks[0] + segments[1] + hooks[1] + segments[2] + hooks[2] + segments[3]
-        with tempfile.TemporaryDirectory() as folder:
-            source_file, core_file = Path(folder) / "full.sh", Path(folder) / "core.sh"
-            source_file.write_bytes(original)
-            result = subprocess.run([sys.executable, "-c", projection, str(source_file), str(core_file)],
-                                    capture_output=True, text=True, check=False)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(source_file.read_bytes(), original)
-            self.assertEqual(core_file.read_bytes(), b"".join(segments))
-            self.assertIn("preview_hooks_removed=3 other_bytes_unchanged=true", result.stdout)
-            for index, changed in enumerate((original.replace(hooks[1], b""), original + hooks[1],
-                            original.replace(hooks[1], b"__SWAP__\n").replace(hooks[2], hooks[1]).replace(b"__SWAP__\n", hooks[2]),
-                            original + b'op_preview_new_unreviewed_hook\n')):
-                with self.subTest(changed=changed):
-                    source_file.write_bytes(changed)
-                    rejected = Path(folder) / ("must-not-create-" + str(index) + ".sh")
-                    result = subprocess.run([sys.executable, "-c", projection, str(source_file), str(rejected)],
-                                            capture_output=True, text=True, check=False)
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn("CORE_SCOPE_ERROR:", result.stderr)
-                    self.assertFalse(rejected.exists())
+        self.assertIn('done < "$workflow" > "${case_dir}/activation.sh"', fixture)
+        self.assertIn('bash "${case_dir}/activation.sh" "$candidate_sha"', fixture)
+        for obsolete in ("CORE_SCOPE_PROJECTION", "activation.full.sh", "PREFLIGHT_EVENT_DELTA"):
+            self.assertNotIn(obsolete, fixture)
+        self.assertIn('workflow=integral backfill=synthetic_validate sql=synthetic_aggregate', fixture)
+        self.assertIn('no_real_spring_or_storage_claim=true', fixture)
+        self.assertIn("grep -Fxq 'PREVIEW_TRANSITION_READY=PASS readonly=true'", fixture)
+        self.assertIn('label=topsv3.preview.operation=${operation_id}', fixture)
+        self.assertNotIn("op_preview_validate_before_activation()", fixture)
 
-    def test_core_fixture_keeps_real_negative_transition_and_deadlines(self):
+    def test_core_fixture_keeps_source_observer_and_real_recovery_deadlines(self):
         fixture = (ROOT / "scripts/deploy/testar-operacao-containers-production.sh").read_text()
-        for assertion in ("PREVIEW_TRANSITION=FAIL reason=source_name_mismatch", "result=ABORTED mutated=0",
-                          "source_entrypoint_unproven", "PREVIEW_FULL_WORKFLOW_NEGATIVE=PASS",
+        for assertion in ("source_entrypoint_unproven", "PREVIEW_NODE_SOURCE_REJECTION=PASS",
                           "first_home-restore<32000", "last_end-restore<183000",
-                          "elapsed_recovery_ms >= 300000", "preview_negative_checked=1"):
+                          "elapsed_recovery_ms >= 300000", "source_observer_checked=1",
+                          'case_timeout=220', 'case_timeout=390'):
             self.assertIn(assertion, fixture)
-        for name in ("op_preview_preflight", "op_preview_drain_and_reconcile"):
-            self.assertNotIn(name + "()", fixture)
+        self.assertNotIn("PREVIEW_FULL_WORKFLOW_NEGATIVE", fixture)
+        historical = (ROOT / "scripts/deploy/testar-origem451-spring-production.sh").read_text()
+        self.assertIn('python3 "$observer" preflight', historical)
+        self.assertIn('source_graceful_configuration_unproven', historical)
 
-    def test_preflight_event_delta_accepts_only_known_readonly_traces(self):
+    def test_core_fixture_boundary_is_validate_only_and_uses_real_evidence_predicates(self):
         fixture = (ROOT / "scripts/deploy/testar-operacao-containers-production.sh").read_text()
-        proof = fixture.split("<<'PREFLIGHT_EVENT_DELTA'\n", 1)[1].split("\nPREFLIGHT_EVENT_DELTA\n", 1)[0]
-        with tempfile.TemporaryDirectory() as folder:
-            before, after = Path(folder) / "before", Path(folder) / "after"
-            original = b"previous owned setup\n"
-            before.write_bytes(original)
-            for delta, expected in ((b"", 0), (b"PROBE_TRACE event=start\nCONTENT_TRACE stage=baseline\n", 0),
-                                    (b"CONTROLLED_BOUNDARY psql\n", 1), (b"RESTORE_UP time_ms=1\n", 1),
-                                    (b"/private-backend image id\n", 1), (b"UNKNOWN\n", 1)):
-                after.write_bytes(original + delta)
-                result = subprocess.run([sys.executable, "-c", proof, str(before), str(after)],
-                                        capture_output=True, text=True, check=False)
-                self.assertEqual(result.returncode, expected, result.stderr)
-            after.write_bytes(b"changed evidence\n")
-            result = subprocess.run([sys.executable, "-c", proof, str(before), str(after)],
-                                    capture_output=True, text=True, check=False)
-            self.assertNotEqual(result.returncode, 0)
+        boundary = fixture.split("<<'SYNTHETIC_VALIDATE_BOUNDARY'\n", 1)[1].split("\nSYNTHETIC_VALIDATE_BOUNDARY\n", 1)[0]
+        for required in ('"$1" == VALIDATE', '"$2" == final', '|| return 91',
+                         'STARTED PLAN_READY VALIDATION_PASSED SUCCEEDED',
+                         '"mode":"VALIDATE","commit":"NOT_STARTED"',
+                         '--pull never --network none --restart no',
+                         '--label "topsv3.preview.operation=$OP_ID"',
+                         '--entrypoint node "$TEST_CANDIDATE_IMAGE"',
+                         '--app.restricted-media-preview-reconciliation.mode=VALIDATE',
+                         '--app.restricted-media-preview-reconciliation.apply-confirmed=false',
+                         'outcome "$report"', 'terminal "$report"'):
+            self.assertIn(required, boundary)
+        self.assertNotIn('apply-confirmed=true', boundary)
+        self.assertIn('public_media_prefix=synthetic-public/', fixture)
+        self.assertIn('PUBLIC_PREVIEW_CONTRACT_QUERY_COMPLETE', fixture)
+        self.assertIn('preview_public_sql_synthetic', fixture)
+        self.assertIn('--env POSTGRES_USER=postgres --env POSTGRES_DB=postgres', fixture)
 
     def test_named_service_substitute_rejected(self):
         other = source()
@@ -392,6 +381,7 @@ class TransitionTests(unittest.TestCase):
             candidate["State"]["Running"] = False
             candidate["Config"]["Labels"]["topsv3.preview.operation"] = "synthetic-owner"
             (operation / "candidate.images.tsv").write_text("backend\t" + candidate["Image"] + "\t" + candidate["Config"]["Image"] + "\n")
+            (report / "image-pin.json").write_text(json.dumps({"image": candidate["Image"]}))
             candidate["Config"]["Image"] = candidate["Image"]
             name = "delta-apply.tsv.state.jsonl"
             before = report / "delta-apply.tsv.before.json"
@@ -420,10 +410,12 @@ class TransitionTests(unittest.TestCase):
 
     def test_before_apply_pin_forbids_mutable_tag_build_and_pull(self):
         physical = "sha256:" + "a" * 64
-        RUNTIME.validate_pin({"services": {"backend": {"image": physical, "pull_policy": "never"}}}, physical)
+        RUNTIME.validate_pin({"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no"}}}, physical)
         for service in ({"image": "candidate:tag", "pull_policy": "never"},
                         {"image": physical, "pull_policy": "never", "build": {"context": "."}},
-                        {"image": physical, "pull_policy": "missing"}):
+                        {"image": physical, "pull_policy": "missing", "restart": "no"},
+                        {"image": physical, "pull_policy": "never", "restart": "unless-stopped"},
+                        {"image": physical, "pull_policy": "never"}):
             with self.assertRaisesRegex(RuntimeError, "pin_unproven"):
                 RUNTIME.validate_pin({"services": {"backend": service}}, physical)
 
@@ -435,13 +427,233 @@ class TransitionTests(unittest.TestCase):
             sha = "c" * 40
             physical = "sha256:" + "b" * 64
             (operation / "candidate.images.tsv").write_text("backend\t" + physical + "\ttopsv3-production-backend:" + sha + "\n")
-            config = {"services": {"backend": {"image": physical, "pull_policy": "never"}}}
-            with patch.object(RUNTIME, "call", side_effect=[physical + "\n", json.dumps(config)]) as calls:
+            config = {"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no"}}}
+            with patch.object(RUNTIME, "call", side_effect=[physical + "\n", physical + "\n", json.dumps(config)]) as calls:
                 RUNTIME.pin(str(report), sha, "source.yml", "private.env", "topsv3-production", "topsv3-production", "topsv3-production-net")
             self.assertEqual(calls.call_args_list[0].args[0][:3], ["docker", "image", "inspect"])
-            self.assertEqual(calls.call_args_list[1].args[0][-3:], ["config", "--format", "json"])
+            self.assertEqual(calls.call_args_list[1].args[0][3], "topsv3-production-backend:" + sha)
+            self.assertEqual(calls.call_args_list[2].args[0][-3:], ["config", "--format", "json"])
             self.assertIn("build: !reset null", (report / "pinned-backfill.compose.yml").read_text())
             self.assertEqual(json.loads((report / "image-pin.json").read_text())["image"], physical)
+
+
+    def test_independent_pin_requires_explicit_physical_and_matching_candidate(self):
+        sha, physical = "c" * 40, "sha256:" + "b" * 64
+        config = {"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no"}}}
+        for observed, evaluated, accepted in ((physical, physical, True),
+                ("sha256:" + "e" * 64, physical, False),
+                (physical, "sha256:" + "e" * 64, False)):
+            with self.subTest(observed=observed, evaluated=evaluated), tempfile.TemporaryDirectory() as folder:
+                with patch.object(RUNTIME, "call", side_effect=[observed, evaluated, json.dumps(config)]) as calls:
+                    invoke = lambda: RUNTIME.pin(folder, sha, "source.yml", "private.env",
+                            "topsv3-production", "topsv3-production", "topsv3-production-net", physical)
+                    if accepted:
+                        invoke()
+                        proof = json.loads((Path(folder) / "image-pin.json").read_text())
+                        self.assertEqual((proof["image"], proof["sha"], proof["origin"]), (physical, sha, "explicit"))
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            invoke()
+                        self.assertFalse((Path(folder) / "image-pin.json").exists())
+                        self.assertFalse((Path(folder) / "pinned-backfill.compose.yml").exists())
+                    self.assertTrue(all("pull" not in call.args[0] and "build" not in call.args[0]
+                                        for call in calls.call_args_list))
+        for physical_input in ("candidate:mutable", "sha256:bad"):
+            with tempfile.TemporaryDirectory() as folder, patch.object(RUNTIME, "call") as calls:
+                with self.assertRaisesRegex(RuntimeError, "candidate_image_id_invalid"):
+                    RUNTIME.pin(folder, sha, "source.yml", "private.env", "topsv3-production",
+                                "topsv3-production", "topsv3-production-net", physical_input)
+                calls.assert_not_called()
+
+    def exercise_outcome(self, events, expected, *, mode="APPLY", exit_code=1,
+                         mutate_runtime=None, suffix="\n", mutate_before=False, observation_failure=False):
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder)
+            current = source()
+            current["Config"]["Labels"]["topsv3.preview.operation"] = "synthetic-owner"
+            current["Config"]["Image"] = current["Image"]
+            current["State"].update(Running=False, ExitCode=exit_code)
+            (report / "image-pin.json").write_text(json.dumps({"image": current["Image"]}))
+            name = "initial-" + mode.lower() + ".tsv.state.jsonl"
+            before = report / (name.removesuffix(".state.jsonl") + ".before.json")
+            before.write_text('{"synthetic_before":true}', encoding="utf-8")
+            before_hash = RUNTIME.hashlib.sha256(before.read_bytes()).hexdigest()
+            events = copy.deepcopy(events)
+            captured = False
+            for event in events:
+                captured |= event["stage"] == "BEFORE_CAPTURED"
+                if captured:
+                    event["before_sha256"] = before_hash
+            contents = "\n".join(json.dumps(event) for event in events) + suffix
+            (report / name).write_text(contents, encoding="utf-8")
+            if mutate_runtime:
+                mutate_runtime(current)
+            if mutate_before:
+                before.write_text('{"changed":true}', encoding="utf-8")
+            with patch.object(RUNTIME, "inspect", side_effect=RuntimeError("observation_command_failed")
+                              if observation_failure else None, return_value=current):
+                RUNTIME.outcome(folder, "synthetic-container", "synthetic-owner", mode, name)
+                proof = json.loads((report / "outcome.json").read_text())
+                self.assertEqual(proof["commit"], expected)
+                self.assertFalse(proof["retry_allowed"])
+                if expected in ("COMMITTED", "ROLLED_BACK"):
+                    self.assertTrue(proof["terminal"])
+                    self.assertTrue(proof["identity_verified"])
+                    self.assertEqual(proof["before_sha256"], before_hash)
+                with self.assertRaises(FileExistsError):
+                    RUNTIME.outcome(folder, "synthetic-container", "synthetic-owner", mode, name)
+                if exit_code or expected == "UNKNOWN":
+                    with self.assertRaises((RuntimeError, json.JSONDecodeError)):
+                        RUNTIME.terminal(folder, "synthetic-container", "synthetic-owner", mode, name)
+                    self.assertFalse((report / "container-terminal.json").exists())
+                else:
+                    RUNTIME.terminal(folder, "synthetic-container", "synthetic-owner", mode, name)
+                    receipt = json.loads((report / "container-terminal.json").read_text())
+                    self.assertEqual(receipt["commit"], expected)
+
+    def test_outcome_preserves_committed_after_failure_and_never_grants_retry(self):
+        events = journal()
+        self.exercise_outcome(events, "COMMITTED", exit_code=0)
+        for length in (4, 5, 6, 7):
+            self.exercise_outcome(events[:length] + [{"mode": "APPLY", "stage": "FAILED", "commit": "COMMITTED"}],
+                                  "COMMITTED", exit_code=1)
+
+    def test_outcome_distinguishes_rollback_unknown_and_no_transaction(self):
+        self.exercise_outcome(journal()[:4] + [{"mode": "APPLY", "stage": "FAILED", "commit": "ROLLED_BACK"}],
+                              "ROLLED_BACK")
+        self.exercise_outcome(journal()[:4], "UNKNOWN")
+        self.exercise_outcome(journal()[:4] + [{"mode": "APPLY", "stage": "FAILED", "commit": "UNKNOWN"}], "UNKNOWN")
+        self.exercise_outcome(journal()[:2] + [{"mode": "APPLY", "stage": "FAILED", "commit": "NOT_STARTED"}], "NOT_STARTED")
+        self.exercise_outcome(journal("PLAN"), "NOT_STARTED", mode="PLAN", exit_code=0)
+        self.exercise_outcome(journal("VALIDATE"), "NOT_STARTED", mode="VALIDATE", exit_code=0)
+
+    def test_outcome_rejects_identity_journal_and_capture_ambiguity(self):
+        for mutation in (lambda value: value["Config"]["Labels"].update({"topsv3.preview.operation": "other-owner"}),
+                         lambda value: value.update(Image="sha256:" + "e" * 64),
+                         lambda value: value["HostConfig"]["RestartPolicy"].update(Name="unless-stopped"),
+                         lambda value: value["State"].update(Running=True)):
+            self.exercise_outcome(journal(), "UNKNOWN", mutate_runtime=mutation)
+        self.exercise_outcome(journal(), "UNKNOWN", observation_failure=True)
+        self.exercise_outcome(journal(), "UNKNOWN", suffix="")
+        self.exercise_outcome(journal(), "UNKNOWN", suffix="\n{\"unfinished\":")
+        self.exercise_outcome(journal(), "UNKNOWN", mutate_before=True)
+        self.exercise_outcome(journal() + [{"mode": "APPLY", "stage": "FAILED", "commit": "ROLLED_BACK"}], "UNKNOWN")
+        self.exercise_outcome(journal()[:2] + [{"mode": "APPLY", "stage": "FAILED", "commit": "COMMITTED"}], "UNKNOWN")
+
+
+    def readonly_job_fixture(self, folder, exit_code=0):
+        report = Path(folder) / "validate"
+        report.mkdir()
+        current = source()
+        owner = "11111111-2222-3333-4444-555555555555"
+        current["Name"] = "/synthetic-validate"
+        current["Config"]["Image"] = current["Image"]
+        current["Config"]["Labels"]["topsv3.preview.operation"] = owner
+        current["Config"]["Cmd"] = ["--app.restricted-media-preview-reconciliation.mode=VALIDATE",
+                                    "--app.restricted-media-preview-reconciliation.apply-confirmed=false"]
+        current["Config"]["Env"] += ["R2_PUBLIC_MEDIA_PREFIX=synthetic-public",
+                                      "R2_PUBLIC_BASE_URL=https://synthetic.invalid"]
+        current["State"].update(Running=False, ExitCode=exit_code)
+        (report / "image-pin.json").write_text(json.dumps({"image": current["Image"]}))
+        return report, current, owner
+
+    def test_cleanup_proves_owned_terminal_validate_even_when_validation_failed(self):
+        for exit_code in (0, 1, 137):
+            with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as folder:
+                report, current, owner = self.readonly_job_fixture(folder, exit_code)
+                journal_path = report / "final-validate.tsv.state.jsonl"
+                journal_path.write_text('{"stage":"FAILED","synthetic":true}\n')
+                original = journal_path.read_bytes()
+                with patch.object(RUNTIME, "inspect", return_value=current), patch.object(RUNTIME, "call") as calls:
+                    RUNTIME.cleanup_proof(str(report), "synthetic-validate", owner)
+                    proof = json.loads((report / "cleanup-proof.json").read_text())
+                    self.assertEqual((proof["decision"], proof["id"], proof["exit_code"]),
+                                     ("REMOVE", current["Id"], exit_code))
+                    with self.assertRaises(FileExistsError):
+                        RUNTIME.cleanup_proof(str(report), "synthetic-validate", owner)
+                    calls.assert_not_called()
+                self.assertEqual(journal_path.read_bytes(), original)
+
+    def test_cleanup_inspect_error_requires_independent_exact_successful_absence(self):
+        for listed, accepted in (("", True), ("a" * 64 + "\n", False),
+                                 (RuntimeError("observation_command_failed"), False)):
+            with self.subTest(listed=str(listed)), tempfile.TemporaryDirectory() as folder:
+                report, _, owner = self.readonly_job_fixture(folder)
+                with patch.object(RUNTIME, "inspect", side_effect=RuntimeError("observation_command_failed")), \
+                        patch.object(RUNTIME, "call", side_effect=listed if isinstance(listed, Exception) else None,
+                                     return_value=listed) as calls:
+                    if accepted:
+                        RUNTIME.cleanup_proof(str(report), "synthetic-validate", owner)
+                        proof = json.loads((report / "cleanup-proof.json").read_text())
+                        self.assertEqual(proof["decision"], "ABSENT")
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            RUNTIME.cleanup_proof(str(report), "synthetic-validate", owner)
+                        self.assertFalse((report / "cleanup-proof.json").exists())
+                    calls.assert_called_once_with(["docker", "container", "ls", "--all", "--quiet", "--no-trunc",
+                                                   "--filter", "name=^/synthetic\\-validate$"])
+
+    def test_cleanup_refuses_unowned_changed_mutating_or_live_job(self):
+        changes = [lambda item: item["Config"]["Labels"].update({"topsv3.preview.operation": "other"}),
+                   lambda item: item.update(Image="sha256:" + "e" * 64),
+                   lambda item: item.update(Name="/other-job"),
+                   lambda item: item["HostConfig"]["RestartPolicy"].update(Name="unless-stopped"),
+                   lambda item: item["Config"]["Cmd"].append("--app.restricted-media-preview-reconciliation.mode=APPLY"),
+                   lambda item: item["Config"].update(Cmd=["--app.restricted-media-preview-reconciliation.mode=VALIDATE",
+                                                "--app.restricted-media-preview-reconciliation.apply-confirmed=true"])]
+        for flag in ("Running", "Restarting", "Paused"):
+            changes.append(lambda item, flag=flag: item["State"].update({flag: True}))
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                report, current, owner = self.readonly_job_fixture(folder)
+                change(current)
+                with patch.object(RUNTIME, "inspect", return_value=current), patch.object(RUNTIME, "call") as calls:
+                    with self.assertRaises(RuntimeError):
+                        RUNTIME.cleanup_proof(str(report), "synthetic-validate", owner)
+                    calls.assert_not_called()
+                self.assertFalse((report / "cleanup-proof.json").exists())
+
+    def test_public_gate_requires_fresh_validate_outcome_and_unchanged_journal(self):
+        for changed in ("none", "unknown_outcome", "failed_outcome", "restart", "owner", "journal", "no_receipt"):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as folder:
+                report, current, owner = self.readonly_job_fixture(folder)
+                name = "final-validate.tsv.state.jsonl"
+                (report / name).write_text("\n".join(json.dumps(event) for event in journal("VALIDATE")) + "\n")
+                with patch.object(RUNTIME, "inspect", return_value=current):
+                    RUNTIME.outcome(str(report), "synthetic-validate", owner, "VALIDATE", name)
+                    RUNTIME.terminal(str(report), "synthetic-validate", owner, "VALIDATE", name)
+                if changed in ("unknown_outcome", "failed_outcome"):
+                    proof_path = report / "outcome.json"
+                    proof = json.loads(proof_path.read_text())
+                    proof["commit" if changed == "unknown_outcome" else "exit_code"] = "UNKNOWN" if changed == "unknown_outcome" else 1
+                    proof_path.write_text(json.dumps(proof))
+                elif changed == "restart":
+                    current["State"]["FinishedAt"] = "2026-01-01T00:02:00Z"
+                elif changed == "owner":
+                    current["Config"]["Labels"]["topsv3.preview.operation"] = "other"
+                elif changed == "journal":
+                    (report / name).write_text("{\"stage\":\"UNKNOWN\"}\n")
+                elif changed == "no_receipt":
+                    (report / "container-terminal.json").unlink()
+                sql = Path(folder) / "readonly.sql"
+                sql.write_text("BEGIN READ ONLY;\nROLLBACK;")
+                output = "".join("2026-01-01\t" + scope + "\t" + section + "\t" + category + "\t0\t0\t0\t0\n"
+                    for scope in ("PUBLICO_GALERIA_DTO_SELECIONADO", "PUBLICO_CARD_DTO_SELECIONADO")
+                    for section, category in (("TOTAL", "UNIVERSO"), ("CONTRATO", "ACEITA_COMPLETO"),
+                                              ("CONTRATO", "NAO_ACEITA_OU_NAO_COMPROVADO")))
+                output += "PUBLIC_PREVIEW_CONTRACT_QUERY_COMPLETE\n"
+                pg = {"Config": {"Env": ["POSTGRES_USER=synthetic", "POSTGRES_DB=synthetic"]}}
+                with patch.object(RUNTIME, "inspect", side_effect=[current, pg]), \
+                        patch.object(RUNTIME, "call", return_value=output) as calls:
+                    if changed == "none":
+                        RUNTIME.public_gate(folder, str(sql), "synthetic-validate")
+                        self.assertTrue((Path(folder) / "public-preview-contract.json").exists())
+                        self.assertIn("BEGIN READ ONLY;", calls.call_args.kwargs["stdin"])
+                    else:
+                        with self.assertRaises((RuntimeError, KeyError)):
+                            RUNTIME.public_gate(folder, str(sql), "synthetic-validate")
+                        calls.assert_not_called()
+                        self.assertFalse((Path(folder) / "public-preview-contract.json").exists())
 
 
 if __name__ == "__main__":

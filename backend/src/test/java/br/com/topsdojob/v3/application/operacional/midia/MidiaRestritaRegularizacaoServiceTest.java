@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
@@ -113,6 +114,56 @@ class MidiaRestritaRegularizacaoServiceTest {
 
     assertThat(resultado.naoComprovados()).isEqualTo(1);
     assertThat(resultado.disponiveis()).isZero();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {
+      "PENDENTE", "FALHA", "REMOVIDO", "DESCONHECIDO_PARCIAL"})
+  void presencaDoObjetoNaoAutorizaEstadoParcialOuInvalido(String estado) {
+    ArquivoMidiaEntity arquivo = arquivoValidado(UUID.randomUUID());
+    String key = "publicas/restritas-borradas/v1/preview.jpg";
+    switch (estado) {
+      case "PENDENTE" -> arquivo.marcarPreviewRestritoPendente(key, "v1");
+      case "FALHA" -> arquivo.marcarPreviewRestritoFalha(key, "v1");
+      case "REMOVIDO" -> arquivo.marcarPreviewRestritoRemovido();
+      case "DESCONHECIDO_PARCIAL" -> arquivo.marcarPreviewRestritoDesconhecido(key, "v1");
+      default -> throw new AssertionError(estado);
+    }
+    ObjectStorageInventory storage = mock(ObjectStorageInventory.class);
+    when(storage.list(any(), any(), any(), anyInt())).thenReturn(new StoredObjectPage(
+        List.of(new StoredObjectMetadata(key, 10L, "etag", Instant.now())), null, false));
+
+    var plano = planejarComListagem(arquivo, storage);
+
+    assertThat(plano.inconsistentes()).isEqualTo(1);
+    assertThat(plano.disponiveis()).isZero();
+  }
+
+  @Test
+  void objetoVazioNaoComprovaPreviewDisponivel() {
+    ObjectStorageInventory storage = mock(ObjectStorageInventory.class);
+    when(storage.list(any(), any(), any(), anyInt())).thenReturn(new StoredObjectPage(
+        List.of(new StoredObjectMetadata("publicas/restritas-borradas/v1/preview.jpg",
+            0L, "etag", Instant.now())), null, false));
+
+    var plano = planejarComListagem(arquivoValidado(UUID.randomUUID()), storage);
+
+    assertThat(plano.disponiveis()).isZero();
+    assertThat(plano.ausentes()).isEqualTo(1);
+  }
+
+  @Test
+  void cursorRepetidoReprovaSemRepetirInventarioIndefinidamente() {
+    ObjectStorageInventory storage = mock(ObjectStorageInventory.class);
+    when(storage.list(any(), any(), any(), anyInt())).thenReturn(new StoredObjectPage(
+        List.of(new StoredObjectMetadata("publicas/restritas-borradas/v1/preview.jpg",
+            10L, "etag", Instant.now())), "cursor-repetido", true));
+
+    var plano = planejarComListagem(arquivoValidado(UUID.randomUUID()), storage);
+
+    assertThat(plano.disponiveis()).isZero();
+    assertThat(plano.naoComprovados()).isEqualTo(1);
+    verify(storage, times(2)).list(any(), any(), any(), anyInt());
   }
 
   @Test
@@ -333,7 +384,7 @@ class MidiaRestritaRegularizacaoServiceTest {
     var backfill = mock(PreviewRestritoBackfillJdbcRepository.class);
     var plano = prepararSnapshot(Resultado.de(1, 1, 1,
         List.of(new Item(arquivo, "preview.jpg", Classificacao.DISPONIVEL))), backfill);
-    when(backfill.capturarVinculosElegiveis(true)).thenReturn(List.of());
+    doReturn(List.of()).when(backfill).capturarVinculosDosArquivos(any(), eq(true));
 
     assertThatThrownBy(() -> novoServicoAplicacao(arquivoRepository, backfill,
         mock(MidiaRestritaPreviewIdentity.class)).aplicar(plano, 200))
@@ -405,7 +456,7 @@ class MidiaRestritaRegularizacaoServiceTest {
       return ids.stream().collect(Collectors.toMap(Function.identity(), id ->
           new EstadoArquivo(id, "snapshot-" + id, "source-" + id, "DESCONHECIDO", true)));
     });
-    when(backfill.capturarVinculosElegiveis(false)).thenAnswer(invocation ->
+    when(backfill.capturarVinculosDosArquivos(any(), eq(false))).thenAnswer(invocation ->
         vinculoRepository.findFotosRestritasPublicaveis(
             br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia.FOTO,
             br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia.PUBLICAVEL,
@@ -418,6 +469,23 @@ class MidiaRestritaRegularizacaoServiceTest {
         backfill,
         previewIdentity,
         provider);
+  }
+
+  private Resultado planejarComListagem(ArquivoMidiaEntity arquivo, ObjectStorageInventory storage) {
+    var vinculos = mock(AnuncioMidiaRepository.class);
+    var arquivos = mock(ArquivoMidiaRepository.class);
+    var identity = mock(MidiaRestritaPreviewIdentity.class);
+    var vinculo = mock(AnuncioMidiaEntity.class);
+    @SuppressWarnings("unchecked")
+    ObjectProvider<ObjectStorageInventory> provider = mock(ObjectProvider.class);
+    when(vinculo.getArquivoMidiaId()).thenReturn(arquivo.getId());
+    when(vinculos.findFotosRestritasPublicaveis(any(), any(), any())).thenReturn(List.of(vinculo));
+    when(arquivos.findByIdIn(any())).thenReturn(List.of(arquivo));
+    when(identity.chavePublica(arquivo)).thenReturn("publicas/restritas-borradas/v1/preview.jpg");
+    when(identity.versaoPipeline()).thenReturn("v1");
+    when(identity.prefixoPreviews()).thenReturn("publicas/restritas-borradas/v1/");
+    when(provider.getIfAvailable()).thenReturn(storage);
+    return novoServico(vinculos, arquivos, identity, provider).planejar();
   }
 
   private Resultado prepararSnapshot(Resultado plano, PreviewRestritoBackfillJdbcRepository backfill) {
@@ -438,7 +506,10 @@ class MidiaRestritaRegularizacaoServiceTest {
       Collection<UUID> ids = invocation.getArgument(0);
       return ids.stream().collect(Collectors.toMap(Function.identity(), estados::get));
     });
-    when(backfill.capturarVinculosElegiveis(anyBoolean())).thenReturn(vinculos);
+    when(backfill.capturarVinculosDosArquivos(any(), anyBoolean())).thenAnswer(invocation -> {
+      Collection<UUID> ids = invocation.getArgument(0);
+      return vinculos.stream().filter(vinculo -> ids.contains(vinculo.arquivoId())).toList();
+    });
     return plano.comSnapshot(new MidiaRestritaRegularizacaoService.Snapshot(estados, vinculos));
   }
 

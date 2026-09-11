@@ -137,6 +137,13 @@ _op_lock() {
     _op_error 'outra ativacao/recuperacao ainda possui o mutex remoto'
     return 75
   fi
+  # A detached preview job may outlive its CLI. Never start deployment/recovery
+  # over an unresolved regularization, even after the original flock is gone.
+  if [ -e "${OP_ROOT}/operations/preview-backfill.pending" ] || [ -L "${OP_ROOT}/operations/preview-backfill.pending" ]; then
+    exec {OP_LOCK_FD}>&-
+    _op_error 'regularizacao de previews pendente; apuracao explicita obrigatoria'
+    return 76
+  fi
 }
 _op_config_hashes() {
   (

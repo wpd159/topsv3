@@ -214,10 +214,13 @@ jobs:
           set -euo pipefail
           test "$(id -u)" -ne 0
           docker compose version
-          for test_image in node:22.13.1-alpine postgres:17.10-alpine flyway/flyway:12.10.0 nginx:1.27-alpine; do
+          for test_image in node:22.13.1-alpine postgres:17.10-alpine flyway/flyway:12.10.0 nginx:1.27-alpine python:3.12-slim-bookworm; do
             timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
             docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$test_image"
           done
+          fixture_image_id="$(docker image inspect --format '{{.Id}}' python:3.12-slim-bookworm)"
+          [[ "$fixture_image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'TOPSV3_BACKFILL_FIXTURE_IMAGE_ID=%s\n' "$fixture_image_id" >> "$GITHUB_ENV"
 
       - name: Validate composed operation contract
         shell: pwsh

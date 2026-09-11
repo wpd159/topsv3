@@ -108,7 +108,7 @@ public class MidiaRestritaRegularizacaoService {
     }
     Snapshot snapshot = new Snapshot(
         backfillRepository.capturarArquivos(arquivos.keySet()),
-        backfillRepository.capturarVinculosElegiveis(false));
+        backfillRepository.capturarVinculosDosArquivos(arquivos.keySet(), false));
     if (!snapshot.arquivos().keySet().equals(arquivos.keySet())
         || !snapshot.arquivos().keySet().equals(snapshot.arquivosDosVinculos())) {
       throw new IllegalStateException("Snapshot do universo elegivel nao comprovado");
@@ -145,16 +145,28 @@ public class MidiaRestritaRegularizacaoService {
   private Aplicacao executarAplicacao(Resultado plano, int batchSize) {
     validarPlanoComprovado(plano);
     validarBatchSize(batchSize);
-    Snapshot snapshot = exigirSnapshot(plano);
+    Snapshot completo = exigirSnapshot(plano);
+    for (Item item : plano.itens()) {
+      if (!completo.arquivos().get(item.arquivo().getId()).metadadosAusentes()
+          && !previewDisponivelExato(item.arquivo(), item.chaveEsperada())) {
+        throw new IllegalStateException("Estado persistido do preview nao permite promocao segura");
+      }
+    }
+    List<Item> ordenados = plano.itens().stream()
+        .filter(item -> completo.arquivos().get(item.arquivo().getId()).metadadosAusentes())
+        .sorted(Comparator.comparing(item -> item.arquivo().getId().toString())).toList();
+    Set<UUID> alvos = ordenados.stream().map(item -> item.arquivo().getId()).collect(Collectors.toSet());
+    Snapshot snapshot = new Snapshot(completo.arquivos().entrySet().stream()
+        .filter(entry -> alvos.contains(entry.getKey()))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)),
+        completo.vinculos().stream().filter(vinculo -> alvos.contains(vinculo.arquivoId())).toList());
     backfillRepository.limitarEsperaTransacional();
     conferirVinculos(snapshot, true);
     OffsetDateTime agora = OffsetDateTime.now(clock);
     int atualizados = 0;
-    int inalterados = 0;
+    int inalterados = plano.arquivos() - alvos.size();
     int lotes = 0;
 
-    List<Item> ordenados = plano.itens().stream()
-        .sorted(Comparator.comparing(item -> item.arquivo().getId().toString())).toList();
     for (List<Item> lote : particionar(ordenados, batchSize)) {
       lotes++;
       List<UUID> ids = lote.stream().map(item -> item.arquivo().getId()).toList();
@@ -225,8 +237,9 @@ public class MidiaRestritaRegularizacaoService {
   }
 
   private void conferirVinculos(Snapshot snapshot, boolean bloquear) {
-    if (!snapshot.vinculos().equals(backfillRepository.capturarVinculosElegiveis(bloquear))) {
-      throw new IllegalStateException("Universo ou estado dos vinculos mudou depois do PLAN");
+    if (!snapshot.vinculos().equals(backfillRepository.capturarVinculosDosArquivos(
+        snapshot.arquivos().keySet(), bloquear))) {
+      throw new IllegalStateException("Universo ou estado dos vinculos alvo mudou depois do PLAN");
     }
   }
 
@@ -280,6 +293,7 @@ public class MidiaRestritaRegularizacaoService {
     }
     try {
       Set<String> keys = new LinkedHashSet<>();
+      Set<String> cursores = new LinkedHashSet<>();
       String cursor = null;
       int paginas = 0;
       do {
@@ -289,9 +303,10 @@ public class MidiaRestritaRegularizacaoService {
             cursor,
             PAGE_SIZE);
         paginas++;
-        page.objects().stream().map(StoredObjectMetadata::key).forEach(keys::add);
+        page.objects().stream().filter(object -> object.size() > 0)
+            .map(StoredObjectMetadata::key).forEach(keys::add);
         cursor = page.truncated() ? page.nextContinuationToken() : null;
-        if (page.truncated() && (cursor == null || cursor.isBlank())) {
+        if (page.truncated() && (cursor == null || cursor.isBlank() || !cursores.add(cursor))) {
           return Listagem.naoComprovada();
         }
       } while (cursor != null);
@@ -319,13 +334,10 @@ public class MidiaRestritaRegularizacaoService {
       case DISPONIVEL -> previewDisponivelExato(arquivo, esperada)
           ? Classificacao.DISPONIVEL
           : Classificacao.INCONSISTENTE;
-      case DESCONHECIDO -> estadoDesconhecidoCompativel(arquivo, esperada)
+      case DESCONHECIDO -> estadoAplicavel(arquivo)
           ? Classificacao.DISPONIVEL
           : Classificacao.INCONSISTENTE;
-      case PENDENTE -> estadoPendenteExato(arquivo, esperada)
-          ? Classificacao.DISPONIVEL
-          : Classificacao.INCONSISTENTE;
-      case FALHA, REMOVIDO -> Classificacao.INCONSISTENTE;
+      case PENDENTE, FALHA, REMOVIDO -> Classificacao.INCONSISTENTE;
     };
   }
 

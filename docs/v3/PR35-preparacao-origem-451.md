@@ -1,3 +1,9 @@
+# Histórico substituído
+
+A preparação global descrita no histórico abaixo não é requisito da rota atual. A integração LOCAL usa VALIDATE fresco da imagem física candidata e gate público selecionado antes de ACTIVATING, sem drenagem global nem APPLY automático. O APPLY permanece independente e explicitamente confirmado, com os guards já revisados. Os gates de CI, as esperas do Compose e a recuperação existente de 300 segundos foram preservados. Não executar o roteiro histórico: o procedimento atual está em `scripts/deploy/TRANSICAO-PREVIEWS.md`. Esta entrega é para auditoria; nenhuma execução produtiva foi autorizada.
+
+---
+
 # PR35: primeira preparação da origem 451 ainda pendente
 
 Escopo: revisão local de logs, cleanup de testes e capacidade de transição.

@@ -1,4 +1,70 @@
-# Transição de previews — coordenação supervisionada
+# Histórico substituído
+
+A preparação global descrita no histórico abaixo não é requisito da rota atual. A integração LOCAL usa VALIDATE fresco da imagem física candidata e gate público selecionado antes de ACTIVATING, sem drenagem global nem APPLY automático. O APPLY permanece independente e explicitamente confirmado, com os guards já revisados. Os gates de CI, as esperas do Compose e a recuperação existente de 300 segundos foram preservados. Não executar o roteiro histórico: o procedimento atual está em `scripts/deploy/TRANSICAO-PREVIEWS.md`. Esta entrega é para auditoria; nenhuma execução produtiva foi autorizada.
+
+## Interface independente proposta — somente para revisão
+
+**Não executar agora.** O helper está separado do deploy e a integração local foi adequada sem remover gates ou esperas do Compose. A futura candidata deve conter o diff auditado e passar os gates de publicação; o HEAD histórico `3748` não contém estas alterações locais. A imagem precisa já existir e seu ID físico deve vir da evidência da candidata avaliada, não ser inferido de uma tag no momento do APPLY. Não há build/pull no helper.
+
+Depois de autorização produtiva específica e conferências frescas de release, configuração, imagem e exclusividade, executar no host autorizado, fora de uma operação de deploy:
+
+```bash
+set -euo pipefail
+umask 077
+: "${CANDIDATE_SHA:?Informe o SHA completo da futura candidata auditada}"
+: "${EVALUATED_BACKEND_IMAGE_ID:?Informe o sha256:ID fisico registrado na avaliacao}"
+[[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+[[ "$EVALUATED_BACKEND_IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
+test "${OP_ACTIVE:-0}" -eq 0
+DEPLOY_ROOT=/opt/topsv3/production
+RELEASE_DIR="$DEPLOY_ROOT/releases/$CANDIDATE_SHA"
+ENV_FILE=/opt/topsv3/secrets/production.env
+HELPER="$RELEASE_DIR/scripts/deploy/executar-backfill-previews-production.sh"
+test "$(cat "$RELEASE_DIR/.release-sha")" = "$CANDIDATE_SHA"
+REPORT_ROOT="$(mktemp -d "$DEPLOY_ROOT/operations/preview-review-XXXXXXXX")"
+
+# PLAN fresco: SELECT/LIST; não altera metadados nem objetos.
+env TOPSV3_PREVIEW_BACKFILL_IMAGE_ID="$EVALUATED_BACKEND_IMAGE_ID" \
+  bash "$HELPER" PLAN initial "$CANDIDATE_SHA" "$RELEASE_DIR" "$ENV_FILE" \
+  topsv3-production topsv3-production topsv3-production-net "$REPORT_ROOT/plan"
+
+# Conferir o PLAN antes desta chamada única e explicitamente confirmada.
+# APPLY faz seu próprio PLAN fresco; o PLAN anterior/histórico não é replayado.
+env TOPSV3_PREVIEW_BACKFILL_IMAGE_ID="$EVALUATED_BACKEND_IMAGE_ID" \
+  TOPSV3_PREVIEW_BACKFILL_CONFIRM="APPLY:$CANDIDATE_SHA" \
+  bash "$HELPER" APPLY delta "$CANDIDATE_SHA" "$RELEASE_DIR" "$ENV_FILE" \
+  topsv3-production topsv3-production topsv3-production-net "$REPORT_ROOT/apply"
+
+# VALIDATE fresco: somente leitura; não é um APPLY nem corrige novo delta.
+env TOPSV3_PREVIEW_BACKFILL_IMAGE_ID="$EVALUATED_BACKEND_IMAGE_ID" \
+  bash "$HELPER" VALIDATE final "$CANDIDATE_SHA" "$RELEASE_DIR" "$ENV_FILE" \
+  topsv3-production topsv3-production topsv3-production-net "$REPORT_ROOT/validate"
+```
+
+APPLY permite somente os cinco campos de preview dos alvos `DESCONHECIDO + quatro NULL`, com identidade do PLAN, locks/rechecagem de arquivos e todos os vínculos e rollback integral. Não há PUT/DELETE/regeneração nem mudança de elegibilidade. O arquivo `.before.json` e o journal são privados; não enviar a artifacts públicos. Cada chamada cria um job efêmero sem reinício automático, pinado fisicamente, e adquire o mesmo `deploy.lock` de ativação/recuperação. Jobs preexistentes ou journal de deploy não terminal bloqueiam a chamada.
+
+Antes de iniciar o job, o helper persiste `operations/preview-backfill.pending`. Somente sucesso completo, prova terminal e cleanup com ownership liberam esse bloqueio. Falha conserva o erro original, o container e a pendência; `outcome.json` registra `COMMITTED`, `ROLLED_BACK`, `UNKNOWN` ou `NOT_STARTED`, sempre sem autorizar retry. Em erro após commit/observação incerta, não repetir APPLY, trocar diretório para tentar novamente, apagar o marcador ou restaurar banco: apurar manualmente ID/estado do job, journal, captura anterior e estado atual, sob autorização própria. PLAN/VALIDATE não liberam essa pendência automaticamente.
+
+## Publicação: validação fresca, nunca regularização automática
+
+Depois dos prechecks, migrations/gates existentes e build supervisionado, `op_expect_candidate` captura as identidades físicas. `op_preview_validate_before_activation` executa somente VALIDATE/final pelo runner existente e depois o SQL público selecionado. O gate revalida ownership, imagem, término, journal e outcome do mesmo job; metadados ausentes/inconsistentes, UNKNOWN ou erro impedem ACTIVATING. A limpeza exige prova de job VALIDATE próprio e terminal (inclusive exit não zero) ou ausência verificada independentemente; falha de inspect isolada não prova ausência. Nenhum serviço de origem é parado por esse coordenador.
+
+O cleanup preserva o erro original e nunca transforma reprovação em PASS. Identidade/término desconhecidos ou falha de limpeza mantêm a ambiguidade no journal e exigem apuração pelo procedimento existente. A ambiguidade já registrada pelo supervisor não é apagada apenas porque a limpeza terminou. A recuperação e sua janela de 300 segundos não foram alteradas; não há restauração automática de banco. `preview-backfill.pending` continua bloqueando operações incompatíveis, sem remoção pelo deploy.
+
+A fixture Bash existente agora se autoisola. Nos workflows, a preparação explícita acrescenta `python:3.12-slim-bookworm` e registra seu ID físico em `TOPSV3_BACKFILL_FIXTURE_IMAGE_ID`; o lançador não faz pull/build. Localmente, reutilizar uma imagem já disponível com Bash/Python/flock/coreutils e informar seu ID avaliado. O filho exige rede none, ausência de docker.sock, rootfs/source RO, `/tmp` em tmpfs executável e `/opt/topsv3` em tmpfs noexec; roda sem capabilities e sem adquirir novos privilégios. Exemplo LOCAL já validado (não é comando produtivo):
+
+```bash
+TOPSV3_BACKFILL_FIXTURE_IMAGE_ID=sha256:0fa86fa9b8a28f41ced37ffaa6b87fe9424194ad82828ed5063fa825d39ef84c \
+  bash scripts/deploy/testar-backfill-previews-production.sh
+```
+
+O CI conserva todos os gates, inclusive a regressão isolada do observador da origem 451. A fixture de recuperação executa o corpo integral do workflow, com fronteiras de VALIDATE/SQL explicitamente sintéticas, sem remover linhas do gate ou alterar seus prazos. Isso não equivale a ensaio produtivo/Spring nem dispensa os gates completos da futura publicação.
+
+Ainda faltam auditoria final e gates obrigatórios sobre a futura candidata congelada. A origem pode criar novos registros sem metadados entre as chamadas; qualquer delta/reprovação fresca bloqueia promoção, não justifica ignorar o gate nem repetir APPLY automaticamente. As observações frescas não são um congelamento global dos dados.
+
+---
+
+# Histórico substituído — não executar a sequência abaixo
 
 O workflow de publicação continua sendo o único ativador. **Esta entrega é para revisão, sem autorização de novo deploy.** A origem `451a6cb9` inspecionada não possui shutdown gracioso comprovado e deve ser recusada antes de qualquer alteração de configuração ou serviços. É necessária preparação e revisão adicional do controle dessa origem; não substituir a prova por gateway fechado, SQL ocioso, parada forçada ou uma variável de confirmação.
 
