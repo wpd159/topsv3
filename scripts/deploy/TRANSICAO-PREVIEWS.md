@@ -15,4 +15,12 @@ Para uma origem cujo controle seja comprovado, o caminho é:
 
 Os sidecars privados anteriores ao APPLY contêm identificadores e metadados e não devem ser enviados a artifacts ou logs do CI. Relatórios públicos contêm somente contagens, IDs operacionais, imagens e hashes. A indisponibilidade da janela final é explícita; isto não é blue-green nem garantia de zero downtime.
 
-Testes: `testar-transicao-previews-production.py`, `testar-backfill-previews-production.sh`, `testar-gate-previews-publicos-production.sh`, contratos e suítes operacionais já obrigatórios. Só a configuração da candidata nova é ampliada para aguardar o executor de moderação; isso não altera retroativamente a origem `451a6cb9` em execução.
+Testes: `testar-transicao-previews-production.py`, `testar-backfill-previews-production.sh`, `testar-coordenador-transicao-previews-production.sh`, `testar-gate-previews-publicos-production.sh`, contratos e suítes operacionais são obrigatórios. Só a configuração da candidata nova é ampliada para aguardar o executor de moderação; isso não altera retroativamente a origem `451a6cb9` em execução.
+
+### Escopos da cobertura operacional
+
+A fixture de containers usa servidores Node sintéticos, não uma aplicação Spring com produtores de previews. O corpo integral extraído do workflow, com coordenador e runtime reais, deve abortar antes de qualquer mutação porque essa origem não satisfaz o contrato. O teste conserva o journal negativo e verifica ausência de recibo de aprovação, preservação de imagem, configuração, release, PostgreSQL e identidade/estado dos serviços. A inspeção real do Node também é recusada pelo predicado de entrypoint; somente o nome do namespace privado é normalizado nessa prova específica.
+
+Os 11 cenários de ativação/recuperação exercitam o helper central e containers reais numa projeção explicitamente limitada a esse escopo. A projeção exclui somente as três linhas exatas dos hooks de previews, exige ocorrência única e ordem conhecida e preserva todos os demais bytes. Não redefine os gates como sucesso. As assertions e os prazos reais de 32, 183 e 300 segundos permanecem. Isso não é um ensaio positivo integral da transição de previews em produção.
+
+O teste focal do coordenador carrega sua implementação real e declara as fronteiras sintéticas de observação/execução; verifica a sequência e a interrupção diante de falhas sem afirmar que uma origem real foi drenada. As provas complementares do runtime, do journal, do backfill Java com PostgreSQL, do predicado público 4/10 e da supervisão de timeout/recuperação continuam separadas e obrigatórias. Essa composição não dispensa o preflight efetivo da origem antes de qualquer futura publicação.

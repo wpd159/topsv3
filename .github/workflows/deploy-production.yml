@@ -209,6 +209,7 @@ jobs:
           bash ./scripts/deploy/testar-gate-flyway-production.sh
           bash ./scripts/deploy/testar-stdin-deploy-production.sh
           bash ./scripts/deploy/testar-backfill-previews-production.sh
+          bash ./scripts/deploy/testar-coordenador-transicao-previews-production.sh
           python3 ./scripts/deploy/testar-transicao-previews-production.py
           bash ./scripts/deploy/testar-gate-previews-publicos-production.sh
           for backup_restore_run in $(seq 1 10); do

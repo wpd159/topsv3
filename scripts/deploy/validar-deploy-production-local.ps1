@@ -505,7 +505,9 @@ Add-Check "gate SQL conserva selecao 4/10 e contrato integral" (
 Add-Check "CI e deploy exercitam transicao e selecao com PostgreSQL" (
   $workflow.Contains('testar-transicao-previews-production.py') -and
   $workflow.Contains('testar-gate-previews-publicos-production.sh') -and
+  $workflow.Contains('testar-coordenador-transicao-previews-production.sh') -and
   $ciWorkflow.Contains('testar-transicao-previews-production.py') -and
+  $ciWorkflow.Contains('testar-coordenador-transicao-previews-production') -and
   $ciWorkflow.Contains('testar-gate-previews-publicos-production')
 )
 Add-Check "compose aguarda executor de moderacao alem do scheduler" (

@@ -4,6 +4,8 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -161,6 +163,65 @@ class TransitionTests(unittest.TestCase):
                 self.assertIn(image, preparation.split("; do", 1)[0].split())
             self.assertIn('timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"', preparation)
             self.assertLess(workflow.index("for test_image in "), workflow.index("testar-gate-previews-publicos-production"))
+
+    def test_core_fixture_projection_preserves_every_other_byte(self):
+        fixture = (ROOT / "scripts/deploy/testar-operacao-containers-production.sh").read_text()
+        projection = fixture.split("<<'CORE_SCOPE_PROJECTION'\n", 1)[1].split("\nCORE_SCOPE_PROJECTION\n", 1)[0]
+        hooks = [b'source "${release_dir}/scripts/deploy/coordenar-transicao-previews-production.sh"\n',
+                 b'op_preview_preflight\n', b'op_preview_drain_and_reconcile\n']
+        segments = [b'#!/bin/bash\nset -Eeuo pipefail\nop_begin "$root" "$sha"\n',
+                    b'# unchanged comment\n', b'op_phase CONFIGURING\nprintf " keep  spacing "\n',
+                    b'op_phase ACTIVATING\nop_smoke "$sha"\nop_finish\n']
+        original = segments[0] + hooks[0] + segments[1] + hooks[1] + segments[2] + hooks[2] + segments[3]
+        with tempfile.TemporaryDirectory() as folder:
+            source_file, core_file = Path(folder) / "full.sh", Path(folder) / "core.sh"
+            source_file.write_bytes(original)
+            result = subprocess.run([sys.executable, "-c", projection, str(source_file), str(core_file)],
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(source_file.read_bytes(), original)
+            self.assertEqual(core_file.read_bytes(), b"".join(segments))
+            self.assertIn("preview_hooks_removed=3 other_bytes_unchanged=true", result.stdout)
+            for index, changed in enumerate((original.replace(hooks[1], b""), original + hooks[1],
+                            original.replace(hooks[1], b"__SWAP__\n").replace(hooks[2], hooks[1]).replace(b"__SWAP__\n", hooks[2]),
+                            original + b'op_preview_new_unreviewed_hook\n')):
+                with self.subTest(changed=changed):
+                    source_file.write_bytes(changed)
+                    rejected = Path(folder) / ("must-not-create-" + str(index) + ".sh")
+                    result = subprocess.run([sys.executable, "-c", projection, str(source_file), str(rejected)],
+                                            capture_output=True, text=True, check=False)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("CORE_SCOPE_ERROR:", result.stderr)
+                    self.assertFalse(rejected.exists())
+
+    def test_core_fixture_keeps_real_negative_transition_and_deadlines(self):
+        fixture = (ROOT / "scripts/deploy/testar-operacao-containers-production.sh").read_text()
+        for assertion in ("PREVIEW_TRANSITION=FAIL reason=source_name_mismatch", "result=ABORTED mutated=0",
+                          "source_entrypoint_unproven", "PREVIEW_FULL_WORKFLOW_NEGATIVE=PASS",
+                          "first_home-restore<32000", "last_end-restore<183000",
+                          "elapsed_recovery_ms >= 300000", "preview_negative_checked=1"):
+            self.assertIn(assertion, fixture)
+        for name in ("op_preview_preflight", "op_preview_drain_and_reconcile"):
+            self.assertNotIn(name + "()", fixture)
+
+    def test_preflight_event_delta_accepts_only_known_readonly_traces(self):
+        fixture = (ROOT / "scripts/deploy/testar-operacao-containers-production.sh").read_text()
+        proof = fixture.split("<<'PREFLIGHT_EVENT_DELTA'\n", 1)[1].split("\nPREFLIGHT_EVENT_DELTA\n", 1)[0]
+        with tempfile.TemporaryDirectory() as folder:
+            before, after = Path(folder) / "before", Path(folder) / "after"
+            original = b"previous owned setup\n"
+            before.write_bytes(original)
+            for delta, expected in ((b"", 0), (b"PROBE_TRACE event=start\nCONTENT_TRACE stage=baseline\n", 0),
+                                    (b"CONTROLLED_BOUNDARY psql\n", 1), (b"RESTORE_UP time_ms=1\n", 1),
+                                    (b"/private-backend image id\n", 1), (b"UNKNOWN\n", 1)):
+                after.write_bytes(original + delta)
+                result = subprocess.run([sys.executable, "-c", proof, str(before), str(after)],
+                                        capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode, expected, result.stderr)
+            after.write_bytes(b"changed evidence\n")
+            result = subprocess.run([sys.executable, "-c", proof, str(before), str(after)],
+                                    capture_output=True, text=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
 
     def test_named_service_substitute_rejected(self):
         other = source()

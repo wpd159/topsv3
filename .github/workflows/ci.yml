@@ -229,7 +229,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/reconciliation-operation-evidence"
           first_failure=0
           python3 ./scripts/deploy/testar-transicao-previews-production.py
-          for gate in testar-stdin-deploy-production testar-gate-banco-production testar-gate-flyway-production testar-backfill-previews-production testar-gate-previews-publicos-production testar-operacao-production testar-backup-validado-production testar-operacao-containers-production; do
+          for gate in testar-stdin-deploy-production testar-gate-banco-production testar-gate-flyway-production testar-backfill-previews-production testar-coordenador-transicao-previews-production testar-gate-previews-publicos-production testar-operacao-production testar-backup-validado-production testar-operacao-containers-production; do
             set +e
             bash "./scripts/deploy/$gate.sh" 2>&1 | tee "$RUNNER_TEMP/reconciliation-operation-evidence/$gate.log"
             codes=("${PIPESTATUS[@]}")

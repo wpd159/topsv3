@@ -17,14 +17,15 @@ tests=0
 
 fail() { printf 'PUBLIC_PREVIEW_GATE_TESTS_FAIL: %s\n' "$*" >&2; exit 1; }
 cleanup() {
-  local original_exit=$? cleanup_exit=0 name owner
+  local original_exit=$? cleanup_exit=0 name owner container_id
   trap - EXIT
   for name in "$flyway" "$pg"; do
-    if owner="$(docker inspect --format '{{index .Config.Labels "topsv3.test-owner"}}' "$name" 2>/dev/null)"; then
-      if [[ "$owner" != "$owner_id" ]]; then
+    if container_id="$(docker inspect --format '{{.Id}}' "$name" 2>/dev/null)"; then
+      owner="$(docker inspect --format '{{index .Config.Labels "topsv3.test-owner"}}' "$container_id" 2>/dev/null)" || owner=''
+      if [[ ! "$container_id" =~ ^[a-f0-9]{64}$ || "$owner" != "$owner_id" ]]; then
         printf 'CLEANUP_OWNERSHIP_MISMATCH %s\n' "$name" >&2
         cleanup_exit=1
-      elif ! docker rm -f "$name" >"${evidence}/cleanup-${name}.log" 2>&1; then
+      elif ! docker rm -fv "$container_id" >"${evidence}/cleanup-${name}.log" 2>&1; then
         cleanup_exit=1
       fi
     fi
@@ -56,6 +57,7 @@ POSTGRES_PASSWORD="CHANGE_ME" PGPASSWORD="CHANGE_ME" docker run --pull=never -d 
   --name "$pg" --label "${label_key}=${owner_id}" --network "$network" \
   -e POSTGRES_DB=topsv3_preview_gate -e POSTGRES_USER=topsv3test \
   -e POSTGRES_PASSWORD -e PGPASSWORD postgres:17.10-alpine >"${evidence}/postgres.log"
+docker inspect "$pg" >"${evidence}/postgres-container.json"
 bash "${script_dir}/aguardar-postgres-efemero.sh" "$pg" topsv3test topsv3_preview_gate \
   >"${evidence}/readiness.log" 2>&1
 migrations="${root}/backend/src/main/resources/db/migration"
