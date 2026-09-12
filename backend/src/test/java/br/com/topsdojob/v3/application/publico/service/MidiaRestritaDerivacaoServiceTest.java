@@ -73,7 +73,13 @@ class MidiaRestritaDerivacaoServiceTest {
     assertThat(preview.previewUrl()).contains("/restritas-borradas/v1/");
     assertThat(preview.previewUrl()).doesNotContain(sourceKey);
     assertThat(storage.exists(StorageArea.PRIVATE_MEDIA, sourceKey)).isTrue();
+    assertThat(storage.get(StorageArea.PRIVATE_MEDIA, sourceKey).content()).isEqualTo(source);
     assertThat(arquivo.getPreviewRestritoStatus()).isEqualTo(StatusDerivadoMidia.DISPONIVEL);
+    assertThat(arquivo.getPreviewRestritoTipo())
+        .isEqualTo(br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoDerivadoMidia.PREVIEW_RESTRITO);
+    assertThat(arquivo.getPreviewRestritoChave()).isEqualTo(primeira.chavePublica());
+    assertThat(arquivo.getPreviewRestritoPipelineVersao()).isEqualTo("v1");
+    assertThat(arquivo.getPreviewRestritoConfirmadoEm()).isNotNull();
   }
 
   @Test

@@ -35,6 +35,9 @@ $operationHelper = Read-RepoFile "scripts/deploy/proteger-operacao-production.sh
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
 $ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
 $previewBackfill = Read-RepoFile "scripts/deploy/executar-backfill-previews-production.sh"
+$previewTransition = Read-RepoFile "scripts/deploy/coordenar-transicao-previews-production.sh"
+$previewRuntime = Read-RepoFile "scripts/deploy/validar-transicao-previews-runtime.py"
+$previewPublicSql = Read-RepoFile "scripts/deploy/validar-previews-publicos-production.sql"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
 $ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
@@ -462,6 +465,91 @@ Add-Check "compose preserva shutdown gracioso e timeouts SMTP" (
   ($compose.Contains('OUTBOX_SMTP_CONNECTION_TIMEOUT_MS: "5000"')) -and
   ($compose.Contains('OUTBOX_SMTP_TIMEOUT_MS: "10000"')) -and
   ($compose.Contains('OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"'))
+)
+Add-Check "workflow nao exige drenagem global nem executa regularizacao mutante" (
+  (-not $workflow.Contains('op_preview_preflight')) -and
+  (-not $workflow.Contains('op_preview_drain_and_reconcile')) -and
+  (-not $previewTransition.Contains('APPLY:delta')) -and
+  $previewTransition.Contains('preview_backfill_main VALIDATE final')
+)
+Add-Check "transicao valida metadados e contrato publico antes da ativacao" (
+  $workflow.Contains('op_preview_validate_before_activation') -and
+  ($workflow.IndexOf('op_expect_candidate') -lt $workflow.IndexOf('op_preview_validate_before_activation')) -and
+  ($workflow.IndexOf('op_preview_validate_before_activation') -lt $workflow.IndexOf('op_phase ACTIVATING')) -and
+  $previewTransition.Contains('candidate.images.tsv') -and
+  $previewTransition.Contains('op_run readonly python3 "${OP_PREVIEW_HELPER}" public') -and
+  $previewTransition.Contains('[ "${rc}" -eq 0 ] || return "${rc}"')
+)
+$previewMain = Read-ShellFunction $previewBackfill 'preview_backfill_main'
+$previewRun = Read-ShellFunction $previewBackfill 'run_backfill'
+$previewLock = Read-ShellFunction $previewBackfill 'standalone_lock'
+$previewExit = Read-ShellFunction $previewBackfill 'on_exit'
+$previewCleanup = Read-ShellFunction $previewBackfill 'cleanup_job'
+Add-Check "APPLY independente exige confirmacao explicita do SHA e preserva supervisor readonly" (
+  $previewRun.Contains('runner=(op_run mutating)') -and
+  $previewMain.Contains('[ "${OP_ACTIVE:-0}" -ne 1 ]') -and
+  $previewMain.Contains('[ "${TOPSV3_PREVIEW_BACKFILL_CONFIRM:-}" = "APPLY:${RELEASE_SHA}" ]') -and
+  $previewRun.Contains('[ "${TOPSV3_PREVIEW_BACKFILL_CONFIRM:-}" = "APPLY:${RELEASE_SHA}" ]') -and
+  $previewRun.Contains('local apply_confirmed=false') -and
+  (-not $previewMain.Contains('preview-drained.json')) -and
+  $previewRuntime.Contains('private_before_snapshot_identity_unproven')
+)
+Add-Check "backfill independente compartilha mutex e bloqueia operacao sem resultado apurado" (
+  $previewLock.Contains('_op_lock "${root}"') -and
+  $previewLock.Contains('_op_validate_state "${state}"') -and
+  $previewLock.Contains('docker ps --all --quiet --filter label=topsv3.preview.operation') -and
+  $previewRun.Contains('operations/preview-backfill.pending') -and
+  $previewRun.Contains('set -o noclobber') -and
+  $operationHelper.Contains('operations/preview-backfill.pending') -and
+  ($previewRun.IndexOf('set -o noclobber') -lt $previewRun.IndexOf('"${runner[@]}" env'))
+)
+Add-Check "backfill observa journal antes de aceitar terminal e nao limpa falha automaticamente" (
+  $previewMain.Contains('outcome "${REPORT_DIR}"') -and
+  $previewMain.Contains('terminal "${REPORT_DIR}"') -and
+  ($previewMain.IndexOf('outcome "${REPORT_DIR}"') -lt $previewMain.IndexOf('terminal "${REPORT_DIR}"')) -and
+  $previewMain.Contains('[ "${rc}" -eq 0 ] || return "${rc}"') -and
+  $previewExit.Contains('[ "${JOB_VERIFIED:-0}" -eq 1 ] && [ "${rc}" -eq 0 ]') -and
+  $previewExit.Contains('retry_allowed=false') -and
+  $previewCleanup.Contains('terminal_success_unproven') -and
+  $previewCleanup.Contains('"${actual_owner}" != "${JOB_OWNER}"') -and
+  (-not $previewCleanup.Contains('docker stop'))
+)
+Add-Check "imagem do backfill fica pinada antes de executar" (
+  $previewBackfill.Contains('pinned_compose=(-f') -and
+  $previewMain.Contains('TOPSV3_PREVIEW_BACKFILL_IMAGE_ID:-') -and
+  $previewRun.Contains('pin_arguments=("${TOPSV3_PREVIEW_BACKFILL_IMAGE_ID}")') -and
+  $previewBackfill.Contains('--pull never') -and
+  $previewRuntime.Contains('build: !reset null') -and
+  $previewRuntime.Contains('backfill_image_pin_unproven') -and
+  ($previewBackfill.IndexOf('pin "${REPORT_DIR}"') -lt $previewBackfill.IndexOf('"${runner[@]}" env'))
+)
+Add-Check "gate readonly limpa somente job terminal comprovado e preserva ambiguidade" (
+  $previewTransition.Contains('cleanup-proof') -and
+  $previewTransition.Contains('op_run mutating docker rm "${identifier}"') -and
+  $previewTransition.Contains('op_preview_cleanup_validate "${report}" || cleanup_rc=$?') -and
+  $previewTransition.Contains('OP_AMBIGUOUS=1') -and
+  (-not $previewTransition.Contains('docker stop')) -and
+  (-not $previewTransition.Contains('--kill-after')) -and
+  (-not $previewTransition.Contains('OP_AMBIGUOUS=0'))
+)
+Add-Check "gate SQL conserva selecao 4/10 e contrato integral" (
+  $previewPublicSql.Contains('THEN 10 ELSE 4') -and
+  $previewPublicSql.Contains('pf.posicao_foto <= a.limite_fotos') -and
+  $previewPublicSql.Contains('preview_restrito_confirmado_em IS NOT NULL') -and
+  $previewPublicSql.Contains('PUBLIC_PREVIEW_CONTRACT_QUERY_COMPLETE') -and
+  $previewRuntime.Contains('public_contract_totals_inconsistent')
+)
+Add-Check "CI e deploy exercitam transicao e selecao com PostgreSQL" (
+  $workflow.Contains('testar-transicao-previews-production.py') -and
+  $workflow.Contains('testar-gate-previews-publicos-production.sh') -and
+  $workflow.Contains('testar-coordenador-transicao-previews-production.sh') -and
+  $ciWorkflow.Contains('testar-transicao-previews-production.py') -and
+  $ciWorkflow.Contains('testar-coordenador-transicao-previews-production') -and
+  $ciWorkflow.Contains('testar-gate-previews-publicos-production')
+)
+Add-Check "compose aguarda executor de moderacao alem do scheduler" (
+  $compose.Contains('SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION: "true"') -and
+  $compose.Contains('SPRING_TASK_EXECUTION_SHUTDOWN_AWAIT_TERMINATION_PERIOD: 120s')
 )
 Add-Check "snapshot Flyway ignora repeatables" (
   ($databaseGateSnapshot.Contains("version ~ '^[0-9]+$'")) -and

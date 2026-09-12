@@ -60,7 +60,7 @@ final class LocalidadesDescobertaFriaGate {
                     "-e", "LOCALIDADES_POSTGRES17_ENABLED", "--mount",
                     "type=bind,source=" + inputs + ",target=/inputs,readonly",
                     "--entrypoint", "sh", IMAGE, "-c",
-                    "mkdir /tmp/cold && cp -R /inputs/. /tmp/cold/ && exec java -javaagent:"
+                    "mkdir /tmp/cold && cp -R /inputs/. /tmp/cold/ && exec java -Xmx2g -javaagent:"
                             + agent + " -cp '" + String.join(":", childClasspath) + "' "
                             + LocalidadesDescobertaFriaProcesso.class.getName() + " " + rounds));
             try {

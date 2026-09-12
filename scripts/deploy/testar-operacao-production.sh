@@ -29,7 +29,11 @@ if [[ "${1:-}" == --daemon ]]; then
     (( SECONDS < deadline )) || exit 93
     sleep 0.05
   done
-  printf '%s\n' "$candidate_sha" > "${test_root}/runtime"
+  if [[ -f "${test_root}/stop-requested" ]]; then
+    printf 'STOPPED\n' > "${test_root}/runtime"
+  else
+    printf '%s\n' "$candidate_sha" > "${test_root}/runtime"
+  fi
   printf 'config-%s\n' "$candidate_sha" > "${test_root}/config"
   event daemon_finished
   exit 0
@@ -98,6 +102,14 @@ if [[ "${1:-}" == --fixture ]]; then
     hold) op_run mutating bash "$self" --mutator "$test_root" gated ;;
     descendant) op_run mutating bash "$self" --mutator "$test_root" descendant ;;
     daemon_failure) op_run mutating bash "${test_root}/bin/docker" "$test_root" ;;
+    preview_stop_timeout)
+      op_phase PREVIEW_DRAINING
+      op_run mutating timeout --signal=TERM 2s bash "${test_root}/bin/docker" "$test_root" wait ;;
+    preview_post_commit_failure)
+      op_phase PREVIEW_APPLY
+      op_run mutating bash -c 'printf "STOPPED\n" > "$1/runtime"; printf "COMMITTED\n" > "$1/preview-metadata"' _ "$test_root"
+      op_phase PREVIEW_VALIDATE
+      op_run readonly bash -c 'exit 42' ;;
     stdin)
       op_run mutating bash -c 'IFS= read -r payload; printf "%s\n" "$payload" > "$1/payload"' \
         -- "$test_root" <<< 'INDEXNOW-SYNTHETIC-OPERATION'
@@ -433,7 +445,7 @@ assert_result COMPLETED
 assert_restore_count 0
 echo 'PASS: duas_ativacoes_e_rollback_manual_compartilham_lock'
 
-for mode in before_failure after_failure smoke_failure explicit_exit restore_failure; do
+for mode in before_failure after_failure smoke_failure explicit_exit restore_failure preview_post_commit_failure; do
   new_case "$mode"
   case "$mode" in before_failure) expected=41 ;; smoke_failure) expected=43 ;; explicit_exit) expected=23 ;; *) expected=42 ;; esac
   expect_rc "$expected" timeout --kill-after=2s 15s bash "$self" --fixture "$test_root" "$mode"
@@ -451,6 +463,10 @@ for mode in before_failure after_failure smoke_failure explicit_exit restore_fai
     assert_restore_count 1
     assert_runtime "$previous_sha"
     [[ "$(cat "${test_root}/config")" == "config-${previous_sha}" ]] || fail 'configuracao anterior nao restaurada'
+    if [[ "$mode" == preview_post_commit_failure ]]; then
+      [[ "$(cat "${test_root}/preview-metadata")" == COMMITTED ]] || fail 'rollback de aplicacao desfez metadata confirmada'
+      grep -qx 'original_rc=42' "${test_root}/operations/active.state" || fail 'erro poscommit perdido'
+    fi
   fi
   printf 'PASS: %s erro_original=%s\n' "$mode" "$expected"
 done
@@ -570,7 +586,9 @@ assert_runtime "$candidate_sha"
 assert_restore_count 0
 echo 'PASS: perda_abrupta_controle_bloqueia_nova_mutacao_ate_reconciliacao'
 
-new_case independent_daemon
+for daemon_case in independent_daemon preview_stop_timeout; do
+new_case "$daemon_case"
+if [[ "$daemon_case" == preview_stop_timeout ]]; then touch "${test_root}/stop-requested"; fi
 mkdir "${test_root}/bin"
 cat > "${test_root}/bin/docker" <<'DOCKER_FAILURE'
 #!/usr/bin/env bash
@@ -581,6 +599,10 @@ until grep -qx daemon_pending "$1/events"; do
   (( SECONDS < deadline )) || exit 94
   sleep 0.05
 done
+if [[ "${2:-}" == wait ]]; then
+  while [[ ! -f "$1/release-daemon" ]]; do sleep 0.05; done
+  exit 0
+fi
 exit 1
 DOCKER_FAILURE
 chmod +x "${test_root}/bin/docker"
@@ -591,7 +613,11 @@ env --default-signal=INT,TERM,HUP setsid bash "$self" --daemon "$test_root" \
 daemon_pid=$!
 owner_pids+=("${daemon_pid}:$(process_start "$daemon_pid")")
 wait_event daemon_started
-expect_rc 1 bash "$self" --fixture "$test_root" daemon_failure
+if [[ "$daemon_case" == preview_stop_timeout ]]; then
+  expect_rc 124 bash "$self" --fixture "$test_root" preview_stop_timeout
+else
+  expect_rc 1 bash "$self" --fixture "$test_root" daemon_failure
+fi
 [[ -f "${test_root}/daemon-request" ]] || { cat "${test_root}/last.log" >&2; fail 'CLI controlada nao enviou pedido ao daemon'; }
 assert_result INCOMPLETE
 assert_restore_count 0
@@ -601,7 +627,7 @@ expect_rc 2 bash "$self" --fixture "$test_root" manual_without_confirmation
 assert_restore_count 0
 touch "${test_root}/release-daemon"
 wait "$daemon_pid"
-assert_runtime "$candidate_sha"
+if [[ "$daemon_case" == preview_stop_timeout ]]; then assert_runtime STOPPED; else assert_runtime "$candidate_sha"; fi
 grep -qx daemon_finished "${test_root}/events" || fail 'daemon independente nao terminou'
 expect_rc 0 bash "$self" --fixture "$test_root" manual_rollback
 assert_result ROLLED_BACK
@@ -610,6 +636,10 @@ assert_restore_count 1
 expect_rc 0 bash "$self" --fixture "$test_root" success
 assert_result COMPLETED
 echo 'PASS: cli_exit1_nao_prova_daemon_parado_recuperacao_exige_confirmacao'
+if [[ "$daemon_case" == preview_stop_timeout ]]; then
+  echo 'PASS: preview_stop_timeout_preserva_daemon_e_exige_recuperacao_exclusiva'
+fi
+done
 
 # Exercise the actual smoke scheduler with an explicitly controlled clock.
 # These fast checks prove branching/deadline arithmetic, NOT elapsed real time;
