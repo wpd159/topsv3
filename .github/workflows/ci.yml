@@ -38,6 +38,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(id -u)" -ne 0
+          python3 --version
+          docker compose version
+          git fetch --no-tags --depth=1 origin ed57ed45d76e8360c25375fa32320e520e8b62d9
           for test_image in postgres:17.10-alpine postgres:17-alpine flyway/flyway:12.10.0 eclipse-temurin:17.0.13_11-jre; do
             timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
             docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$test_image"
@@ -50,6 +54,7 @@ jobs:
           LOCALIDADES_POSTGRES17_ENABLED: "true"
           FOTO_ELEGIVEL_POSTGRES17_ENABLED: "true"
           PREVIEW_BACKFILL_POSTGRES17_ENABLED: "true"
+          PREVIEW_JOB_USER_INTEGRATION_ENABLED: "true"
           PUBLIC_SEARCH_POSTGRES17_ENABLED: "true"
           ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
           ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
@@ -67,6 +72,14 @@ jobs:
             backend/target/preview-backfill-cleanup-*
             !backend/target/localidades-cold/**/inputs/**
           if-no-files-found: warn
+
+      - name: Preserve real non-root preview job evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-job-user-integration-evidence
+          path: backend/target/preview-job-user-*/evidence/**
+          if-no-files-found: error
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4

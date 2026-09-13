@@ -359,15 +359,17 @@ preview_backfill_main() {
      && "$4" == "$OP_ROOT/releases/$OP_CANDIDATE" && "$5" == "$OP_SECRETS/production.env" \
      && "$6" == topsv3-production && "$7" == topsv3-production && "$8" == topsv3-production-net \
      && "$9" == "$OP_DIR/previews/validate" ]] || return 91
-  local report="$9" stage
+  local report="$9" stage job_user
+  job_user="$(id -u):$(id -g)"
   JOB_CONTAINER="$TEST_PREFIX-preview-validate-$OP_ID"
   printf 'CONTROLLED_BOUNDARY preview_validate_synthetic\n' >> "$TEST_EVENTS"
   printf 'container|%s|%s\n' "$JOB_CONTAINER" "$TEST_OWNER_ID" >> "$TEST_RESOURCES"
-  printf '{"image":"%s"}\n' "$TEST_CANDIDATE_IMAGE" > "$report/image-pin.json"
+  printf '{"image":"%s","user":"%s"}\n' "$TEST_CANDIDATE_IMAGE" "$job_user" > "$report/image-pin.json"
   for stage in STARTED PLAN_READY VALIDATION_PASSED SUCCEEDED; do
     printf '{"stage":"%s","mode":"VALIDATE","commit":"NOT_STARTED"}\n' "$stage"
   done > "$report/final-validate.tsv.state.jsonl"
   op_run mutating docker create --pull never --network none --restart no \
+    --user "$job_user" \
     --name "$JOB_CONTAINER" --label "topsv3.operation.test=$TEST_OWNER_ID" \
     --label "topsv3.preview.operation=$OP_ID" \
     --env R2_PUBLIC_MEDIA_PREFIX=synthetic-public/ --env R2_PUBLIC_BASE_URL=https://synthetic.invalid \

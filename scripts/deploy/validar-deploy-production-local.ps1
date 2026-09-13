@@ -532,6 +532,14 @@ Add-Check "gate readonly limpa somente job terminal comprovado e preserva ambigu
   (-not $previewTransition.Contains('--kill-after')) -and
   (-not $previewTransition.Contains('OP_AMBIGUOUS=0'))
 )
+Add-Check "job de previews fixa identidade do executor e preserva captura privada" (
+  $previewRuntime.Contains('return f"{os.geteuid()}:{os.getegid()}"') -and
+  $previewRuntime.Contains('service.get("user") == user == executor_user()') -and
+  $previewRuntime.Contains('runtime["Config"].get("User") == proof["user"]') -and
+  $previewRuntime.Contains('(metadata.st_uid, metadata.st_gid) == (os.geteuid(), os.getegid())') -and
+  $previewRuntime.Contains('metadata.st_mode & 0o7777 == 0o600') -and
+  $previewRuntime.Contains('private_before_snapshot_owner_or_mode_mismatch')
+)
 Add-Check "gate SQL conserva selecao 4/10 e contrato integral" (
   $previewPublicSql.Contains('THEN 10 ELSE 4') -and
   $previewPublicSql.Contains('pf.posicao_foto <= a.limite_fotos') -and

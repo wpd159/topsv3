@@ -5,6 +5,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -22,6 +23,7 @@ def source():
     return {"Id": "a" * 64, "Name": "/topsv3-production-backend", "Image": "sha256:" + "b" * 64,
             "RestartCount": 0,
             "Config": {"Image": "topsv3-production-backend:" + "c" * 40,
+                       "User": RUNTIME.executor_user(),
                        "Env": [key + "=" + value for key, value in RUNTIME.REQUIRED_ENV.items()] +
                               ["SPRING_DATASOURCE_URL=jdbc:postgresql://fixture/db"],
                        "Entrypoint": ["java", "-jar", "/app/app.jar"], "Cmd": RUNTIME.EXPECTED_ARGS.copy(),
@@ -42,6 +44,17 @@ def journal(mode="APPLY"):
     pairs += [("SUCCEEDED", commit)]
     return [{"mode": mode, "stage": stage, "commit": value, "time_utc": "2026-01-01T00:00:00Z"}
             for stage, value in pairs]
+
+
+def private_capture(path, payload, mode=0o600):
+    """Synthetic unit data, created with its final mode; no ownership repair."""
+    mask = os.umask(0)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    finally:
+        os.umask(mask)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(payload)
 
 
 SINCE = "2026-01-01T00:00:59.000000001Z"
@@ -112,6 +125,23 @@ def exercise_stopped(test, stdout, stderr, *, accepted=False, rc=0,
 
 
 class TransitionTests(unittest.TestCase):
+    def test_real_job_fixture_is_required_on_ci_host_without_socket_mounts(self):
+        ci = (ROOT / ".github/workflows/ci.yml").read_text().split("  verify-operation:", 1)[0]
+        self.assertIn('PREVIEW_JOB_USER_INTEGRATION_ENABLED: "true"', ci)
+        self.assertIn('preview-job-user-*/evidence/**', ci)
+        self.assertIn('name: preview-job-user-integration-evidence', ci)
+        fixture = (ROOT / "scripts/deploy/testar-backfill-previews-job-user-integrado.sh").read_text()
+        for required in ('"$(id -u)" -ne 0', 'run_backfill || rc=$?', 'trap on_exit EXIT',
+                         '_op_lock "$root"', 'JVM_CAPTURE_OWNER=PASS', 'JVM_ROOT_REGRESSION=PASS',
+                         'PermissionError', "proof['commit'] == 'UNKNOWN'", 'pending_exit" -eq 76',
+                         'JVM_CONFIGURATION_AND_IDENTITY=PASS'):
+            self.assertIn(required, fixture)
+        self.assertNotIn('sudo ', fixture)
+        self.assertNotIn('--privileged', fixture)
+        self.assertNotRegex(fixture, r'(?:--volume|--mount|-v)[^\n]*docker\.sock')
+        isolated = (ROOT / "scripts/deploy/testar-backfill-previews-production.sh").read_text()
+        self.assertIn('! -e /var/run/docker.sock', isolated)
+
     def test_source_graceful_supported(self):
         RUNTIME.validate_source(source())
 
@@ -345,6 +375,7 @@ class TransitionTests(unittest.TestCase):
                          'STARTED PLAN_READY VALIDATION_PASSED SUCCEEDED',
                          '"mode":"VALIDATE","commit":"NOT_STARTED"',
                          '--pull never --network none --restart no',
+                         'job_user="$(id -u):$(id -g)"', '--user "$job_user"',
                          '--label "topsv3.preview.operation=$OP_ID"',
                          '--entrypoint node "$TEST_CANDIDATE_IMAGE"',
                          '--app.restricted-media-preview-reconciliation.mode=VALIDATE',
@@ -381,11 +412,11 @@ class TransitionTests(unittest.TestCase):
             candidate["State"]["Running"] = False
             candidate["Config"]["Labels"]["topsv3.preview.operation"] = "synthetic-owner"
             (operation / "candidate.images.tsv").write_text("backend\t" + candidate["Image"] + "\t" + candidate["Config"]["Image"] + "\n")
-            (report / "image-pin.json").write_text(json.dumps({"image": candidate["Image"]}))
+            (report / "image-pin.json").write_text(json.dumps({"image": candidate["Image"], "user": RUNTIME.executor_user()}))
             candidate["Config"]["Image"] = candidate["Image"]
             name = "delta-apply.tsv.state.jsonl"
             before = report / "delta-apply.tsv.before.json"
-            before.write_text('{"mode":"APPLY","fixture":true}', encoding="utf-8")
+            private_capture(before, '{"mode":"APPLY","fixture":true}')
             before_hash = RUNTIME.hashlib.sha256(before.read_bytes()).hexdigest()
             events = journal()
             for event in events[2:]:
@@ -410,14 +441,39 @@ class TransitionTests(unittest.TestCase):
 
     def test_before_apply_pin_forbids_mutable_tag_build_and_pull(self):
         physical = "sha256:" + "a" * 64
-        RUNTIME.validate_pin({"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no"}}}, physical)
+        user = RUNTIME.executor_user()
+        RUNTIME.validate_pin({"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no", "user": user}}}, physical, user)
         for service in ({"image": "candidate:tag", "pull_policy": "never"},
                         {"image": physical, "pull_policy": "never", "build": {"context": "."}},
                         {"image": physical, "pull_policy": "missing", "restart": "no"},
                         {"image": physical, "pull_policy": "never", "restart": "unless-stopped"},
                         {"image": physical, "pull_policy": "never"}):
             with self.assertRaisesRegex(RuntimeError, "pin_unproven"):
-                RUNTIME.validate_pin({"services": {"backend": service}}, physical)
+                RUNTIME.validate_pin({"services": {"backend": service}}, physical, user)
+
+    def test_executor_identity_uses_effective_ids_not_a_fixed_account(self):
+        for uid, gid in ((17321, 28432), (34543, 45654)):
+            with self.subTest(uid=uid, gid=gid), patch.object(RUNTIME.os, "geteuid", return_value=uid), \
+                    patch.object(RUNTIME.os, "getegid", return_value=gid):
+                self.assertEqual(RUNTIME.executor_user(), f"{uid}:{gid}")
+
+    def test_pin_rejects_missing_root_or_different_executor_before_any_job(self):
+        sha, physical, user = "c" * 40, "sha256:" + "b" * 64, "17321:28432"
+        for resolved in (None, "", "0:0", "17321:28433", "17322:28432"):
+            with self.subTest(resolved=resolved), tempfile.TemporaryDirectory() as folder:
+                config = {"services": {"backend": {"image": physical, "pull_policy": "never",
+                                                     "restart": "no", "user": resolved}}}
+                with patch.object(RUNTIME.os, "geteuid", return_value=17321), \
+                        patch.object(RUNTIME.os, "getegid", return_value=28432), \
+                        patch.object(RUNTIME, "call", side_effect=[physical, physical, json.dumps(config)]) as calls:
+                    with self.assertRaisesRegex(RuntimeError, "executor_identity_mismatch"):
+                        RUNTIME.pin(folder, sha, "source.yml", "private.env", "topsv3-production",
+                                    "topsv3-production", "topsv3-production-net", physical)
+                self.assertFalse((Path(folder) / "image-pin.json").exists())
+                self.assertIn('user: "' + user + '"', (Path(folder) / "pinned-backfill.compose.yml").read_text())
+                self.assertEqual(len(calls.call_args_list), 3)
+                self.assertTrue(all("run" not in call.args[0] and "create" not in call.args[0]
+                                    for call in calls.call_args_list))
 
     def test_pin_is_created_and_verified_before_any_job(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -427,19 +483,22 @@ class TransitionTests(unittest.TestCase):
             sha = "c" * 40
             physical = "sha256:" + "b" * 64
             (operation / "candidate.images.tsv").write_text("backend\t" + physical + "\ttopsv3-production-backend:" + sha + "\n")
-            config = {"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no"}}}
+            user = RUNTIME.executor_user()
+            config = {"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no", "user": user}}}
             with patch.object(RUNTIME, "call", side_effect=[physical + "\n", physical + "\n", json.dumps(config)]) as calls:
                 RUNTIME.pin(str(report), sha, "source.yml", "private.env", "topsv3-production", "topsv3-production", "topsv3-production-net")
             self.assertEqual(calls.call_args_list[0].args[0][:3], ["docker", "image", "inspect"])
             self.assertEqual(calls.call_args_list[1].args[0][3], "topsv3-production-backend:" + sha)
             self.assertEqual(calls.call_args_list[2].args[0][-3:], ["config", "--format", "json"])
             self.assertIn("build: !reset null", (report / "pinned-backfill.compose.yml").read_text())
+            self.assertIn('user: "' + user + '"', (report / "pinned-backfill.compose.yml").read_text())
             self.assertEqual(json.loads((report / "image-pin.json").read_text())["image"], physical)
+            self.assertEqual(json.loads((report / "image-pin.json").read_text())["user"], user)
 
 
     def test_independent_pin_requires_explicit_physical_and_matching_candidate(self):
         sha, physical = "c" * 40, "sha256:" + "b" * 64
-        config = {"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no"}}}
+        config = {"services": {"backend": {"image": physical, "pull_policy": "never", "restart": "no", "user": RUNTIME.executor_user()}}}
         for observed, evaluated, accepted in ((physical, physical, True),
                 ("sha256:" + "e" * 64, physical, False),
                 (physical, "sha256:" + "e" * 64, False)):
@@ -466,17 +525,19 @@ class TransitionTests(unittest.TestCase):
                 calls.assert_not_called()
 
     def exercise_outcome(self, events, expected, *, mode="APPLY", exit_code=1,
-                         mutate_runtime=None, suffix="\n", mutate_before=False, observation_failure=False):
+                         mutate_runtime=None, suffix="\n", mutate_before=False, observation_failure=False,
+                         pin_user=None, capture_owner=None, capture_mode=0o600, expected_reason=None):
         with tempfile.TemporaryDirectory() as folder:
             report = Path(folder)
             current = source()
             current["Config"]["Labels"]["topsv3.preview.operation"] = "synthetic-owner"
             current["Config"]["Image"] = current["Image"]
             current["State"].update(Running=False, ExitCode=exit_code)
-            (report / "image-pin.json").write_text(json.dumps({"image": current["Image"]}))
+            (report / "image-pin.json").write_text(json.dumps({"image": current["Image"],
+                "user": RUNTIME.executor_user() if pin_user is None else pin_user}))
             name = "initial-" + mode.lower() + ".tsv.state.jsonl"
             before = report / (name.removesuffix(".state.jsonl") + ".before.json")
-            before.write_text('{"synthetic_before":true}', encoding="utf-8")
+            private_capture(before, '{"synthetic_before":true}', capture_mode)
             before_hash = RUNTIME.hashlib.sha256(before.read_bytes()).hexdigest()
             events = copy.deepcopy(events)
             captured = False
@@ -490,12 +551,25 @@ class TransitionTests(unittest.TestCase):
                 mutate_runtime(current)
             if mutate_before:
                 before.write_text('{"changed":true}', encoding="utf-8")
+            real_stat = Path.stat
+
+            def metadata_boundary(path, *args, **kwargs):
+                metadata = real_stat(path, *args, **kwargs)
+                if path == before and capture_owner is not None:
+                    fields = list(metadata)
+                    fields[4:6] = capture_owner
+                    return os.stat_result(fields)
+                return metadata
+
             with patch.object(RUNTIME, "inspect", side_effect=RuntimeError("observation_command_failed")
-                              if observation_failure else None, return_value=current):
+                              if observation_failure else None, return_value=current), \
+                    patch.object(Path, "stat", metadata_boundary):
                 RUNTIME.outcome(folder, "synthetic-container", "synthetic-owner", mode, name)
                 proof = json.loads((report / "outcome.json").read_text())
                 self.assertEqual(proof["commit"], expected)
                 self.assertFalse(proof["retry_allowed"])
+                if expected_reason is not None:
+                    self.assertEqual(proof["reason"], expected_reason)
                 if expected in ("COMMITTED", "ROLLED_BACK"):
                     self.assertTrue(proof["terminal"])
                     self.assertTrue(proof["identity_verified"])
@@ -540,6 +614,28 @@ class TransitionTests(unittest.TestCase):
         self.exercise_outcome(journal() + [{"mode": "APPLY", "stage": "FAILED", "commit": "ROLLED_BACK"}], "UNKNOWN")
         self.exercise_outcome(journal()[:2] + [{"mode": "APPLY", "stage": "FAILED", "commit": "COMMITTED"}], "UNKNOWN")
 
+    def test_outcome_rejects_executor_pin_and_runtime_user_without_retry(self):
+        user = RUNTIME.executor_user()
+        divergent = f"{os.geteuid() + 1}:{os.getegid() + 1}"
+        for observed in ("", "0:0" if user != "0:0" else "1:1", divergent):
+            self.exercise_outcome(journal(), "UNKNOWN", exit_code=0,
+                                  mutate_runtime=lambda value, observed=observed: value["Config"].update(User=observed),
+                                  expected_reason="backfill_executor_identity_mismatch")
+            self.exercise_outcome(journal(), "UNKNOWN", exit_code=0, pin_user=observed,
+                                  expected_reason="backfill_executor_identity_mismatch")
+
+    def test_private_capture_owner_or_broad_mode_is_unknown_not_rollback(self):
+        # Metadata boundary for this unit proof; the separate JVM fixture must
+        # exercise the real root/non-root permission barrier with the runner.
+        reason = "private_before_snapshot_owner_or_mode_mismatch"
+        for owner in ((os.geteuid() + 1, os.getegid()), (os.geteuid(), os.getegid() + 1)):
+            self.exercise_outcome(journal(), "UNKNOWN", exit_code=0, capture_owner=owner, expected_reason=reason)
+        for mode in (0o640, 0o644, 0o660, 0o1600):
+            self.exercise_outcome(journal(), "UNKNOWN", exit_code=0, capture_mode=mode, expected_reason=reason)
+        with patch.object(RUNTIME.os, "geteuid", return_value=17321), \
+                patch.object(RUNTIME.os, "getegid", return_value=28432):
+            self.exercise_outcome(journal(), "UNKNOWN", exit_code=0, capture_owner=(0, 0), expected_reason=reason)
+
 
     def readonly_job_fixture(self, folder, exit_code=0):
         report = Path(folder) / "validate"
@@ -554,7 +650,7 @@ class TransitionTests(unittest.TestCase):
         current["Config"]["Env"] += ["R2_PUBLIC_MEDIA_PREFIX=synthetic-public",
                                       "R2_PUBLIC_BASE_URL=https://synthetic.invalid"]
         current["State"].update(Running=False, ExitCode=exit_code)
-        (report / "image-pin.json").write_text(json.dumps({"image": current["Image"]}))
+        (report / "image-pin.json").write_text(json.dumps({"image": current["Image"], "user": RUNTIME.executor_user()}))
         return report, current, owner
 
     def test_cleanup_proves_owned_terminal_validate_even_when_validation_failed(self):
@@ -595,6 +691,7 @@ class TransitionTests(unittest.TestCase):
 
     def test_cleanup_refuses_unowned_changed_mutating_or_live_job(self):
         changes = [lambda item: item["Config"]["Labels"].update({"topsv3.preview.operation": "other"}),
+                   lambda item: item["Config"].update(User="divergent-user"),
                    lambda item: item.update(Image="sha256:" + "e" * 64),
                    lambda item: item.update(Name="/other-job"),
                    lambda item: item["HostConfig"]["RestartPolicy"].update(Name="unless-stopped"),
