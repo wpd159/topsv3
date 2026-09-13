@@ -283,10 +283,14 @@ def owned_job(directory, container, operation, runtime=None):
            "backfill_owner_mismatch")
     pin_path = Path(directory) / "image-pin.json"
     demand(pin_path.is_file() and not pin_path.is_symlink(), "backfill_image_pin_absent")
-    pinned = json.loads(pin_path.read_text(encoding="utf-8"))["image"]
+    proof = json.loads(pin_path.read_text(encoding="utf-8"))
+    pinned = proof["image"]
     demand(re.fullmatch(r"sha256:[a-f0-9]{64}", pinned), "candidate_image_id_invalid")
     demand(runtime["Image"] == pinned and runtime["Config"]["Image"] == pinned,
            "backfill_candidate_image_mismatch")
+    demand(proof.get("user") == executor_user()
+           and runtime["Config"].get("User") == proof["user"],
+           "backfill_executor_identity_mismatch")
     demand(runtime["HostConfig"]["RestartPolicy"]["Name"] == "no",
            "backfill_restart_policy_unproven")
     return runtime
@@ -308,6 +312,10 @@ def read_journal(directory, mode, journal_name):
 def before_identity(directory, journal_name, events):
     before_path = Path(directory) / (journal_name.removesuffix(".state.jsonl") + ".before.json")
     demand(before_path.is_file() and not before_path.is_symlink(), "private_before_snapshot_absent")
+    metadata = before_path.stat()
+    demand((metadata.st_uid, metadata.st_gid) == (os.geteuid(), os.getegid())
+           and metadata.st_mode & 0o7777 == 0o600,
+           "private_before_snapshot_owner_or_mode_mismatch")
     before_digest = hashlib.sha256(before_path.read_bytes()).hexdigest()
     captured = [index for index, event in enumerate(events) if event["stage"] == "BEFORE_CAPTURED"]
     demand(len(captured) == 1 and all(event.get("before_sha256") == before_digest
@@ -425,11 +433,18 @@ def cleanup_proof(directory, container, operation):
     print("PREVIEW_JOB_CLEANUP=REMOVE id=" + runtime["Id"])
 
 
-def validate_pin(config, image):
+def executor_user():
+    # Numeric effective IDs belong to the observer, not to an image account/tag.
+    return f"{os.geteuid()}:{os.getegid()}"
+
+
+def validate_pin(config, image, user):
     service = config["services"]["backend"]
     demand(service.get("image") == image and service.get("build") is None
            and service.get("pull_policy") == "never" and service.get("restart") == "no",
            "backfill_image_pin_unproven")
+    demand(service.get("user") == user == executor_user(),
+           "backfill_executor_identity_mismatch")
 
 
 def pin(directory, sha, compose_file, env_file, project, prefix, network, physical=""):
@@ -447,11 +462,13 @@ def pin(directory, sha, compose_file, env_file, project, prefix, network, physic
     demand(observed.strip() == physical, "candidate_physical_image_unavailable")
     evaluated = call(["docker", "image", "inspect", reference, "--format", "{{.Id}}"])
     demand(evaluated.strip() == physical, "candidate_reference_image_mismatch")
+    user = executor_user()
     target = Path(directory) / "pinned-backfill.compose.yml"
     # No resolved environment/credentials are copied. !reset is deliberately
     # verified below: unsupported Compose must reject before running any job.
     payload = ('services:\n  backend:\n    image: "' + physical +
-               '"\n    build: !reset null\n    pull_policy: never\n    restart: "no"\n')
+               '"\n    build: !reset null\n    pull_policy: never\n    restart: "no"\n'
+               '    user: "' + user + '"\n')
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(payload)
@@ -463,9 +480,9 @@ def pin(directory, sha, compose_file, env_file, project, prefix, network, physic
             "docker", "compose", "--env-file", env_file, "-f", compose_file, "-f", str(target),
             "-p", project, "config", "--format", "json"]
     config = json.loads(call(args))
-    validate_pin(config, physical)
+    validate_pin(config, physical, user)
     emit_file(directory, "image-pin.json", {"image": physical, "sha": sha, "reference": reference,
-              "origin": origin, "override_sha256": digest(payload)})
+              "origin": origin, "user": user, "override_sha256": digest(payload)})
     print("PREVIEW_IMAGE_PIN=PASS")
 
 

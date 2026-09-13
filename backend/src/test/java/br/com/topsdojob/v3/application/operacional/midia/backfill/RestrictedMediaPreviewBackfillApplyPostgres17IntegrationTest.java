@@ -14,7 +14,9 @@ import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObjectMetadata;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -25,7 +27,9 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -218,6 +222,110 @@ class RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest {
     var validation = service.validarPersistencia(service.planejar(), 1);
     assertThat(validation.aprovada()).isTrue();
     assertThat(validation.disponiveis()).isEqualTo(3);
+  }
+
+  @Test
+  @EnabledIfEnvironmentVariable(named = "PREVIEW_JOB_USER_INTEGRATION_ENABLED", matches = "true")
+  void runnerRealComObservadorNaoRootPreservaCapturaEConcluiApply() throws Exception {
+    assertThat(System.getProperty("os.name")).startsWith("Linux");
+    String identity = Files.readString(Path.of("/proc/self/status"));
+    var uid = java.util.regex.Pattern.compile("(?m)^Uid:\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)").matcher(identity);
+    var gid = java.util.regex.Pattern.compile("(?m)^Gid:\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)").matcher(identity);
+    assertThat(uid.find()).as("Linux observer UID is available").isTrue();
+    assertThat(gid.find()).as("Linux observer GID is available").isTrue();
+    int observerUid = Integer.parseInt(uid.group(2));
+    int observerGid = Integer.parseInt(gid.group(2));
+    assertThat(observerUid).as("The actual fixture observer is not root").isPositive();
+    assertThat(observerGid).as("The actual fixture observer is not in primary group root").isPositive();
+    Path fixture = Files.createTempDirectory(Path.of("target").toAbsolutePath().normalize(),
+        "preview-job-user-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+    Path data = Files.createDirectory(fixture.resolve("data"),
+        PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+    Path evidence = Files.createDirectory(fixture.resolve("evidence"));
+    Path configuration = privateFile(data.resolve("application.properties"));
+    Properties childProperties = new Properties();
+    properties().forEach((key, value) -> childProperties.setProperty(key, value.toString()));
+    childProperties.setProperty("spring.datasource.url",
+        "jdbc:postgresql://" + CONTAINER + ":5432/topsv3_preview_apply");
+    try (var output = Files.newOutputStream(configuration)) {
+      childProperties.store(output, "Owned synthetic preview runner only");
+    }
+    Path inventory = privateFile(data.resolve("inventory.keys"));
+    Files.write(inventory, INVENTORY_KEYS.get(), StandardCharsets.UTF_8);
+    for (Path input : List.of(configuration, inventory)) {
+      assertThat(Files.getPosixFilePermissions(input)).isEqualTo(PosixFilePermissions.fromString("rw-------"));
+      assertThat(Files.getAttribute(input, "unix:uid")).isEqualTo(observerUid);
+      assertThat(Files.getAttribute(input, "unix:gid")).isEqualTo(observerGid);
+    }
+    String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+    List<String> inputs = new ArrayList<>();
+    for (String item : classpath.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+      Path input = Path.of(item).toAbsolutePath().normalize();
+      assertThat(Files.exists(input)).as("Current checkout classpath input exists: %s", input).isTrue();
+      assertThat(Files.isSymbolicLink(input)).as("No alternate classpath input").isFalse();
+      assertThat(input.toString()).doesNotContain("\n", "\r");
+      inputs.add(input.toString());
+    }
+    Files.write(privateFile(fixture.resolve("classpath.txt")), inputs, StandardCharsets.UTF_8);
+    String physicalImage = command("docker", "image", "inspect", "--format", "{{.Id}}",
+        "eclipse-temurin:17.0.13_11-jre").trim();
+    assertThat(physicalImage).matches("sha256:[0-9a-f]{64}");
+    Path repository = Path.of("..").toAbsolutePath().normalize();
+    Process git = new ProcessBuilder("git", "rev-parse", "HEAD").directory(repository.toFile()).start();
+    assertThat(git.waitFor(10, TimeUnit.SECONDS)).as("Read-only fixture checkout identity completes").isTrue();
+    assertThat(git.exitValue()).isZero();
+    String technicalSha = new String(git.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+    assertThat(technicalSha).matches("[0-9a-f]{40}");
+    Snapshot before = snapshot();
+    Path log = evidence.resolve("integration.log");
+    Process process = new ProcessBuilder("bash", repository.resolve(
+        "scripts/deploy/testar-backfill-previews-job-user-integrado.sh").toString(),
+        fixture.toString(), owned.snapshot().networkId(), physicalImage, technicalSha)
+        .directory(repository.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+    try {
+      assertThat(process.waitFor(6, TimeUnit.MINUTES)).as("Real runner lifecycle completed within six minutes").isTrue();
+      String output = Files.readString(log);
+      System.out.println(output);
+      assertThat(process.exitValue()).as("Real runner, host observer, regressions and cleanup").isZero();
+      assertThat(output).contains("PREVIEW_JOB_USER_INTEGRATION=PASS");
+    } finally {
+      if (process.isAlive()) {
+        process.destroy();
+        if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+      }
+    }
+    Snapshot after = snapshot();
+    assertThat(after.nonPreview()).isEqualTo(before.nonPreview());
+    assertThat(after.links()).isEqualTo(before.links());
+    assertThat(after.ad()).isEqualTo(before.ad());
+    assertThat(after.user()).isEqualTo(before.user());
+    for (int index = 0; index < photos.size(); index++) {
+      Photo photo = photos.get(index);
+      if (index < 2) {
+        assertThat(after.files().get(photo.fileId())).isNotEqualTo(before.files().get(photo.fileId()));
+        assertCompleteMetadata(photo);
+      } else {
+        assertThat(after.files().get(photo.fileId())).isEqualTo(before.files().get(photo.fileId()));
+      }
+    }
+    Files.writeString(evidence.resolve("database-preservation.txt"),
+        "PREVIEW_JOB_DATABASE_PRESERVATION=PASS updated=2 unchanged=2 fields=5 links=unchanged ad=unchanged user=unchanged\n");
+    System.out.println("PREVIEW_JOB_DATABASE_PRESERVATION=PASS updated=2 unchanged=2 observerUid="
+        + observerUid + " observerGid=" + observerGid + " fixture=" + fixture);
+    // Only after all assertions, remove private synthetic inputs/captures.
+    // Files.walk does not follow the fixture's links into the checkout.
+    try (var paths = Files.walk(fixture)) {
+      for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+        if (!path.equals(fixture) && !path.startsWith(evidence)) Files.delete(path);
+      }
+    }
+    Files.writeString(evidence.resolve("private-cleanup.txt"),
+        "PREVIEW_JOB_PRIVATE_CLEANUP=PASS evidence_only=true\n");
+  }
+
+  private static Path privateFile(Path path) throws Exception {
+    return Files.createFile(path,
+        PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
   }
 
   @Test
