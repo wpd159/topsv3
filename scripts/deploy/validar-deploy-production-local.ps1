@@ -158,7 +158,8 @@ Add-Check "workflow nao altera manutencao ou indexacao externa" (
 Add-Check "workflow preserva PostgreSQL" (
   ($workflow -match 'postgres_id_before') -and
   ($workflow -match 'postgres_volume_before') -and
-  ($workflow -match 'up -d --no-deps --force-recreate backend frontend gateway')
+  ($workflow.Contains('for service in backend frontend gateway; do')) -and
+  ($workflow.Contains('op_run mutating "${compose[@]}" up -d --no-deps --force-recreate --no-build --pull never "${service}"'))
 )
 Add-Check "workflow testa gate de banco antes do deploy" (
   ($workflow.Contains("Test production database safety gate")) -and
@@ -185,7 +186,7 @@ Add-Check "workflow exige backup antes de migration pendente" (
 )
 Add-Check "workflow valida Flyway antes do startup" (
   ($workflow.IndexOf('bash "${flyway_gate}" after') -gt $workflow.IndexOf('flyway migrate </dev/null')) -and
-  ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.LastIndexOf('up -d --no-deps --force-recreate backend frontend gateway'))
+  ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.LastIndexOf('up -d --no-deps --force-recreate --no-build --pull never "${service}"'))
 )
 Add-Check "workflow troca release somente depois de health e readiness" (
   ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('op_smoke "${release_sha}"')) -and
@@ -268,7 +269,8 @@ Add-Check "helper exige reconciliacao explicita e recupera sem reconstruir image
   ($operationBegin.Contains('COMPLETED|ROLLED_BACK|ABORTED|RECONCILED')) -and
   ($operationManual.Contains('--confirm-daemon-quiescent')) -and
   ($operationManual.Contains('_op_alive')) -and
-  ($operationRestore.Contains('--no-build --pull never backend frontend gateway')) -and
+  ($operationRestore.Contains('for service in backend frontend gateway; do')) -and
+  ($operationRestore.Contains('up -d --no-deps --force-recreate --no-build --pull never "${service}" || return 1')) -and
   ($operationRestore.Contains('sha256sum -c --status')) -and
   ($operationRestore.Contains('_op_verify_runtime')) -and
   ($operationRestore.Contains('op_smoke "${OP_PREVIOUS_SHA}"')) -and
