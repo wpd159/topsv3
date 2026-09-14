@@ -99,7 +99,7 @@ export default function MeusAnunciosPage() {
     : 'Recarregue seus anúncios antes de usar os Stories.'
 
   return (
-    <PainelShell title="Meus anúncios" description="Consulte o status, a localização e a capa pública dos seus anúncios.">
+    <PainelShell title="Meus anúncios" description="Consulte o status, a localização e as fotos dos seus anúncios, inclusive as que aguardam moderação.">
       <div className="space-y-6">
         <div className="flex flex-col justify-end gap-2 sm:flex-row sm:items-center">
           <button

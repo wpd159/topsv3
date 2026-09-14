@@ -181,6 +181,7 @@ jobs:
           node scripts/test-wizard-minha-conta-seguranca.mjs
           node scripts/test-sensitive-image-authorization.mjs
           node scripts/test-ultima-foto-encerramento.mjs
+          node scripts/test-owner-photo-preview.mjs
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           npm run test:search-indexing

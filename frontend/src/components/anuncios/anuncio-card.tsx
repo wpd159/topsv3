@@ -10,6 +10,7 @@ import { SensitiveImage } from "@/components/compliance/sensitive-image"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import { FavoritoButton } from "@/components/anuncios/favorito-button"
 import { AnuncioCardVideo } from "@/components/anuncios/anuncio-card-video"
+import { ImagemProprietario } from "@/components/anuncios/imagem-proprietario"
 import {
   fontePublicaSegura,
   selecionarCapaVideoCard,
@@ -51,6 +52,8 @@ type AnuncioCardProps = {
   valor: string
   midias?: MidiaPublica[]
   previewImagens?: string[]
+  previewExpiraEm?: string | null
+  onPreviewRefresh?: () => Promise<void>
   descricao?: string | null
   nomeAnunciante?: string
   usernameAnunciante?: string
@@ -114,6 +117,8 @@ export function AnuncioCard({
   valor,
   midias = [],
   previewImagens = [],
+  previewExpiraEm,
+  onPreviewRefresh,
   descricao,
   usernameAnunciante,
   destaque = false,
@@ -345,7 +350,14 @@ export function AnuncioCard({
       }`}
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-gray-50">
-        {midiaAtual ? (
+        {previewMode && previewImagens[index] ? (
+          <ImagemProprietario
+            src={previewImagens[index]}
+            expiresAt={previewExpiraEm}
+            alt={altFoto}
+            onRefresh={onPreviewRefresh}
+          />
+        ) : midiaAtual ? (
           midiaAtual.tipo === "VIDEO" ? (
             <AnuncioCardVideo
               key={String(midiaAtual.id)}

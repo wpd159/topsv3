@@ -84,7 +84,7 @@ class MeusAnunciosMutacaoLockTest {
         };
         service = new MeusAnunciosConsultaService(
                 usuarios, anuncios, localizacoes, midias, arquivos, estados, cidades, bairros, decisoes,
-                mapper, midiaPolicy, visualizacoes, beneficios, stories, bloqueios);
+                mapper, midiaPolicy, mock(MinhaMidiaPreviewService.class), visualizacoes, beneficios, stories, bloqueios);
     }
 
     @AfterEach

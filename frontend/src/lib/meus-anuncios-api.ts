@@ -17,6 +17,8 @@ export type MeuAnuncioLocalizacao = {
 export type MeuAnuncioCapa = {
   urlPublica: string | null
   restrita: boolean
+  previewUrl?: string | null
+  previewExpiraEm?: string | null
 }
 
 export type MeuAnuncioMidia = {
@@ -74,6 +76,7 @@ export type MinhaMidiaGestao = {
   status: string
   visibilidadeMidia: string | null
   previewUrl: string | null
+  previewExpiraEm?: string | null
   restrita: boolean
   ocultaPorLimite: boolean
 }

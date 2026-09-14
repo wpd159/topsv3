@@ -4,15 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
+import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -30,6 +41,7 @@ import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
+import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
@@ -38,6 +50,10 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
+import br.com.topsdojob.v3.web.publico.anunciante.MeusAnunciosController;
+import java.net.URI;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
@@ -48,7 +64,12 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 
 class MeusAnunciosConsultaServiceTest {
@@ -75,6 +96,8 @@ class MeusAnunciosConsultaServiceTest {
     private VisualizacaoTotalCanonicaService visualizacaoService;
     private MeuAnuncioBeneficioConsultaService beneficioConsultaService;
     private MeuAnuncioStoryConsultaService storyConsultaService;
+    private ObjectStorage storage;
+    private MinhaMidiaPreviewService previewService;
     private MeusAnunciosConsultaService service;
 
     @BeforeEach
@@ -89,6 +112,17 @@ class MeusAnunciosConsultaServiceTest {
         bairroRepository = mock(BairroRepository.class);
         decisaoModeracaoRepository = mock(DecisaoModeracaoRepository.class);
         urlService = mock(MidiaPublicaUrlService.class);
+        storage = mock(ObjectStorage.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
+        when(storageProvider.getIfAvailable()).thenReturn(storage);
+        R2StorageProperties storageProperties = new R2StorageProperties();
+        storageProperties.setPrivateMediaBucket("midias-privadas");
+        storageProperties.setPublicMediaBucket("midias-publicas");
+        previewService = new MinhaMidiaPreviewService(
+                storageProperties, storageProvider, Clock.fixed(AGORA.toInstant(), ZoneOffset.UTC));
+        when(storage.temporaryGetUrl(any(), any(), any()))
+                .thenAnswer(invocation -> URI.create("https://privado.example.invalid/" + invocation.getArgument(1)));
         visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
         beneficioConsultaService = mock(MeuAnuncioBeneficioConsultaService.class);
         storyConsultaService = mock(MeuAnuncioStoryConsultaService.class);
@@ -118,6 +152,7 @@ class MeusAnunciosConsultaServiceTest {
                 decisaoModeracaoRepository,
                 new MidiaPublicaMapper(urlService),
                 new MidiaPublicaSeguraPolicy(),
+                previewService,
                 visualizacaoService,
                 beneficioConsultaService,
                 storyConsultaService,
@@ -291,6 +326,105 @@ class MeusAnunciosConsultaServiceTest {
         assertThat(midias.get(1).urlPublica()).isNull();
     }
 
+    @ParameterizedTest
+    @NullSource
+    @EnumSource(VisibilidadeMidia.class)
+    void proprietarioRecebeCapaMesmoQuandoSuaUnicaFotoEstaPendente(VisibilidadeMidia visibilidade) {
+        stubUsuarioAtivo();
+        AnuncioEntity anuncio = anuncio(ANUNCIO_A_ID, USUARIO_ID, "perfil-pendente", StatusAnuncio.PENDENTE_REVISAO);
+        when(anuncioRepository.findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(USUARIO_ID))
+                .thenReturn(List.of(anuncio));
+        UUID arquivoId = UUID.fromString("00000000-0000-4000-8000-000000000961");
+        AnuncioMidiaEntity pendente = AnuncioMidiaEntity.criarFixtureHomologacao(
+                UUID.fromString("00000000-0000-4000-8000-000000000962"), ANUNCIO_A_ID, arquivoId,
+                TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0,
+                StatusAnuncioMidia.PENDENTE, visibilidade, AGORA);
+        ArquivoMidiaEntity arquivo = ArquivoMidiaEntity.criarUploadPendente(
+                arquivoId, "R2", "midias-privadas", "hml/midias-pendentes/foto.jpg", "foto.jpg",
+                "image/jpeg", 1024, 800, 1200, null, "a".repeat(64), AGORA);
+        when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of(pendente));
+        when(arquivoMidiaRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
+
+        var resultado = service.listar(authentication()).get(0);
+        assertThat(resultado.capa()).isNotNull();
+        assertThat(resultado.capa().previewUrl()).isEqualTo(
+                "https://privado.example.invalid/hml/midias-pendentes/foto.jpg");
+        assertThat(resultado.capa().previewExpiraEm()).isEqualTo(AGORA.plusMinutes(5));
+        assertThat(resultado.capa().urlPublica()).isNull();
+        assertThat(resultado.capa().restrita()).isEqualTo(visibilidade == VisibilidadeMidia.RESTRITA_18);
+        assertThat(resultado.midias()).singleElement().satisfies(midia -> {
+            assertThat(midia.status()).isEqualTo("PENDENTE");
+            assertThat(midia.urlPublica()).isNull();
+        });
+        assertThat(new MidiaPublicaMapper(urlService).publicas(List.of(pendente), Map.of(arquivoId, arquivo)))
+                .isEmpty();
+        assertThat(pendente.getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
+        assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.PENDENTE);
+        verify(storage).temporaryGetUrl(
+                StorageArea.PRIVATE_MEDIA, "hml/midias-pendentes/foto.jpg", Duration.ofMinutes(5));
+        verifyNoInteractions(urlService);
+    }
+
+    @Test
+    void capaPrivadaSegueOrdemDasFotosAtivasIgnorandoVideoStoryERemovidas() {
+        stubUsuarioAtivo();
+        when(anuncioRepository.findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(USUARIO_ID))
+                .thenReturn(List.of(anuncio(ANUNCIO_A_ID, USUARIO_ID, "perfil-pendente", StatusAnuncio.PENDENTE_REVISAO)));
+        UUID arquivoId = new UUID(0, 971);
+        ArquivoMidiaEntity arquivo = ArquivoMidiaEntity.criarUploadPendente(
+                arquivoId, "R2", "midias-privadas", "hml/midias-pendentes/primeira.jpg", "primeira.jpg",
+                "image/jpeg", 1024, 800, 1200, null, "a".repeat(64), AGORA);
+        UUID segundoArquivoId = new UUID(0, 972);
+        ArquivoMidiaEntity segundoArquivo = ArquivoMidiaEntity.criarUploadPendente(
+                segundoArquivoId, "R2", "midias-privadas", "hml/midias-pendentes/segunda.jpg", "segunda.jpg",
+                "image/jpeg", 1024, 800, 1200, null, "b".repeat(64), AGORA);
+        UUID invalidoId = new UUID(0, 973);
+        when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of(
+                vinculoPendente(1, arquivoId, TipoAnuncioMidia.VIDEO, FinalidadeAnuncioMidia.GALERIA, -6),
+                vinculoPendente(2, arquivoId, TipoAnuncioMidia.STORY, FinalidadeAnuncioMidia.GALERIA, -5),
+                vinculoPendente(3, arquivoId, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.STORY, -4),
+                AnuncioMidiaEntity.criarFixtureHomologacao(new UUID(0, 4), ANUNCIO_A_ID, arquivoId,
+                        TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, -3,
+                        StatusAnuncioMidia.REMOVIDA, VisibilidadeMidia.LIVRE, AGORA),
+                vinculoPendente(5, new UUID(0, 999), TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, -2),
+                vinculoPendente(6, invalidoId, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, -1),
+                vinculoPendente(8, segundoArquivoId, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 2),
+                vinculoPendente(7, arquivoId, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 1)));
+        when(arquivoMidiaRepository.findByIdIn(any())).thenReturn(List.of(
+                arquivo, segundoArquivo, ArquivoMidiaEntity.criarFixtureHomologacao(
+                        invalidoId, "hml/midias-pendentes/removida.jpg", "image/jpeg", StatusArquivoMidia.REMOVIDO, AGORA)));
+
+        var capa = service.listar(authentication()).get(0).capa();
+
+        assertThat(capa.previewUrl()).endsWith("/primeira.jpg");
+        verify(storage).temporaryGetUrl(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto(), Duration.ofMinutes(5));
+        verify(storage, never()).temporaryGetUrl(
+                StorageArea.PRIVATE_MEDIA, segundoArquivo.getChaveObjeto(), Duration.ofMinutes(5));
+    }
+
+    @Test
+    void endpointsPrivadosRecusamAnonimoEOutroUsuarioAntesDeAssinarPreview() throws Exception {
+        stubUsuarioAtivo();
+        when(anuncioRepository.findBySlugAndRemovidoEmIsNull("perfil-terceiro"))
+                .thenReturn(Optional.of(anuncio(
+                        ANUNCIO_A_ID, OUTRO_USUARIO_ID, "perfil-terceiro", StatusAnuncio.PENDENTE_REVISAO)));
+        MinhasMidiasService midiasService = new MinhasMidiasService(
+                service, anuncioMidiaRepository, arquivoMidiaRepository, mock(RevisaoAnuncioRepository.class),
+                mock(LimiteMidiasAnuncioService.class), new MidiaUploadProperties(), previewService,
+                mock(AnuncioMidiaUploadCoreService.class), mock(FotoElegivelAnuncioPolicy.class),
+                mock(MeuAnuncioCicloVidaService.class));
+        var mvc = MockMvcBuilders.standaloneSetup(new MeusAnunciosController(
+                service, mock(MeuAnuncioAtualizacaoService.class), mock(MeuAnuncioCicloVidaService.class), midiasService))
+                .build();
+        mvc.perform(get("/api/public/minha-conta/anuncios")).andExpect(status().isUnauthorized());
+        for (String sufixo : List.of("", "/midias")) {
+            String path = "/api/public/minha-conta/anuncios/perfil-terceiro" + sufixo;
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).principal(authentication())).andExpect(status().isForbidden());
+        }
+        verifyNoInteractions(storage, anuncioMidiaRepository, arquivoMidiaRepository);
+    }
+
     @Test
     void anuncioDeOutroUsuarioRetorna403() {
         stubUsuarioAtivo();
@@ -378,5 +512,11 @@ class MeusAnunciosConsultaServiceTest {
                 "image/svg+xml",
                 StatusArquivoMidia.VALIDADO,
                 AGORA);
+    }
+
+    private AnuncioMidiaEntity vinculoPendente(
+            long id, UUID arquivoId, TipoAnuncioMidia tipo, FinalidadeAnuncioMidia finalidade, int ordem) {
+        return AnuncioMidiaEntity.criarFixtureHomologacao(new UUID(0, id), ANUNCIO_A_ID, arquivoId,
+                tipo, finalidade, ordem, StatusAnuncioMidia.PENDENTE, VisibilidadeMidia.RESTRITA_18, AGORA);
     }
 }

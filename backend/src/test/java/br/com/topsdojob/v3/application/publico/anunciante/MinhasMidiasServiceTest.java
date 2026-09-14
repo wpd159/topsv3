@@ -37,6 +37,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.net.URI;
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -58,6 +59,7 @@ class MinhasMidiasServiceTest {
 
     private static final UUID ANUNCIO_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final String SLUG = "anuncio-proprio";
+    private static final OffsetDateTime AGORA_PREVIEW = OffsetDateTime.parse("2026-09-13T12:00:00Z");
 
     private final MeusAnunciosConsultaService consultaService = mock(MeusAnunciosConsultaService.class);
     private final MeuAnuncioCicloVidaService cicloVidaService = mock(MeuAnuncioCicloVidaService.class);
@@ -80,7 +82,9 @@ class MinhasMidiasServiceTest {
             midiaRepository, arquivoRepository, validator, fotoProcessor, storageProperties, storageProvider);
     private final MinhasMidiasService service = new MinhasMidiasService(
             consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
-            new MidiaUploadProperties(), storageProperties, storageProvider, uploadCoreService, fotoElegivelPolicy, cicloVidaService);
+            new MidiaUploadProperties(), new MinhaMidiaPreviewService(storageProperties, storageProvider,
+                    Clock.fixed(AGORA_PREVIEW.toInstant(), ZoneOffset.UTC)),
+            uploadCoreService, fotoElegivelPolicy, cicloVidaService);
 
     @BeforeEach
     void setUp() {
@@ -174,6 +178,10 @@ class MinhasMidiasServiceTest {
         verify(storage).putIfAbsent(
                 eq(StorageArea.PRIVATE_MEDIA), eq(persistido.getChaveObjeto()), any(), eq("image/jpeg"));
         assertThat(response.toString()).doesNotContain("privadas").doesNotContain("hml/midias-pendentes");
+        assertThat(response.midias()).singleElement().satisfies(midia -> {
+            assertThat(midia.previewUrl()).isEqualTo("https://privado.invalid/temporaria");
+            assertThat(midia.previewExpiraEm()).isEqualTo(AGORA_PREVIEW.plusMinutes(5));
+        });
     }
 
     @Test
