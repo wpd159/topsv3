@@ -180,6 +180,11 @@ const server = http.createServer(async (request, response) => {
     return send(200, functional + benignDigest + (concreteError ? errorDigest : ''));
   } catch { send(503, 'CONTROLLED_DEPENDENCY_FAILURE'); }
 });
+if (callbackRequired) {
+  // Node is PID 1 in these synthetic containers. Handle Compose's normal stop
+  // signal instead of consuming its fallback SIGKILL wait on each replacement.
+  process.once('SIGTERM', () => server.close(() => process.exit(0)));
+}
 server.listen(8080, '0.0.0.0', async () => {
   if (role !== 'backend' || !callbackRequired) return;
   console.log('STARTUP_WAITING_FOR_CALLBACK release=' + process.env.RELEASE_ID);
@@ -198,7 +203,8 @@ server.listen(8080, '0.0.0.0', async () => {
     } catch {}
     if (!callbackComplete) await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (callbackComplete) console.log('STARTUP_CALLBACK_READY release=' + process.env.RELEASE_ID);
+  console.log((callbackComplete ? 'STARTUP_CALLBACK_READY' : 'STARTUP_CALLBACK_EXHAUSTED')
+    + ' release=' + process.env.RELEASE_ID + ' elapsed_ms=' + (Date.now() - startupTime));
 });
 NODE_SERVER
 )"
@@ -275,7 +281,14 @@ if [[ "${args[0]:-}" == compose && "$joined" == *' up '* ]]; then
   if [[ "$TEST_SCENARIO" == startup_callback* ]]; then
     deadline=$((SECONDS + 30))
     until "$TEST_REAL_DOCKER" logs "${TEST_PREFIX}-backend" 2>&1 | grep -q '^STARTUP_CALLBACK_READY '; do
-      (( SECONDS < deadline )) || { echo 'SYNTHETIC_CALLBACK_STARTUP_FAILED' >&2; exit 75; }
+      if (( SECONDS >= deadline )); then
+        for service in backend gateway; do
+          printf 'STARTUP_DIAGNOSTIC service=%s\n' "$service" >&2
+          "$TEST_REAL_DOCKER" logs "${TEST_PREFIX}-${service}" 2>&1 | grep '^STARTUP_' >&2 || true
+        done
+        echo 'SYNTHETIC_CALLBACK_STARTUP_FAILED' >&2
+        exit 75
+      fi
       sleep 0.2
     done
     "$TEST_REAL_DOCKER" logs "${TEST_PREFIX}-gateway" 2>&1 | grep -q '^STARTUP_CALLBACK_FORWARDED .*status=200$' || exit 76
