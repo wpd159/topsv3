@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -13,7 +12,8 @@ import {
   ShieldCheckIcon,
   SparklesIcon,
 } from '@heroicons/react/24/solid'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ImagemProprietario } from '@/components/anuncios/imagem-proprietario'
 import {
   MeuAnuncioAcoesCicloVida,
   type CicloVidaAcao,
@@ -31,12 +31,15 @@ import {
   SERVICOS,
 } from '@/components/anuncios/editar/constants'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
+import { useAuth } from '@/context/AuthContext'
 import {
   buscarMeuAnuncio,
+  listarMinhasMidias,
   MeusAnunciosApiError,
   type MeuAnuncio,
   type MeuAnuncioCicloVida,
   type MeuAnuncioMidia,
+  type MinhasMidiasResponse,
 } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
@@ -51,6 +54,7 @@ type GaleriaItem = {
   id: string
   url: string
   alt: string
+  expiraEm: string | null
 }
 
 export function meuAnuncioMidiaPublicaSegura(midia: MeuAnuncioMidia) {
@@ -77,86 +81,112 @@ function rotuloMidiaProtegida(midia: MeuAnuncioMidia) {
   return `${tipo} sem URL pública autorizada`
 }
 
-function criarGaleria(anuncio: MeuAnuncio): GaleriaItem[] {
-  const itens: GaleriaItem[] = []
-  const urls = new Set<string>()
-  const capa = !anuncio.capa?.restrita
-    ? meuAnuncioUrlPublicaSegura(anuncio.capa?.urlPublica)
-    : null
+function criarGaleria(anuncio: MeuAnuncio, gestao: MinhasMidiasResponse | null): GaleriaItem[] {
+  return (gestao?.midias ?? []).flatMap((midia) => midia.tipo === 'FOTO' && midia.previewUrl
+    ? [{ id: midia.id, url: midia.previewUrl, expiraEm: midia.previewExpiraEm ?? null,
+        alt: `Foto do anúncio ${anuncio.titulo}` }]
+    : [])
+}
 
-  if (capa) {
-    urls.add(capa)
-    itens.push({ id: 'capa', url: capa, alt: `Capa de ${anuncio.titulo}` })
+function erroDetalhe(error: unknown): DetalheErro {
+  if (error instanceof MeusAnunciosApiError && error.status === 401) {
+    return { tipo: 'SESSAO_NECESSARIA', titulo: 'Sessão necessária', mensagem: 'Entre novamente para consultar este anúncio.' }
   }
+  if (error instanceof MeusAnunciosApiError && error.status === 403) {
+    return { tipo: 'ACESSO_NEGADO', titulo: 'Acesso negado', mensagem: 'Você não tem permissão para acessar este anúncio.' }
+  }
+  if (error instanceof MeusAnunciosApiError && error.status === 404) {
+    return { tipo: 'NAO_ENCONTRADO', titulo: 'Anúncio não encontrado', mensagem: 'O anúncio solicitado não existe ou não está mais disponível.' }
+  }
+  return { tipo: 'TECNICO', titulo: 'Não foi possível carregar o anúncio', mensagem: 'Não foi possível concluir a consulta. Tente novamente em instantes.' }
+}
 
-  anuncio.midias.forEach((midia) => {
-    if (!meuAnuncioMidiaPublicaSegura(midia)) return
-    const url = meuAnuncioUrlPublicaSegura(midia.urlPublica)
-    if (!url || urls.has(url)) return
-    urls.add(url)
-    itens.push({
-      id: midia.id,
-      url,
-      alt: `Foto do anúncio ${anuncio.titulo}`,
-    })
-  })
-
-  return itens
+function validarMidiasDoAnuncio(anuncio: MeuAnuncio, gestao: MinhasMidiasResponse) {
+  if (gestao.anuncio.id !== anuncio.id || gestao.anuncio.slug !== anuncio.slug) {
+    throw new Error('As mídias não correspondem ao anúncio consultado.')
+  }
 }
 
 export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
   const router = useRouter()
+  const { usuario, carregando } = useAuth()
+  const ownerId = usuario?.id ?? null
+  const scope = JSON.stringify([ownerId, slug])
+  const [loadedScope, setLoadedScope] = useState<string | null>(null)
   const [anuncio, setAnuncio] = useState<MeuAnuncio | null>(null)
+  const [midiasGestao, setMidiasGestao] = useState<MinhasMidiasResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<DetalheErro | null>(null)
   const [imagemSelecionadaId, setImagemSelecionadaId] = useState<string | null>(null)
+  const generationRef = useRef(0)
+  const scopeRef = useRef(scope)
+  scopeRef.current = scope
+  const anuncioRef = useRef(anuncio)
+  anuncioRef.current = anuncio
+  const mediaRefreshRef = useRef<Promise<void> | null>(null)
 
   const carregar = useCallback(async () => {
+    if (carregando) return
+    const generation = ++generationRef.current
+    mediaRefreshRef.current = null
     setLoading(true)
     setErro(null)
     setAnuncio(null)
-    try {
-      setAnuncio(await buscarMeuAnuncio(slug))
-    } catch (error) {
-      if (error instanceof MeusAnunciosApiError && error.status === 401) {
-        setErro({
-          tipo: 'SESSAO_NECESSARIA',
-          titulo: 'Sessão necessária',
-          mensagem: 'Entre novamente para consultar este anúncio.',
-        })
-      } else if (error instanceof MeusAnunciosApiError && error.status === 403) {
-        setErro({
-          tipo: 'ACESSO_NEGADO',
-          titulo: 'Acesso negado',
-          mensagem: 'Você não tem permissão para acessar este anúncio.',
-        })
-      } else if (error instanceof MeusAnunciosApiError && error.status === 404) {
-        setErro({
-          tipo: 'NAO_ENCONTRADO',
-          titulo: 'Anúncio não encontrado',
-          mensagem: 'O anúncio solicitado não existe ou não está mais disponível.',
-        })
-      } else {
-        setErro({
-          tipo: 'TECNICO',
-          titulo: 'Não foi possível carregar o anúncio',
-          mensagem: 'Não foi possível concluir a consulta. Tente novamente em instantes.',
-        })
-      }
-    } finally {
+    setMidiasGestao(null)
+    setLoadedScope(scope)
+    if (!ownerId) {
+      setErro({ tipo: 'SESSAO_NECESSARIA', titulo: 'Sessão necessária', mensagem: 'Entre novamente para consultar este anúncio.' })
       setLoading(false)
+      return
     }
-  }, [slug])
+    try {
+      const [detalhe, gestao] = await Promise.all([buscarMeuAnuncio(slug), listarMinhasMidias(slug)])
+      if (generationRef.current !== generation || scopeRef.current !== scope) return
+      if (detalhe.slug !== slug) throw new Error('O anúncio não corresponde à consulta.')
+      validarMidiasDoAnuncio(detalhe, gestao)
+      setAnuncio(detalhe)
+      setMidiasGestao(gestao)
+    } catch (error) {
+      if (generationRef.current !== generation || scopeRef.current !== scope) return
+      setErro(erroDetalhe(error))
+    } finally {
+      if (generationRef.current === generation && scopeRef.current === scope) setLoading(false)
+    }
+  }, [carregando, ownerId, scope, slug])
 
   useEffect(() => {
     void carregar()
+    return () => { generationRef.current += 1 }
   }, [carregar])
+
+  const renovarMidias = useCallback(() => {
+    if (mediaRefreshRef.current) return mediaRefreshRef.current
+    const snapshot = anuncioRef.current
+    if (!ownerId || !snapshot || snapshot.slug !== slug || scopeRef.current !== scope) return Promise.resolve()
+    const generation = generationRef.current
+    const isCurrent = () => generationRef.current === generation && scopeRef.current === scope
+    const request = listarMinhasMidias(snapshot.slug).then((gestao) => {
+      if (!isCurrent()) return
+      validarMidiasDoAnuncio(snapshot, gestao)
+      setMidiasGestao(gestao)
+    }).catch((error: unknown) => {
+      if (isCurrent()) {
+        setMidiasGestao(null)
+        setErro(erroDetalhe(error))
+      }
+      throw error
+    }).finally(() => {
+      if (mediaRefreshRef.current === request) mediaRefreshRef.current = null
+    })
+    mediaRefreshRef.current = request
+    return request
+  }, [ownerId, scope, slug])
 
   useEffect(() => {
     setImagemSelecionadaId(null)
   }, [anuncio?.id])
 
-  const galeria = useMemo(() => (anuncio ? criarGaleria(anuncio) : []), [anuncio])
+  const galeria = useMemo(() => (anuncio ? criarGaleria(anuncio, midiasGestao) : []), [anuncio, midiasGestao])
   const midiasProtegidas = useMemo(
     () => anuncio?.midias.filter((midia) => !meuAnuncioMidiaPublicaSegura(midia)) ?? [],
     [anuncio]
@@ -180,7 +210,12 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
     resultado: MeuAnuncioCicloVida,
     acao: CicloVidaAcao
   ) => {
+    if (scopeRef.current !== scope) return
     if (acao === 'REMOVER' || resultado.status === 'REMOVIDO') {
+      generationRef.current += 1
+      mediaRefreshRef.current = null
+      setMidiasGestao(null)
+      setLoading(true)
       router.replace('/meus-anuncios')
       return
     }
@@ -193,14 +228,14 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
           acoesPermitidas: resultado.acoesPermitidas,
         }
       : atual)
-  }, [router])
+  }, [router, scope])
 
   return (
     <PainelShell
       title="Detalhes do anúncio"
       description="Consulte os dados atuais vinculados à sua conta."
     >
-      {loading ? (
+      {loading || carregando || loadedScope !== scope ? (
         <div className="flex min-h-[280px] items-center justify-center rounded-[28px] border border-slate-200 bg-white text-sm text-slate-500 shadow-sm">
           Carregando anúncio...
         </div>
@@ -230,17 +265,18 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
         <article className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="grid min-w-0 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
             <section aria-labelledby="galeria-anuncio" className="min-w-0 bg-slate-50 p-4 sm:p-6">
-              <h2 id="galeria-anuncio" className="sr-only">Galeria segura do anúncio</h2>
+              <h2 id="galeria-anuncio" className="sr-only">Prévia privada do anúncio</h2>
               <div className="relative aspect-[4/3] min-h-[260px] overflow-hidden rounded-lg bg-slate-200 sm:min-h-[360px]">
                 {imagemSelecionada ? (
-                  <Image
+                  <ImagemProprietario
                     key={imagemSelecionada.id}
                     src={imagemSelecionada.url}
                     alt={imagemSelecionada.alt}
-                    fill
-                    priority
+                    expiresAt={imagemSelecionada.expiraEm}
+                    onRefresh={renovarMidias}
+                    loading="eager"
+                    fetchPriority="high"
                     className="object-cover object-center"
-                    sizes="(max-width: 1024px) 100vw, 54vw"
                   />
                 ) : (
                   <div className="flex h-full min-h-[260px] flex-col items-center justify-center px-6 text-center text-slate-600 sm:min-h-[360px]">
@@ -250,15 +286,16 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                       <PhotoIcon className="h-12 w-12 text-slate-400" aria-hidden="true" />
                     )}
                     <p className="mt-4 font-semibold text-slate-800">
-                      {anuncio.capa?.restrita || midiasProtegidas.length > 0
-                        ? 'Mídia protegida'
-                        : 'Nenhuma mídia disponível'}
+                      {midiasGestao?.midias.some((midia) => midia.tipo === 'FOTO')
+                        ? 'Prévia indisponível'
+                        : 'Nenhuma foto disponível'}
                     </p>
                     <p className="mt-2 max-w-sm text-sm leading-6">
-                      {anuncio.capa?.restrita || midiasProtegidas.length > 0
-                        ? 'A mídia ainda não possui URL pública autorizada.'
-                        : 'Este anúncio ainda não possui fotos liberadas.'}
+                      Não foi possível obter uma foto pela consulta privada deste anúncio.
                     </p>
+                    <button type="button" onClick={() => void carregar()} className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm">
+                      Atualizar prévia
+                    </button>
                   </div>
                 )}
               </div>
@@ -279,13 +316,14 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                           selecionada ? 'border-[#FC1EAD] ring-1 ring-[#FC1EAD]' : 'border-slate-200'
                         )}
                       >
-                        <Image
+                        <ImagemProprietario
                           src={item.url}
                           alt=""
-                          fill
+                          expiresAt={item.expiraEm}
+                          onRefresh={renovarMidias}
+                          interactive={false}
                           loading="lazy"
                           className="object-cover"
-                          sizes="120px"
                         />
                       </button>
                     )

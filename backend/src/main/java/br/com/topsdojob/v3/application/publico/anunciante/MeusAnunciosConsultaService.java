@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioReprovac
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -34,12 +35,14 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncio
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +70,7 @@ public class MeusAnunciosConsultaService {
     private final DecisaoModeracaoRepository decisaoModeracaoRepository;
     private final MidiaPublicaMapper midiaMapper;
     private final MidiaPublicaSeguraPolicy midiaSeguraPolicy;
+    private final MinhaMidiaPreviewService previewService;
     private final VisualizacaoTotalCanonicaService visualizacaoService;
     private final MeuAnuncioBeneficioConsultaService beneficioConsultaService;
     private final MeuAnuncioStoryConsultaService storyConsultaService;
@@ -84,6 +88,7 @@ public class MeusAnunciosConsultaService {
             DecisaoModeracaoRepository decisaoModeracaoRepository,
             MidiaPublicaMapper midiaMapper,
             MidiaPublicaSeguraPolicy midiaSeguraPolicy,
+            MinhaMidiaPreviewService previewService,
             VisualizacaoTotalCanonicaService visualizacaoService,
             MeuAnuncioBeneficioConsultaService beneficioConsultaService,
             MeuAnuncioStoryConsultaService storyConsultaService,
@@ -99,6 +104,7 @@ public class MeusAnunciosConsultaService {
         this.decisaoModeracaoRepository = decisaoModeracaoRepository;
         this.midiaMapper = midiaMapper;
         this.midiaSeguraPolicy = midiaSeguraPolicy;
+        this.previewService = previewService;
         this.visualizacaoService = visualizacaoService;
         this.beneficioConsultaService = beneficioConsultaService;
         this.storyConsultaService = storyConsultaService;
@@ -318,11 +324,30 @@ public class MeusAnunciosConsultaService {
             List<AnuncioMidiaEntity> vinculos,
             Map<UUID, ArquivoMidiaEntity> arquivos) {
         List<MidiaPublicaDto> candidatas = midiaSeguraPolicy.paraCard(midiaMapper.publicas(vinculos, arquivos, false));
-        if (candidatas.isEmpty()) {
-            return null;
+        MidiaPublicaDto publica = candidatas.isEmpty() ? null : candidatas.get(0);
+        List<AnuncioMidiaEntity> fotosDoProprietario = vinculos.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getStatus() != null && item.getStatus() != StatusAnuncioMidia.REMOVIDA)
+                .filter(item -> item.getTipo() == TipoAnuncioMidia.FOTO)
+                .filter(item -> item.getFinalidade() == FinalidadeAnuncioMidia.CAPA
+                        || item.getFinalidade() == FinalidadeAnuncioMidia.GALERIA)
+                .sorted(Comparator.comparing(AnuncioMidiaEntity::getOrdem, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(AnuncioMidiaEntity::getId, Comparator.nullsLast(UUID::compareTo)))
+                .toList();
+        for (AnuncioMidiaEntity foto : fotosDoProprietario) {
+            ArquivoMidiaEntity arquivo = arquivos.get(foto.getArquivoMidiaId());
+            if (arquivo == null || (arquivo.getStatusArquivo() != StatusArquivoMidia.PENDENTE
+                    && arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO)) continue;
+            var preview = previewService.resolver(arquivo);
+            if (preview.url() != null) {
+                return new MeuAnuncioCapaDto(
+                        publica == null ? null : publica.urlPublica(),
+                        publica == null ? foto.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
+                                : !publica.autorizada(),
+                        preview.url(), preview.expiraEm());
+            }
         }
-        MidiaPublicaDto capa = candidatas.get(0);
-        return new MeuAnuncioCapaDto(capa.urlPublica(), !capa.autorizada());
+        return publica == null ? null : new MeuAnuncioCapaDto(publica.urlPublica(), !publica.autorizada());
     }
 
     private List<MeuAnuncioMidiaDto> midias(

@@ -107,7 +107,7 @@ for (const field of [
   'anuncio.locaisAtendimento',
   'anuncio.whatsapp',
   'anuncio.capa',
-  'anuncio.midias',
+  'anuncio?.midias',
   'anuncio.visualizacoes',
   'anuncio.reprovacao',
 ]) {
@@ -120,9 +120,14 @@ assert.match(detail, /midia\.visibilidadeMidia === 'RESTRITA_18'/)
 assert.match(detail, /meuAnuncioUrlPublicaSegura\(midia\.urlPublica\)/)
 assert.match(card, /PARAMETROS_DE_URL_ASSINADA/)
 assert.match(card, /resolvida\.protocol !== 'https:'/)
-assert.match(detail, /priority/)
+assert.match(detail, /fetchPriority="high"/)
 assert.match(detail, /loading="lazy"/)
-assert.match(normalized(detail), /Midia protegida/)
+assert.match(detail, /listarMinhasMidias/)
+assert.match(detail, /previewUrl/)
+assert.match(detail, /previewExpiraEm/)
+assert.match(detail, /<ImagemProprietario/)
+assert.doesNotMatch(detail, /from 'next\/image'/)
+assert.match(normalized(detail), /Previa privada do anuncio/)
 assert.match(normalized(detail), /aguardando moderacao/)
 assert.doesNotMatch(combined, /objectKey|object_key|chaveObjeto|bucket|documentoKyc|dataNascimento/)
 assert.match(card, /href=\{`\/anuncios\/\$\{encodeURIComponent\(anuncio\.slug\)\}`\}[\s\S]*Ver anúncio/)

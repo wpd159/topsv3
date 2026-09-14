@@ -2,6 +2,7 @@
 
 import { ChevronRight, Crown, ImageIcon, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { AnuncioCard } from '@/components/anuncios/anuncio-card'
+import { ImagemProprietario } from '@/components/anuncios/imagem-proprietario'
 import {
   Dialog,
   DialogClose,
@@ -27,6 +28,8 @@ export function WizardPreview({
   previewPrice,
   previewDescription,
   previewMedia,
+  previewExpiraEm,
+  onPreviewRefresh,
   previewReference,
   idade,
   hasVirtual,
@@ -49,6 +52,8 @@ export function WizardPreview({
   previewPrice: string
   previewDescription: string
   previewMedia: string[]
+  previewExpiraEm?: string | null
+  onPreviewRefresh?: () => Promise<void>
   previewReference: string
   idade: number | null
   hasVirtual: boolean
@@ -75,7 +80,7 @@ export function WizardPreview({
       <div className="flex min-w-0 items-center gap-3 pr-3">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-200 bg-white">
           {thumb ? (
-            <img src={thumb} alt="" className="h-full w-full object-cover" />
+            <ImagemProprietario src={thumb} alt="" expiresAt={previewExpiraEm} onRefresh={onPreviewRefresh} interactive={false} />
           ) : (
             <ImageIcon className="h-5 w-5 text-zinc-400" />
           )}
@@ -196,6 +201,8 @@ export function WizardPreview({
                     idade={idade}
                     valor={previewPrice}
                     previewImagens={previewMedia}
+                    previewExpiraEm={previewExpiraEm}
+                    onPreviewRefresh={onPreviewRefresh}
                     descricao={previewDescription}
                     destaque={premiumChoice === 'destaque'}
                     carrosselDisponivel={false}

@@ -162,6 +162,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [editAnuncio, setEditAnuncio] = useState<MeuAnuncio | null>(null)
   const previousAnuncioRef = useRef<MeuAnuncio | null>(null)
   const [editMedia, setEditMedia] = useState<MinhasMidiasResponse | null>(null)
+  const mediaPreviewRefreshRef = useRef<Promise<void> | null>(null)
   const [mediaBusy, setMediaBusy] = useState(false)
   const mediaBusyRef = useRef(false)
   const [terminalAnuncio, setTerminalAnuncio] = useState<MeuAnuncioCicloVida | null>(null)
@@ -208,6 +209,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     terminalAnuncioRef.current = null
     setTerminalAnuncio(null)
     setEditMedia(null)
+    mediaPreviewRefreshRef.current = null
     previousAnuncioRef.current = null
     mediaBusyRef.current = false
     setMediaBusy(false)
@@ -258,6 +260,25 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     setEditAnuncio((current) => current ? { ...current, ...response.anuncio } : current)
     if (response.anuncio.status === 'REMOVIDO') closeWizard(response.anuncio)
   }, [closeWizard, progressScope, slug])
+
+  const refreshMediaPreview = useCallback(() => {
+    if (mediaPreviewRefreshRef.current) return mediaPreviewRefreshRef.current
+    const targetSlug = slug ?? createdSlugRef.current
+    if (!targetSlug || !mountedRef.current || terminalAnuncioRef.current
+      || mediaBusyRef.current || publishLockRef.current) return Promise.resolve()
+    const generation = flowGenerationRef.current
+    const scope = progressScopeRef.current
+    const request = listarMinhasMidias(targetSlug).then((response) => {
+      // A renewal must not overwrite an upload/removal, another account or editor.
+      if (!mountedRef.current || terminalAnuncioRef.current || mediaBusyRef.current || publishLockRef.current
+        || flowGenerationRef.current !== generation || progressScopeRef.current !== scope) return
+      acceptMediaResponse(response)
+    }).finally(() => {
+      if (mediaPreviewRefreshRef.current === request) mediaPreviewRefreshRef.current = null
+    })
+    mediaPreviewRefreshRef.current = request
+    return request
+  }, [acceptMediaResponse, slug])
 
   const beginMediaInteraction = useCallback(() => {
     if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current || !mountedRef.current || progressScopeRef.current !== progressScope) return false
@@ -326,9 +347,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     profileDescription ||
     'Seu texto de apresentação aparece aqui para aproximar o preview do anúncio real.'
   const previewPrice = state.preco.trim() || 'Consulte valores'
-  const currentMediaUrls = (editMedia ? editMedia.midias.map((midia) => midia.previewUrl) : editAnuncio?.midias.map((midia) => midia.urlPublica))
+  const persistedPreviewPhotos = editMedia?.midias.filter((midia) => midia.tipo === 'FOTO' && midia.previewUrl) ?? []
+  const currentMediaUrls = persistedPreviewPhotos.map((midia) => midia.previewUrl)
     ?.filter((url): url is string => Boolean(url)) ?? []
   const previewMedia = fotoPreviewUrls.length ? fotoPreviewUrls : currentMediaUrls
+  const previewExpiraEm = fotoPreviewUrls.length ? null : persistedPreviewPhotos[0]?.previewExpiraEm
   const syncProgress = useCallback(
     (
       ultimoStep: WizardProgressStep,
@@ -796,6 +819,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current) return
 
     publishLockRef.current = true
+    flowGenerationRef.current += 1
     const generation = flowGenerationRef.current
     try {
       setPublishing(true)
@@ -1108,6 +1132,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
               previewPrice={previewPrice}
               previewDescription={previewDescription}
               previewMedia={previewMedia}
+              previewExpiraEm={previewExpiraEm}
+              onPreviewRefresh={fotoPreviewUrls.length ? undefined : refreshMediaPreview}
               previewReference={previewReference}
               idade={idade}
               hasVirtual={hasVirtual}
@@ -1182,6 +1208,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           previewPrice={previewPrice}
           previewDescription={previewDescription}
           previewMedia={previewMedia}
+          previewExpiraEm={previewExpiraEm}
+          onPreviewRefresh={fotoPreviewUrls.length ? undefined : refreshMediaPreview}
           previewReference={previewReference}
           idade={idade}
           hasVirtual={hasVirtual}

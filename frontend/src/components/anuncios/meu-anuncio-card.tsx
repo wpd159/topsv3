@@ -1,14 +1,14 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { BanknotesIcon, EyeIcon, MapPinIcon, MegaphoneIcon, PencilIcon, SparklesIcon } from '@heroicons/react/24/solid'
-import { useId } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { ImagemProprietario } from '@/components/anuncios/imagem-proprietario'
 import {
   MeuAnuncioAcoesCicloVida,
   type CicloVidaAcao,
 } from '@/components/anuncios/meu-anuncio-acoes-ciclo-vida'
-import type { MeuAnuncio, MeuAnuncioCicloVida } from '@/lib/meus-anuncios-api'
+import { buscarMeuAnuncio, type MeuAnuncio, type MeuAnuncioCicloVida } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
 import { apresentarBeneficioPremium } from '@/lib/meu-anuncio-beneficios'
@@ -109,23 +109,46 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryOpen }: MeuAnuncio
   const storyMediaError = anuncio.storyAtivo?.modoConteudo === 'MIDIA_UPLOAD'
     && anuncio.storyAtivo.estadoMidia === 'INDISPONIVEL'
 
-  const capaPublica = !anuncio.capa?.restrita
-    ? meuAnuncioUrlPublicaSegura(anuncio.capa?.urlPublica)
+  const [renewedCover, setRenewedCover] = useState<{ snapshot: MeuAnuncio; capa: MeuAnuncio['capa'] } | null>(null)
+  const currentAdRef = useRef(anuncio)
+  currentAdRef.current = anuncio
+  const mountedRef = useRef(true)
+  const refreshRef = useRef<Promise<void> | null>(null)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+  const refreshCover = useCallback(() => {
+    if (refreshRef.current) return refreshRef.current
+    const snapshot = currentAdRef.current
+    const request = buscarMeuAnuncio(snapshot.slug).then((latest) => {
+      if (latest.id !== snapshot.id || latest.slug !== snapshot.slug) throw new Error('A capa não corresponde ao anúncio.')
+      if (mountedRef.current && currentAdRef.current === snapshot) setRenewedCover({ snapshot, capa: latest.capa })
+    }).finally(() => {
+      if (refreshRef.current === request) refreshRef.current = null
+    })
+    refreshRef.current = request
+    return request
+  }, [])
+  const ownerCover = renewedCover?.snapshot.id === anuncio.id
+    && renewedCover.snapshot.slug === anuncio.slug && renewedCover.snapshot.capa === anuncio.capa
+    ? renewedCover.capa : anuncio.capa
+  const capaPublica = !ownerCover?.restrita
+    ? meuAnuncioUrlPublicaSegura(ownerCover?.urlPublica)
     : null
-  const capa = capaPublica ?? '/icone-sem-foto.png'
+  const capa = ownerCover?.previewUrl ?? capaPublica ?? '/icone-sem-foto.png'
   const podeMonetizar = anuncioPodeMonetizar(anuncio)
   const deveCorrigirEReenviar = anuncio.acoesPermitidas.corrigirEReenviar
 
   return (
     <article className="group mx-auto flex w-full max-w-[330px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md">
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-gray-50">
-        <Image
+        <ImagemProprietario
           src={capa}
+          expiresAt={ownerCover?.previewUrl ? ownerCover.previewExpiraEm : null}
+          onRefresh={refreshCover}
           alt={`Capa de ${anuncio.titulo}`}
-          fill
           className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.02]"
-          quality={85}
-          sizes="(max-width: 768px) 100vw, 330px"
         />
         <span className={cn('absolute left-2 top-2 rounded-md border px-2 py-1 text-[11px] font-semibold', status.className)}>
           {status.label}

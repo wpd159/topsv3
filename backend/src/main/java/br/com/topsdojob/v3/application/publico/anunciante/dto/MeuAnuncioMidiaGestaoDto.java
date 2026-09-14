@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.anunciante.dto;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record MeuAnuncioMidiaGestaoDto(
@@ -10,5 +11,6 @@ public record MeuAnuncioMidiaGestaoDto(
         String visibilidadeMidia,
         String previewUrl,
         boolean restrita,
-        boolean ocultaPorLimite) {
+        boolean ocultaPorLimite,
+        OffsetDateTime previewExpiraEm) {
 }

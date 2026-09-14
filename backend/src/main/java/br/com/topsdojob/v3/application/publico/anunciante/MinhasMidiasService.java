@@ -11,9 +11,6 @@ import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
-import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
-import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
-import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -25,8 +22,6 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
-import java.net.URI;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -38,7 +33,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -55,8 +49,7 @@ public class MinhasMidiasService {
     private final RevisaoAnuncioRepository revisaoRepository;
     private final LimiteMidiasAnuncioService limiteService;
     private final MidiaUploadProperties uploadProperties;
-    private final R2StorageProperties storageProperties;
-    private final ObjectProvider<ObjectStorage> storageProvider;
+    private final MinhaMidiaPreviewService previewService;
     private final AnuncioMidiaUploadCoreService uploadCoreService;
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
     private final MeuAnuncioCicloVidaService cicloVidaService;
@@ -68,8 +61,7 @@ public class MinhasMidiasService {
             RevisaoAnuncioRepository revisaoRepository,
             LimiteMidiasAnuncioService limiteService,
             MidiaUploadProperties uploadProperties,
-            R2StorageProperties storageProperties,
-            ObjectProvider<ObjectStorage> storageProvider,
+            MinhaMidiaPreviewService previewService,
             AnuncioMidiaUploadCoreService uploadCoreService,
             FotoElegivelAnuncioPolicy fotoElegivelPolicy,
             MeuAnuncioCicloVidaService cicloVidaService) {
@@ -79,8 +71,7 @@ public class MinhasMidiasService {
         this.revisaoRepository = revisaoRepository;
         this.limiteService = limiteService;
         this.uploadProperties = uploadProperties;
-        this.storageProperties = storageProperties;
-        this.storageProvider = storageProvider;
+        this.previewService = previewService;
         this.uploadCoreService = uploadCoreService;
         this.fotoElegivelPolicy = fotoElegivelPolicy;
         this.cicloVidaService = cicloVidaService;
@@ -239,11 +230,11 @@ public class MinhasMidiasService {
         Map<UUID, ArquivoMidiaEntity> arquivos = arquivoMidiaRepository.findByIdIn(vinculos.stream()
                         .map(AnuncioMidiaEntity::getArquivoMidiaId).filter(Objects::nonNull).distinct().toList())
                 .stream().collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
-        ObjectStorage storage = storageProvider.getIfAvailable();
         int fotoIndex = 0;
         List<MeuAnuncioMidiaGestaoDto> resultado = new ArrayList<>();
         for (AnuncioMidiaEntity vinculo : vinculos) {
             ArquivoMidiaEntity arquivo = arquivos.get(vinculo.getArquivoMidiaId());
+            var preview = previewService.resolver(arquivo);
             boolean foto = vinculo.getTipo() == TipoAnuncioMidia.FOTO;
             boolean ocultaPorLimite = foto && fotoIndex++ >= limites.maxFotos();
             resultado.add(new MeuAnuncioMidiaGestaoDto(
@@ -252,32 +243,16 @@ public class MinhasMidiasService {
                     vinculo.getOrdem(),
                     vinculo.getStatus().name(),
                     enumName(vinculo.getVisibilidadeMidia()),
-                    previewUrl(storage, arquivo),
+                    preview.url(),
                     vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18,
-                    ocultaPorLimite));
+                    ocultaPorLimite,
+                    preview.expiraEm()));
         }
         return new MeuAnuncioMidiasResponseDto(List.copyOf(resultado), limites,
                 new MeuAnuncioCicloVidaDto(anuncio.getId(), anuncio.getSlug(), anuncio.getStatus().name(),
                         anuncio.getStatusModeracao().name(), anuncio.getAtualizadoEm(),
                         consultaService.acoesPermitidas(anuncio)),
                 anuncioMidiaRepository.findFotosValidasAtivasIds(anuncio.getId()).size());
-    }
-
-    private String previewUrl(ObjectStorage storage, ArquivoMidiaEntity arquivo) {
-        if (storage == null || arquivo == null || arquivo.getChaveObjeto() == null) return null;
-        try {
-            if (storageProperties.getPrivateMediaBucket().equals(arquivo.getBucket())
-                    && arquivo.getChaveObjeto().startsWith(storageProperties.getPrivateMediaPrefix())) {
-                return storage.temporaryGetUrl(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto(), Duration.ofMinutes(5)).toString();
-            }
-            if (storageProperties.getPublicMediaBucket().equals(arquivo.getBucket())
-                    && arquivo.getChaveObjeto().startsWith(storageProperties.getPublicMediaPrefix())) {
-                return storage.publicUrl(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto()).map(URI::toString).orElse(null);
-            }
-        } catch (RuntimeException ignored) {
-            return null;
-        }
-        return null;
     }
 
     private MeuAnuncioMidiaLimitesDto limites(AnuncioEntity anuncio, List<AnuncioMidiaEntity> vinculos) {

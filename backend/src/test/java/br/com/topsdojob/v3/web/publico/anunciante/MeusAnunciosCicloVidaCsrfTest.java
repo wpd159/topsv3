@@ -7,8 +7,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.hamcrest.Matchers.containsString;
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
@@ -20,6 +23,8 @@ import br.com.topsdojob.v3.security.config.AdminSecurityErrorWriter;
 import br.com.topsdojob.v3.security.config.SecurityConfig;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -47,6 +52,26 @@ class MeusAnunciosCicloVidaCsrfTest {
 
     @MockBean
     private MinhasMidiasService midiasService;
+
+    @Test
+    void respostaDeRemocaoDeMidiaMantemNoStore() throws Exception {
+        mockMvc.perform(delete("/api/public/minha-conta/anuncios/perfil-teste/midias/00000000-0000-4000-8000-000000001212")
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/public/minha-conta/anuncios",
+        "/api/public/minha-conta/anuncios/perfil-teste",
+        "/api/public/minha-conta/anuncios/perfil-teste/midias"
+    })
+    void respostasComPreviewPrivadoMantemNoStoreDoSpringSecurity(String path) throws Exception {
+        mockMvc.perform(get(path))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+    }
 
     @Test
     void mutacoesSemCsrfSaoRecusadas() throws Exception {
