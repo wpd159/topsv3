@@ -100,7 +100,17 @@ for (const endpoint of ['28080/api/health/readiness', '23010/health/readiness', 
 }
 assert.doesNotMatch(activation, /trap on_error ERR|rollback_application|application_started/)
 assert.match(operationHelper, /trap '_op_exit "\$\?"' EXIT/)
-assert.match(operationHelper, /--no-build --pull never backend frontend gateway/)
+const startupSequence = activation.slice(startup, health)
+const restoration = operationHelper.match(/_op_restore\(\) \{[\s\S]*?\n\}/)?.[0]
+assert.ok(restoration, 'restauracao ausente')
+for (const [name, sequence] of [['ativacao', startupSequence], ['recuperacao', restoration]]) {
+  assert.match(sequence, /for service in backend frontend gateway; do\s+op_run mutating/)
+  assert.match(sequence, /up -d --no-deps --force-recreate --no-build --pull never "\$\{service\}"/)
+  assert.doesNotMatch(sequence, /up[^\n]*backend frontend gateway/)
+  process.stdout.write(`ok - ${name} inicia cada servico sem bloquear o callback na saude do backend\n`)
+}
+assert.ok(restoration.indexOf('_op_verify_runtime') > restoration.indexOf('up -d --no-deps'))
+assert.ok(restoration.lastIndexOf('op_smoke "${OP_PREVIOUS_SHA}"') > restoration.indexOf('up -d --no-deps'))
 assert.ok(activation.indexOf('op_finish') > activation.indexOf('IMPORTACAO_.*(INICIO|EXECUTADA)'))
 assert.ok(
   activation.indexOf('capture_database_snapshot "${snapshot_after}" UP') < switchLink,

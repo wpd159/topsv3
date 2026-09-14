@@ -6,11 +6,11 @@ repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 helper="${script_dir}/proteger-operacao-production.sh"
 workflow="${repo_root}/.github/workflows/deploy-production.yml"
 fail() { printf 'FALHA_CONTAINER_OPERACAO: %s\n' "$*" >&2; exit 1; }
-scenarios=(http_failure final_failure success recovery_late recovery_absent benign_success benign_mixed_error recovery_benign_mixed_error frontend_down gateway_down recovery_new_frontend_down)
+scenarios=(startup_callback startup_callback_health_failure http_failure final_failure success recovery_late recovery_absent benign_success benign_mixed_error recovery_benign_mixed_error frontend_down gateway_down recovery_new_frontend_down)
 if (( $# > 0 )); then
   [[ $# == 2 && "$1" == --scenario ]] || fail 'uso: testar-operacao-containers-production.sh [--scenario NOME]'
   case "$2" in
-    http_failure|final_failure|success|recovery_late|recovery_absent|benign_success|benign_mixed_error|recovery_benign_mixed_error|frontend_down|gateway_down|recovery_new_frontend_down) scenarios=("$2") ;;
+    http_failure|final_failure|success|recovery_late|recovery_absent|benign_success|benign_mixed_error|recovery_benign_mixed_error|frontend_down|gateway_down|recovery_new_frontend_down|startup_callback|startup_callback_health_failure) scenarios=("$2") ;;
     *) fail 'cenario desconhecido' ;;
   esac
 fi
@@ -111,7 +111,11 @@ const flightScript = record => '<script>self.__next_f.push([1,' + JSON.stringify
 const benignDigest = process.env.CONTENT_PROFILE === 'benign' ? flightScript('1:{"digest":"$undefined"}') : '';
 const errorDigest = flightScript('2:E{"digest":"12345"}');
 let readinessFailures = 1, mode = '', recoveryStarted = 0;
-http.createServer(async (request, response) => {
+const callbackRequired = process.env.STARTUP_CALLBACK === 'true';
+const callbackNonce = require('node:crypto').randomUUID();
+const startupTime = Date.now();
+let callbackComplete = !callbackRequired;
+const server = http.createServer(async (request, response) => {
   const correlation = request.headers['x-request-id'] || 'none';
   const send = (status, body, contentType = 'text/html; charset=utf-8') => {
     response.writeHead(status, {'content-type': contentType}); response.end(body);
@@ -124,9 +128,18 @@ http.createServer(async (request, response) => {
       return send(200, 'CONTROLLED');
     }
     if (role === 'backend') {
+      if (request.url === '/__test/startup-callback/' + callbackNonce) {
+        if (request.headers['x-synthetic-gateway'] !== prefix) return send(403, 'CALLBACK_GATEWAY_REQUIRED');
+        console.log('STARTUP_CALLBACK_RECEIVED release=' + process.env.RELEASE_ID);
+        return send(200, 'SYNTHETIC_CALLBACK_ACCEPTED');
+      }
+      if (request.url === '/api/health/liveness') {
+        const live = callbackComplete && mode !== 'startup_callback_health_failure';
+        return send(live ? 200 : 503, JSON.stringify({status: live ? 'UP' : 'DOWN', app: 'topsdojob-v3-backend'}), 'application/json');
+      }
       if (request.url === '/api/health/readiness') {
-        const ready = mode.startsWith('recovery_')
-          ? Date.now() - recoveryStarted >= 32000 : readinessFailures-- <= 0;
+        const ready = callbackComplete && mode !== 'startup_callback_health_failure' && (mode.startsWith('recovery_')
+          ? Date.now() - recoveryStarted >= 32000 : readinessFailures-- <= 0);
         return send(ready ? 200 : 503, JSON.stringify({status: ready ? 'UP' : 'DOWN', app: 'topsdojob-v3-backend'}), 'application/json');
       }
       if (request.url === '/api/public/localidades') {
@@ -136,6 +149,14 @@ http.createServer(async (request, response) => {
       return send(200, JSON.stringify({status: 'UP', app: 'topsdojob-v3-backend'}), 'application/json');
     }
     if (role === 'gateway') {
+      if (request.url.startsWith('/__test/startup-callback/')) {
+        const result = await fetch(`http://${prefix}-backend:8080${request.url}`, {
+          headers: {'X-Synthetic-Gateway': prefix}, signal: AbortSignal.timeout(2000)
+        });
+        console.log('STARTUP_CALLBACK_FORWARDED release=' + process.env.RELEASE_ID + ' status=' + result.status);
+        response.setHeader('x-synthetic-gateway-start', String(startupTime));
+        return send(result.status, await result.text());
+      }
       if (mode === 'gateway_down' && request.url.startsWith('/health/')) return send(503, JSON.stringify({status: 'DOWN'}));
       const result = await fetch(`http://${prefix}-frontend:8080${request.url}`, {headers: {'X-Request-ID': correlation}, signal: AbortSignal.timeout(2000)});
       return send(result.status, await result.text());
@@ -158,7 +179,27 @@ http.createServer(async (request, response) => {
     const concreteError = mode === 'benign_mixed_error' || mode === 'recovery_benign_mixed_error';
     return send(200, functional + benignDigest + (concreteError ? errorDigest : ''));
   } catch { send(503, 'CONTROLLED_DEPENDENCY_FAILURE'); }
-}).listen(8080, '0.0.0.0');
+});
+server.listen(8080, '0.0.0.0', async () => {
+  if (role !== 'backend' || !callbackRequired) return;
+  console.log('STARTUP_WAITING_FOR_CALLBACK release=' + process.env.RELEASE_ID);
+  // Synthetic startup dependency only: no Efí request, credential or application
+  // retry is involved. Readiness remains DOWN until a real HTTP round trip via
+  // the fixture gateway succeeds, including its callback response.
+  for (let attempt = 0; attempt < 100 && !callbackComplete; attempt++) {
+    try {
+      const result = await fetch(`http://${prefix}-gateway:8080/__test/startup-callback/${callbackNonce}`, {
+        signal: AbortSignal.timeout(2000)
+      });
+      const body = await result.text();
+      // Do not credit a previous gateway generation still running during replacement.
+      callbackComplete = result.ok && Number(result.headers.get('x-synthetic-gateway-start')) >= startupTime
+        && body === 'SYNTHETIC_CALLBACK_ACCEPTED';
+    } catch {}
+    if (!callbackComplete) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (callbackComplete) console.log('STARTUP_CALLBACK_READY release=' + process.env.RELEASE_ID);
+});
 NODE_SERVER
 )"
 for sha in "$previous_sha" "$candidate_sha" "$new_base_sha"; do
@@ -225,16 +266,32 @@ fi
 if [[ "${args[0]:-}" == compose && "$joined" == *' up '* ]]; then
   for service in backend frontend gateway; do printf 'container|%s-%s|%s\n' "$TEST_PREFIX" "$service" "$TEST_OWNER_ID" >> "$TEST_RESOURCES"; done
   "$TEST_REAL_DOCKER" "${args[@]}"
+  # The coordinator starts each service independently. Observe/inject only once
+  # the complete trio exists, not after the first single-service invocation.
+  [[ "${args[-1]}" == gateway ]] || exit 0
   for service in backend frontend gateway; do
     "$TEST_REAL_DOCKER" inspect "${TEST_PREFIX}-${service}" --format '{{.Name}} {{.Id}} {{.Image}}' >> "$TEST_EVENTS"
   done
+  if [[ "$TEST_SCENARIO" == startup_callback* ]]; then
+    deadline=$((SECONDS + 30))
+    until "$TEST_REAL_DOCKER" logs "${TEST_PREFIX}-backend" 2>&1 | grep -q '^STARTUP_CALLBACK_READY '; do
+      (( SECONDS < deadline )) || { echo 'SYNTHETIC_CALLBACK_STARTUP_FAILED' >&2; exit 75; }
+      sleep 0.2
+    done
+    "$TEST_REAL_DOCKER" logs "${TEST_PREFIX}-gateway" 2>&1 | grep -q '^STARTUP_CALLBACK_FORWARDED .*status=200$' || exit 76
+    stage=baseline
+    [[ "${TOPSV3_RELEASE_SHA:-}" != bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ]] || stage=activation
+    [[ "$stage" != baseline || ! -s "$TEST_ROOT/candidate-runtime" ]] || stage=recovery
+    printf 'CALLBACK_TRACE stage=%s real_http=true backend_ready=true gateway_forwarded=true\n' "$stage" >> "$TEST_EVENTS"
+  fi
   if [[ "${TOPSV3_RELEASE_SHA:-}" == bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ]]; then
     for service in backend frontend gateway; do
       "$TEST_REAL_DOCKER" inspect "${TEST_PREFIX}-${service}" --format '{{.Id}} {{.Image}} {{json .Config.Env}}' >> "$TEST_ROOT/candidate-runtime"
     done
-    if [[ "$TEST_SCENARIO" != success && "$TEST_SCENARIO" != benign_success ]]; then
+    if [[ "$TEST_SCENARIO" != success && "$TEST_SCENARIO" != benign_success && "$TEST_SCENARIO" != startup_callback ]]; then
       target=frontend
       [[ "$TEST_SCENARIO" != final_failure ]] || target=backend
+      [[ "$TEST_SCENARIO" != startup_callback_health_failure ]] || target=backend
       [[ "$TEST_SCENARIO" != gateway_down ]] || target=gateway
       failure_mode="$TEST_SCENARIO"
       [[ "$TEST_SCENARIO" != recovery_* ]] || failure_mode=http_failure
@@ -327,6 +384,7 @@ source <(sed -n '/^write_snapshot() {$/,/^}$/p' "${script_dir}/testar-gate-banco
 for scenario in "${scenarios[@]}"; do
   previous_sha="$legacy_sha"
   [[ "$scenario" != recovery_new_frontend_down ]] || previous_sha="$new_base_sha"
+  [[ "$scenario" != startup_callback* ]] || previous_sha="$new_base_sha"
   previous_image="$("$real_docker" image inspect --format '{{.Id}}' "${prefix}-backend:${previous_sha}")"
   "$real_docker" tag "$previous_image" "${prefix}-gateway:stable"
   case_dir="${work_dir}/${scenario}"
@@ -334,6 +392,8 @@ for scenario in "${scenarios[@]}"; do
   secrets="${case_dir}/secrets"
   content_profile=plain
   [[ "$scenario" != *benign* ]] || content_profile=benign
+  startup_callback=false
+  [[ "$scenario" != startup_callback* ]] || startup_callback=true
   mkdir -p "$secrets" "${test_root}/releases"
   # Public synthetic IndexNow value only. The directory is writable by the
   # restricted root utility on any runner GID; the private snapshot stays 0600.
@@ -404,6 +464,7 @@ SYNTHETIC_VALIDATE_BOUNDARY
       SERVICE: ${service}
       TEST_PREFIX: ${prefix}
       CONTENT_PROFILE: ${content_profile}
+      STARTUP_CALLBACK: "${startup_callback}"
       RELEASE_ID: ${sha}
       CONFIG_MARKER: configuration-${sha}
       INDEXNOW_KEY: \${INDEXNOW_KEY:?synthetic key required}
@@ -414,6 +475,31 @@ SYNTHETIC_VALIDATE_BOUNDARY
       APP_ENV: producao
     networks: [operation_test]
 COMPOSE_SERVICE
+        if [[ "$startup_callback" == true ]]; then
+          # Copy the actual application dependency edges, including those in the
+          # restored release; the fixture does not silently omit Compose waits.
+          if [[ "$service" != backend ]]; then
+            dependency_block="$(awk -v service="$service" '
+              { sub(/\r$/, "") }
+              $0 == "  " service ":" { inside=1; next }
+              inside && /^  [^ ]/ { exit }
+              inside && /^    depends_on:/ { copying=1 }
+              copying && /^    [^ ]/ && !/^    depends_on:/ { exit }
+              copying { print }
+            ' "${repo_root}/deploy/production/docker-compose.yml")"
+            [[ "$dependency_block" == *'condition: service_healthy'* ]] || fail "depends_on real ausente: ${service}"
+            printf '%s\n' "$dependency_block"
+          fi
+          health_path=/health/liveness
+          [[ "$service" != backend ]] || health_path=/api/health/liveness
+          cat <<COMPOSE_HEALTH
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080${health_path}').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 1s
+      timeout: 1s
+      retries: 5
+COMPOSE_HEALTH
+        fi
       done
       printf 'networks:\n  operation_test:\n    external: true\n    name: %s\n' "$network"
     } > "${release}/deploy/production/docker-compose.yml"
@@ -424,9 +510,41 @@ COMPOSE_SERVICE
   export TEST_ROOT="$test_root" TEST_SCENARIO="$scenario" TEST_SNAPSHOT="${case_dir}/database.snapshot" TEST_EVENTS="${case_dir}/events"
   export TEST_CANDIDATE_IMAGE="$candidate_image"
   touch "$TEST_EVENTS"
-  TOPSV3_RELEASE_SHA="$previous_sha" docker compose --env-file "${secrets}/production.env" \
-    -f "${test_root}/releases/${previous_sha}/deploy/production/docker-compose.yml" -p topsv3-production \
-    up -d --no-deps --force-recreate --no-build --pull never backend frontend gateway >/dev/null
+  if [[ "$scenario" == startup_callback ]]; then
+    for service in backend frontend gateway; do
+      if "$real_docker" inspect "${prefix}-${service}" >/dev/null 2>&1; then
+        [[ "$("$real_docker" inspect "${prefix}-${service}" --format '{{index .Config.Labels "topsv3.operation.test"}}')" == "$operation_owner_id" ]] || fail 'ownership divergente antes da regressao'
+        "$real_docker" rm -f "${prefix}-${service}" >/dev/null
+      fi
+      record container "${prefix}-${service}"
+    done
+    # Execute the former multi-service command unchanged, against fresh
+    # containers. --no-deps does not remove healthy edges among selected services.
+    if timeout --kill-after=5s 30s "$real_docker" compose --env-file "${secrets}/production.env" \
+      -f "${test_root}/releases/${previous_sha}/deploy/production/docker-compose.yml" -p "$prefix" \
+      up -d --no-deps --force-recreate --no-build --pull never backend frontend gateway > "${case_dir}/old-startup.log" 2>&1; then
+      fail 'sequencia antiga nao reproduziu o bloqueio'
+    else
+      old_rc=$?
+    fi
+    [[ "$old_rc" -eq 1 ]] || fail "regressao terminou sem falha Compose de health: rc=${old_rc}"
+    grep -Eq 'container .* is unhealthy' "${case_dir}/old-startup.log" || fail 'erro antigo nao comprovou dependencia unhealthy'
+    [[ "$("$real_docker" inspect "${prefix}-backend" --format '{{.State.Health.Status}}')" == unhealthy ]] || fail 'backend antigo nao ficou unhealthy'
+    "$real_docker" logs "${prefix}-backend" 2>&1 | grep -q '^STARTUP_WAITING_FOR_CALLBACK ' || fail 'backend nao aguardou callback'
+    if "$real_docker" logs "${prefix}-backend" 2>&1 | grep -q '^STARTUP_CALLBACK_READY '; then fail 'callback antigo foi disponibilizado'; fi
+    for service in frontend gateway; do
+      [[ "$("$real_docker" inspect "${prefix}-${service}" --format '{{.State.Running}}')" == false ]] || fail "${service} iniciou apesar do bloqueio antigo"
+    done
+    printf 'STARTUP_OLD_SEQUENCE_LOG_BEGIN\n'
+    cat "${case_dir}/old-startup.log"
+    printf 'STARTUP_OLD_SEQUENCE_LOG_END\n'
+    printf 'STARTUP_OLD_SEQUENCE result=BLOCKED real_compose=true backend=unhealthy frontend_running=false gateway_running=false\n'
+  fi
+  for service in backend frontend gateway; do
+    TOPSV3_RELEASE_SHA="$previous_sha" docker compose --env-file "${secrets}/production.env" \
+      -f "${test_root}/releases/${previous_sha}/deploy/production/docker-compose.yml" -p topsv3-production \
+      up -d --no-deps --force-recreate --no-build --pull never "$service" >/dev/null
+  done
   before_ids="$("$real_docker" inspect "${prefix}-backend" "${prefix}-frontend" "${prefix}-gateway" --format '{{.Id}}')"
   # Extract the complete activation body, changing only the private fixture root.
   section=0 block=none
@@ -478,7 +596,7 @@ NODE_SOURCE_REJECTION
   [[ "$scenario" != recovery_* ]] || case_timeout=390
   if timeout --kill-after=5s "${case_timeout}s" bash "${case_dir}/activation.sh" "$candidate_sha" > "${work_dir}/last-operation.log" 2>&1; then rc=0; else rc=$?; fi
   expected=1
-  [[ "$scenario" != success && "$scenario" != benign_success ]] || expected=0
+  [[ "$scenario" != success && "$scenario" != benign_success && "$scenario" != startup_callback ]] || expected=0
   [[ "$rc" -eq "$expected" ]] || fail "${scenario}: exit=${rc}, esperado=${expected}"
   [[ "$(grep -c '^CONTROLLED_BOUNDARY preview_validate_synthetic$' "$TEST_EVENTS")" -eq 1 ]] || fail 'VALIDATE sintetico nao foi executado exatamente uma vez'
   [[ "$(grep -c '^CONTROLLED_BOUNDARY preview_public_sql_synthetic$' "$TEST_EVENTS")" -eq 1 ]] || fail 'gate publico real nao consultou a fronteira SQL exatamente uma vez'
@@ -516,7 +634,7 @@ NODE_SOURCE_REJECTION
       grep -Fxq 'CONTENT_TRACE stage=activation kind=home benign=1 concrete_error=1' "$TEST_EVENTS" || fail 'candidata nao serviu benigno e erro concreto no mesmo corpo real'
     fi
   fi
-  if [[ "$scenario" == success || "$scenario" == benign_success ]]; then
+  if [[ "$scenario" == success || "$scenario" == benign_success || "$scenario" == startup_callback ]]; then
     grep -qx result=COMPLETED "${test_root}/operations/active.state" || fail 'sucesso sem conclusao'
     [[ "$(readlink -e "${test_root}/current")" == "${test_root}/releases/${candidate_sha}" ]] || fail 'candidata nao promovida'
     printf 'ACTIVATION_VERIFIED scenario=%s result=COMPLETED candidate=%s\n' "$scenario" "$candidate_sha"
@@ -543,6 +661,19 @@ NODE_SOURCE_REJECTION
     [[ "$("$real_docker" inspect "${prefix}-${service}" --format '{{.Image}}')" == "$previous_image" ]] || fail "imagem anterior divergente: $service"
     "$real_docker" inspect "${prefix}-${service}" --format '{{json .Config.Env}}' | grep -q "configuration-${previous_sha}" || fail "configuracao anterior divergente: $service"
   done
+  if [[ "$scenario" == startup_callback* ]]; then
+    grep -qx "${previous_sha}|main-v1" "${snapshot}/previous.health-profile" || fail 'callback recuperado sem perfil main-v1'
+    for stage in baseline activation recovery; do
+      [[ "$(grep -c "^CALLBACK_TRACE stage=${stage} real_http=true backend_ready=true gateway_forwarded=true$" "$TEST_EVENTS")" -eq 1 ]] || fail "callback nao comprovado uma vez em ${stage}"
+    done
+    [[ "$(grep -c '^RESTORE_UP ' "$TEST_EVENTS")" -eq 1 ]] || fail 'callback repetiu restauracao fisica'
+    if [[ "$scenario" == startup_callback_health_failure ]]; then
+      grep -qx original_rc=1 "${test_root}/operations/active.state" || fail 'falha real de saude foi perdida'
+      ! grep -qx result=COMPLETED "${test_root}/operations/active.state" || fail 'falha real de saude aprovada'
+      printf 'STARTUP_HEALTH_FAILURE candidate_rejected=true callback_succeeded=true recovery=ROLLED_BACK\n'
+    fi
+    printf 'STARTUP_CALLBACK_RESULT scenario=%s activation_rc=%s recovery=%s previous_profile=main-v1\n' "$scenario" "$rc" "$expected_result"
+  fi
   after_ids="$("$real_docker" inspect "${prefix}-backend" "${prefix}-frontend" "${prefix}-gateway" --format '{{.Id}}')"
   [[ "$before_ids" != "$after_ids" ]] || fail 'nao houve recriacao real de containers'
   [[ "$("$real_docker" inspect "${prefix}-postgres" --format '{{.Id}}')" == "$postgres_id" ]] || fail 'PostgreSQL foi trocado'
@@ -641,6 +772,7 @@ NODE_SOURCE_REJECTION
   # snapshots. The emitted helper lines contain only fixed URLs and technical IDs.
   printf 'PROBE_EVIDENCE_BEGIN scenario=%s\n' "$scenario"
   grep '^PROBE ' "${work_dir}/last-operation.log"
+  if [[ "$scenario" == startup_callback* ]]; then grep '^CALLBACK_TRACE ' "$TEST_EVENTS"; fi
   if [[ "$scenario" == *benign* ]]; then grep '^CONTENT_TRACE ' "$TEST_EVENTS"; fi
   if [[ "$scenario" == recovery_* ]]; then grep -E '^(RESTORE_UP|PROBE_TRACE).*' "$TEST_EVENTS"; fi
   printf 'PROBE_EVIDENCE_END scenario=%s\n' "$scenario"

@@ -596,7 +596,11 @@ jobs:
           op_expect_candidate
           op_preview_validate_before_activation
           op_phase ACTIVATING
-          op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
+          # One service per call: the callback must be routable before backend health.
+          # A combined up still waits on dependencies between selected services.
+          for service in backend frontend gateway; do
+            op_run mutating "${compose[@]}" up -d --no-deps --force-recreate --no-build --pull never "${service}"
+          done
 
           op_phase SMOKE
           op_smoke "${release_sha}"

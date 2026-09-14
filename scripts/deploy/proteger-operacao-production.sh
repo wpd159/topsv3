@@ -604,10 +604,14 @@ _op_restore() {
       trap - EXIT
     ' sh "${owner}" "${mode}" < "${OP_DIR}/env.copy" || return 1
   (cd "${OP_SECRETS}" && sha256sum -c --status "${OP_DIR}/config.sha256") || return 1
-  op_run mutating env "TOPSV3_RELEASE_SHA=${OP_PREVIOUS_SHA}" docker compose \
-    --env-file "${OP_SECRETS}/production.env" \
-    -f "${OP_PREVIOUS_RELEASE}/deploy/production/docker-compose.yml" -p topsv3-production \
-    up -d --no-deps --force-recreate --no-build --pull never backend frontend gateway || return 1
+  # Keep the captured Compose untouched, including historical health dependencies.
+  # Separate calls let the gateway serve startup callbacks before final health.
+  for service in backend frontend gateway; do
+    op_run mutating env "TOPSV3_RELEASE_SHA=${OP_PREVIOUS_SHA}" docker compose \
+      --env-file "${OP_SECRETS}/production.env" \
+      -f "${OP_PREVIOUS_RELEASE}/deploy/production/docker-compose.yml" -p topsv3-production \
+      up -d --no-deps --force-recreate --no-build --pull never "${service}" || return 1
+  done
   _op_verify_runtime "${OP_PREVIOUS_SHA}" "${OP_DIR}/images.tsv" || return 1
   link="${OP_ROOT}/.rollback-${OP_ID}"
   if [ -L "${link}" ]; then
