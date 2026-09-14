@@ -24,6 +24,8 @@ export function ImagemProprietario({
   className = '',
   onRefresh,
   interactive = true,
+  loading,
+  fetchPriority,
 }: {
   src: string | null | undefined
   expiresAt?: string | null
@@ -31,6 +33,8 @@ export function ImagemProprietario({
   className?: string
   onRefresh?: () => Promise<void>
   interactive?: boolean
+  loading?: 'eager' | 'lazy'
+  fetchPriority?: 'high' | 'low' | 'auto'
 }) {
   const identity = JSON.stringify([src, expiresAt])
   const [failedIdentity, setFailedIdentity] = useState<string | null>(null)
@@ -108,6 +112,8 @@ export function ImagemProprietario({
       src={source}
       alt={alt}
       referrerPolicy="no-referrer"
+      loading={loading}
+      fetchPriority={fetchPriority}
       className={`h-full w-full object-cover object-center ${className}`}
       onError={() => {
         setFailedIdentity(identity)

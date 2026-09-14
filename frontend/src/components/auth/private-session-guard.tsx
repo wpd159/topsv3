@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 
@@ -23,5 +23,5 @@ export function PrivateSessionGuard({ children }: { children: React.ReactNode })
   }
 
   if (!usuario) return null
-  return children
+  return <Fragment key={String(usuario.id)}>{children}</Fragment>
 }
