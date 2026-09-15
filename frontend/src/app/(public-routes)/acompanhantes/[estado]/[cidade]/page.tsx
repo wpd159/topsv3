@@ -1,6 +1,6 @@
 import { Metadata } from "next"
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { notFound, permanentRedirect } from "next/navigation"
 import { cache } from "react"
 import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
@@ -27,11 +27,13 @@ import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
+  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
   isCleanPublicFirstPage,
   isPublicPageOutOfRange,
+  parsePublicOrderSeed,
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
@@ -41,14 +43,12 @@ interface PageProps {
     estado: string
     cidade: string
   }>
-  searchParams: Promise<{
-    page?: string
-  }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-const carregarCidade = cache(async (estado: string, cidade: string, page: number) => {
+const carregarCidade = cache(async (estado: string, cidade: string, page: number, ordemSeed?: string) => {
   const [data, agregadoBase] = await Promise.all([
-    listarPublicosPorCidade(estado, cidade, page),
+    listarPublicosPorCidade(estado, cidade, page, 20, ordemSeed),
     obterAgregadoPublicoCidade(estado, cidade),
   ])
   const agregado: CidadeSeoAggregate = {
@@ -61,9 +61,11 @@ const carregarCidade = cache(async (estado: string, cidade: string, page: number
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { estado, cidade } = await params
-  const pageValue = (await searchParams).page
+  const query = await searchParams
+  const pageValue = query.page
   const page = parsePublicPage(pageValue)
-  if (page === null) {
+  const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
+  if (page === null || ordemSeed === null) {
     return {
       title: "Página inválida | Tops do Job",
       robots: buildPublicRobotsMetadata(false),
@@ -71,7 +73,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   }
 
   try {
-    const { data, agregado } = await carregarCidade(estado, cidade, page)
+    const { data, agregado } = await carregarCidade(estado, cidade, page, ordemSeed)
     if (isPublicPageOutOfRange(page, data.paginacao)) {
       return {
         title: "Página inválida | Tops do Job",
@@ -109,12 +111,18 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
 export default async function CidadePage({ params, searchParams }: PageProps) {
   const { estado, cidade } = await params
-  const page = parsePublicPage((await searchParams).page)
-  if (page === null) notFound()
+  const query = await searchParams
+  const page = parsePublicPage(query.page)
+  const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
+  if (page === null || ordemSeed === null) notFound()
+  const cidadePath = buildPublicPath("acompanhantes", estado, cidade)
+  if (query.page === "1") {
+    permanentRedirect(buildPublicPageHref(cidadePath, 0, ordemSeed, query))
+  }
 
   let carregado
   try {
-    carregado = await carregarCidade(estado, cidade, page)
+    carregado = await carregarCidade(estado, cidade, page, ordemSeed)
   } catch (error) {
     if (isPublicCatalogNotFound(error)) notFound()
     throw error
@@ -124,7 +132,6 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
   const editorial = await gerarConteudoProgramaticoCidade(agregado)
   const baseUrl = getPublicSiteBaseUrl()
   const estadoPath = buildPublicPath("acompanhantes", estado)
-  const cidadePath = buildPublicPath("acompanhantes", estado, cidade)
   const cidadeLabel = labelAcompanhantesCidade(agregado.cidadeNome)
   const h1 = cidadeLabel
   const descricaoTopoSeo = gerarDescricaoTopoCidade(agregado)
@@ -147,8 +154,6 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
         a.cidadeNome.localeCompare(b.cidadeNome)
     )
     .slice(0, editorial.modo === "completo" ? 8 : 4)
-  const url = buildPublicUrl(cidadePath)
-
   return (
     <main className="mx-auto w-full space-y-8 px-4 py-10">
       <nav className="public-breadcrumbs mb-6 text-sm text-gray-600">
@@ -177,10 +182,9 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
       <StoriesBar />
 
       <ListagemPublicaPaginada
-        key={data.paginacao.ordemSeed}
         caminhoBase={cidadePath}
-        escopo={{ tipo: "cidade", uf: estado, cidade }}
         initialData={data}
+        searchParams={query}
       />
 
       {page === 0 && (
@@ -338,8 +342,8 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
         />
       )}
 
-      {page > 0 && <link rel="prev" href={page === 1 ? url : `${url}?page=${page - 1}`} />}
-      {page < data.paginacao.totalPaginas - 1 && <link rel="next" href={`${url}?page=${page + 1}`} />}
+      {page > 0 && <link rel="prev" href={buildPublicUrl(cidadePath, page - 1)} />}
+      {page < data.paginacao.totalPaginas - 1 && <link rel="next" href={buildPublicUrl(cidadePath, page + 1)} />}
     </main>
   )
 }

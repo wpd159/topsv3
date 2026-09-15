@@ -168,6 +168,7 @@ export function BarraLocalizacao() {
       })
 
       params.delete("page")
+      params.delete("ordemSeed")
       const nextQuery = params.toString()
       pushBuscaRoute(nextQuery ? `/anuncios?${nextQuery}` : "/anuncios")
     },

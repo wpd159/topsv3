@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, permanentRedirect } from "next/navigation"
 import Link from "next/link"
 import { cache } from "react"
 import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
@@ -17,11 +17,13 @@ import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { getEstadoNomePorUf } from "@/lib/seo/acompanhantes-navigation"
 import {
+  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
   isCleanPublicFirstPage,
   isPublicPageOutOfRange,
+  parsePublicOrderSeed,
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
@@ -30,14 +32,12 @@ interface PageProps {
   params: Promise<{
     estado: string
   }>
-  searchParams: Promise<{
-    page?: string
-  }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-const carregarEstado = cache(async (estado: string, page: number) => {
+const carregarEstado = cache(async (estado: string, page: number, ordemSeed?: string) => {
   const [data, descoberta] = await Promise.all([
-    listarPublicosPorEstado(estado, page),
+    listarPublicosPorEstado(estado, page, 20, ordemSeed),
     descobrirLocalidadesPublicas(),
   ])
   const estadoDescoberto = descoberta.estados.find(
@@ -123,16 +123,18 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const { estado } = await params
-  const pageValue = (await searchParams).page
+  const query = await searchParams
+  const pageValue = query.page
   const page = parsePublicPage(pageValue)
-  if (page === null) {
+  const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
+  if (page === null || ordemSeed === null) {
     return {
       title: "Página inválida | Tops do Job",
       robots: buildPublicRobotsMetadata(false),
     }
   }
   try {
-    const { data, estadoDescoberto } = await carregarEstado(estado, page)
+    const { data, estadoDescoberto } = await carregarEstado(estado, page, ordemSeed)
     if (isPublicPageOutOfRange(page, data.paginacao)) {
       return {
         title: "Página inválida | Tops do Job",
@@ -174,12 +176,18 @@ export async function generateMetadata({
 
 export default async function EstadoPage({ params, searchParams }: PageProps) {
   const { estado } = await params
-  const page = parsePublicPage((await searchParams).page)
-  if (page === null) notFound()
+  const query = await searchParams
+  const page = parsePublicPage(query.page)
+  const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
+  if (page === null || ordemSeed === null) notFound()
+  const estadoPath = buildPublicPath("acompanhantes", estado)
+  if (query.page === "1") {
+    permanentRedirect(buildPublicPageHref(estadoPath, 0, ordemSeed, query))
+  }
 
   let carregado
   try {
-    carregado = await carregarEstado(estado, page)
+    carregado = await carregarEstado(estado, page, ordemSeed)
   } catch (error) {
     if (isPublicCatalogNotFound(error)) notFound()
     throw error
@@ -194,7 +202,6 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
   const seoContent = gerarConteudoSeoEstado(estadoNome, estadoUf)
 
   const baseUrl = getPublicSiteBaseUrl()
-  const estadoPath = buildPublicPath("acompanhantes", estado)
   const breadcrumbSchema = gerarBreadcrumbSchemaEstado(baseUrl, estadoUf)
 
   const itemListSchema = {
@@ -220,8 +227,6 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
     )
     .slice(0, 15)
 
-  const url = buildPublicUrl(estadoPath)
-
   return (
     <main className="w-full mx-auto px-4 py-10 space-y-8">
       <nav className="text-sm text-gray-600 mb-6">
@@ -244,10 +249,9 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       <StoriesBar />
 
       <ListagemPublicaPaginada
-        key={data.paginacao.ordemSeed}
         caminhoBase={estadoPath}
-        escopo={{ tipo: "estado", uf: estado }}
         initialData={data}
+        searchParams={query}
       >
         {page === 0 && (
           <section className="prose prose-sm max-w-none text-gray-700 space-y-4">
@@ -291,11 +295,11 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       />
 
       {page > 0 && (
-        <link rel="prev" href={page === 1 ? url : `${url}?page=${page - 1}`} />
+        <link rel="prev" href={buildPublicUrl(estadoPath, page - 1)} />
       )}
 
       {page < data.paginacao.totalPaginas - 1 && (
-        <link rel="next" href={`${url}?page=${page + 1}`} />
+        <link rel="next" href={buildPublicUrl(estadoPath, page + 1)} />
       )}
     </main>
   )

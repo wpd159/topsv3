@@ -53,9 +53,11 @@ const {
 } = policyModule
 const { isBairroIndexavelLocal, isCidadeIndexavelLocal } = localIndexingModule
 const {
+  buildPublicPageHref,
   buildPublicUrl,
   isCleanPublicFirstPage,
   isPublicPageOutOfRange,
+  parsePublicOrderSeed,
   parsePublicPage,
 } = publicUrlModule
 
@@ -170,16 +172,51 @@ assert.deepEqual(buildPublicListingIndexingDecision({ page: "3" }, 3), {
   canonicalQuery: "page=3",
 })
 assert.equal(parsePublicPage(undefined), 0)
-assert.equal(parsePublicPage("0"), 0)
-assert.equal(parsePublicPage("1"), 1)
-for (const invalidPage of ["", "-1", "abc", "1.5"]) {
+assert.equal(parsePublicPage("1"), 0)
+assert.equal(parsePublicPage("2"), 1)
+assert.equal(parsePublicPage("9007199254740991"), Number.MAX_SAFE_INTEGER - 1)
+for (const invalidPage of ["", "0", "-1", "abc", "1.5", "01", "+1", " 1", "1 ", "1e2", "9007199254740992", ["1"], ["2", "3"]]) {
   assert.equal(parsePublicPage(invalidPage), null)
 }
 assert.equal(isCleanPublicFirstPage(undefined, 0), true)
 assert.equal(isCleanPublicFirstPage("0", 0), false)
-assert.equal(isCleanPublicFirstPage("1", 1), false)
-assert.equal(buildPublicUrl("/acompanhantes/sp/sao-paulo", 0), "https://topsdojob.com/acompanhantes/sp/sao-paulo")
-assert.equal(buildPublicUrl("/acompanhantes/sp/sao-paulo", 1), "https://topsdojob.com/acompanhantes/sp/sao-paulo?page=1")
+assert.equal(isCleanPublicFirstPage("1", 0), false)
+assert.equal(isCleanPublicFirstPage("2", 1), false)
+assert.equal(parsePublicOrderSeed(undefined), undefined)
+for (const [value, normalized] of [
+  ["0", "0"], ["-0", "0"], ["000123", "123"], ["-000123", "-123"],
+  ["9007199254740993", "9007199254740993"],
+  ["9223372036854775807", "9223372036854775807"],
+  ["-9223372036854775808", "-9223372036854775808"],
+]) {
+  assert.equal(parsePublicOrderSeed(value), normalized)
+}
+for (const value of ["", " ", "123 ", "+1", "1.5", "1e2", "abc", "0x10", "--1", "9223372036854775808", "-9223372036854775809", ["1"], ["1", "2"]]) {
+  assert.equal(parsePublicOrderSeed(value), null)
+}
+for (const path of ["/anuncios", "/acompanhantes/sp", "/acompanhantes/sp/sao-paulo", "/acompanhantes/sp/sao-paulo/centro"]) {
+  assert.equal(buildPublicUrl(path, 0), `https://topsdojob.com${path}`)
+  assert.equal(buildPublicUrl(path, 1), `https://topsdojob.com${path}?page=2`)
+  assert.equal(buildPublicUrl(path, 2), `https://topsdojob.com${path}?page=3`)
+  assert.doesNotMatch(buildPublicUrl(path, 2), /seed/i)
+  const filters = { page: "1", busca: "café 100%", categoria: "TODOS", ordemSeed: "123", filter: ["com-local", "foto"], utm_source: "teste", unused: undefined }
+  const first = new URL(buildPublicPageHref(path, 0, undefined, filters), "https://topsdojob.com")
+  assert.equal(first.pathname, path)
+  assert.equal(first.searchParams.has("page"), false)
+  assert.equal(first.searchParams.get("busca"), "café 100%")
+  assert.equal(first.searchParams.get("categoria"), "TODOS")
+  assert.equal(first.searchParams.get("ordemSeed"), "123")
+  assert.deepEqual(first.searchParams.getAll("filter"), ["com-local", "foto"])
+  assert.equal(first.searchParams.get("utm_source"), "teste")
+  assert.equal(first.searchParams.has("unused"), false)
+  const next = new URL(buildPublicPageHref(path, 1, "9007199254740993", filters), "https://topsdojob.com")
+  assert.equal(next.searchParams.get("page"), "2")
+  assert.deepEqual(next.searchParams.getAll("ordemSeed"), ["9007199254740993"])
+  assert.equal(next.searchParams.get("busca"), "café 100%")
+  assert.deepEqual(next.searchParams.getAll("filter"), ["com-local", "foto"])
+  assert.equal(filters.page, "1", "navigation must not mutate request filters")
+  assert.equal(filters.ordemSeed, "123")
+}
 assert.equal(isPublicPageOutOfRange(1, { totalPaginas: 2 }), false)
 assert.equal(isPublicPageOutOfRange(2, { totalPaginas: 2 }), true)
 assert.equal(buildPublicRobotsMetadata(false).index, false)
@@ -220,6 +257,14 @@ assert.deepEqual(buildPublicListingIndexingDecision({ seed: "internal" }, 1), {
 assert.deepEqual(buildPublicListingIndexingDecision({ seed: "" }, 1), {
   indexable: false,
   canonicalQuery: "",
+})
+assert.deepEqual(buildPublicListingIndexingDecision({ ordemSeed: "9223372036854775807" }, 1), {
+  indexable: false,
+  canonicalQuery: "",
+})
+assert.deepEqual(buildPublicListingIndexingDecision({ page: "2", ordemSeed: "123", busca: "teste" }, 2), {
+  indexable: false,
+  canonicalQuery: "page=2&busca=teste",
 })
 
 const belowCityThreshold = {
@@ -350,7 +395,8 @@ assert.doesNotMatch(rootLayoutSource, /SearchAction|potentialAction/)
 assert.match(listingPageSource, /buildPublicListingIndexingDecision/)
 assert.match(listingPageSource, /url\.search = indexingDecision\.canonicalQuery/)
 assert.match(listingPageSource, /buildPublicRobotsMetadata\(indexingDecision\.indexable/)
-assert.match(listingPageSource, /if \(value === ""\) return null/)
+assert.match(listingPageSource, /parsePublicPage\(searchParams\.page\)/)
+assert.match(listingPageSource, /parsePublicOrderSeed\(searchParams\.ordemSeed\)/)
 assert.match(statePageSource, /estadoDescoberto\.indexacao\.indexavel/)
 assert.match(cityPageSource, /isCidadeIndexavelLocal\(agregado\)/)
 assert.match(neighborhoodPageSource, /isBairroIndexavelLocal\(bairroAgregado\)/)

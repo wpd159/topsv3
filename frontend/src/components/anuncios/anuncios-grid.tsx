@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ContractState } from "@/components/feedback/contract-state"
 import {
@@ -9,18 +10,22 @@ import {
   type PublicCategoryList,
 } from "@/lib/public-catalog-api"
 import { AnuncioCard } from "./anuncio-card"
+import { buildPublicPageHref } from "@/lib/seo/public-url"
 
 interface AnunciosGridProps {
   categoria: string
   busca?: string
   anunciante?: string
   currentPage?: number
+  requestedSeed?: string
+  paginationQuery?: Record<string, string | string[] | undefined>
   initialData?: PublicCategoryList | null
   initialRequest?: {
     categoria: string
     busca: string
     anunciante: string
     currentPage: number
+    requestedSeed?: string
   }
 }
 
@@ -32,6 +37,8 @@ export default function AnunciosGrid({
   busca = "",
   anunciante = "",
   currentPage = 1,
+  requestedSeed,
+  paginationQuery = {},
   initialData = null,
   initialRequest,
 }: AnunciosGridProps) {
@@ -40,7 +47,8 @@ export default function AnunciosGrid({
     initialRequest?.categoria === categoria &&
     initialRequest.busca === busca &&
     initialRequest.anunciante === anunciante &&
-    initialRequest.currentPage === currentPage
+    initialRequest.currentPage === currentPage &&
+    initialRequest.requestedSeed === requestedSeed
   const [anuncios, setAnuncios] = useState<PublicCatalogCard[]>(
     initialMatches ? initialData.itens : []
   )
@@ -67,12 +75,13 @@ export default function AnunciosGrid({
     consultaAtualRef.current = consulta
 
     const fetchAnuncios = async () => {
-      const requestKey = `${categoria}\u0000${busca}\u0000${anunciante}\u0000${currentPage}`
+      const requestKey = `${categoria}\u0000${busca}\u0000${anunciante}\u0000${currentPage}\u0000${requestedSeed ?? ""}`
       if (
         initialMatches &&
         initialRequestConsumedRef.current !== requestKey
       ) {
         setAnuncios(initialData.itens)
+        setError(null)
         setOrdemSeed(initialData.paginacao.ordemSeed)
         setPaginasCarregadas(1)
         setProximaPagina(
@@ -99,7 +108,7 @@ export default function AnunciosGrid({
           busca,
           paginaInicial,
           ITENS_POR_PAGINA,
-          undefined,
+          requestedSeed,
           anunciante,
         )
         if (!ativa || consulta !== consultaAtualRef.current) return
@@ -128,6 +137,7 @@ export default function AnunciosGrid({
     categoria,
     anunciante,
     currentPage,
+    requestedSeed,
     initialData,
     initialMatches,
     reloadMarker,
@@ -270,6 +280,29 @@ export default function AnunciosGrid({
             {loading ? "Carregando..." : "Ver mais resultados"}
           </Button>
         </div>
+      )}
+
+      {ordemSeed !== null && (currentPage > 1 || existeMaisPagina) && (
+        <nav aria-label="Paginação do catálogo" className="flex flex-wrap justify-center gap-3 border-t py-4">
+          {currentPage > 1 && (
+            <Link
+              href={buildPublicPageHref("/anuncios", currentPage - 2, ordemSeed, paginationQuery)}
+              prefetch={false}
+              className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
+            >
+              Anterior
+            </Link>
+          )}
+          {proximaPagina !== null && (
+            <Link
+              href={buildPublicPageHref("/anuncios", proximaPagina, ordemSeed, paginationQuery)}
+              prefetch={false}
+              className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
+            >
+              Próxima página
+            </Link>
+          )}
+        </nav>
       )}
     </section>
   )

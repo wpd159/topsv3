@@ -13,6 +13,14 @@ class NotFoundSignal extends Error {
   }
 }
 
+class RedirectSignal extends Error {
+  constructor(location) {
+    super("NEXT_REDIRECT")
+    this.location = location
+    this.status = 308
+  }
+}
+
 class ContractError extends Error {
   constructor(status) {
     super(`contract-${status}`)
@@ -53,7 +61,10 @@ function loadTypeScriptModule(
     react: { cache: memoize },
     "react/jsx-runtime": jsxRuntime,
     "next/link": function Link() {},
-    "next/navigation": { notFound: () => { throw new NotFoundSignal() } },
+    "next/navigation": {
+      notFound: () => { throw new NotFoundSignal() },
+      permanentRedirect: (location) => { throw new RedirectSignal(location) },
+    },
     "@heroicons/react/24/solid": { ArrowLeftIcon() {}, ArrowRightIcon() {} },
   }
   const requireModule = (specifier) => {
@@ -81,13 +92,13 @@ function loadTypeScriptModule(
   return module.exports
 }
 
-function publicUrl(path) {
-  return `https://topsdojob.com${path}`
-}
-
-function publicPath(...parts) {
-  return `/${parts.map((part) => String(part).replace(/^\/+|\/+$/g, "")).join("/")}`
-}
+const policyModule = loadTypeScriptModule("src/lib/seo/search-indexing-policy.ts", {
+  environment: { SEARCH_INDEXING_MODE: "public", NEXT_PUBLIC_SITE_URL: "https://topsdojob.com" },
+})
+const publicUrlModule = loadTypeScriptModule("src/lib/seo/public-url.ts", {
+  dependencies: { "@/lib/seo/search-indexing-policy": policyModule },
+  environment: { NEXT_PUBLIC_SITE_URL: "https://topsdojob.com" },
+})
 
 function robots(index) {
   return { index, follow: true }
@@ -144,7 +155,7 @@ function blogHomeModule({ posts, categories = [category()], failure = null }) {
           return categories
         },
       },
-      "@/lib/seo/public-url": { buildPublicUrl: publicUrl },
+      "@/lib/seo/public-url": publicUrlModule,
       "@/lib/seo/search-indexing-policy": { buildPublicRobotsMetadata: robots },
     },
   })
@@ -171,10 +182,7 @@ function blogCategoryModule({ categories, posts = [], failure = null }) {
           },
         },
         "@/lib/public-site-assets": { getPublicLogoUrl: () => "/logo.png" },
-        "@/lib/seo/public-url": {
-          buildPublicPath: publicPath,
-          buildPublicUrl: publicUrl,
-        },
+        "@/lib/seo/public-url": publicUrlModule,
         "@/lib/seo/search-indexing-policy": { buildPublicRobotsMetadata: robots },
       },
     },
@@ -196,10 +204,7 @@ function blogPostModule(result) {
       },
       "@/lib/public-site-assets": { getPublicLogoUrl: () => "/logo.png" },
       "@/lib/seo/json-ld": { serializeJsonLd: JSON.stringify },
-      "@/lib/seo/public-url": {
-        buildPublicPath: publicPath,
-        buildPublicUrl: publicUrl,
-      },
+      "@/lib/seo/public-url": publicUrlModule,
       "./blog-post-page-client": function BlogPostPageClient() {},
     },
   })
@@ -210,11 +215,8 @@ function anunciosModule(listarAnunciosPublicos) {
   return loadTypeScriptModule("src/app/(public-routes)/anuncios/page.tsx", {
     dependencies: {
       "./anuncios-page-client": function AnunciosPageClient() {},
-      "@/lib/seo/public-url": { buildPublicUrl: publicUrl },
-      "@/lib/seo/search-indexing-policy": {
-        buildPublicListingIndexingDecision: () => ({ indexable: true, canonicalQuery: "" }),
-        buildPublicRobotsMetadata: robots,
-      },
+      "@/lib/seo/public-url": publicUrlModule,
+      "@/lib/seo/search-indexing-policy": policyModule,
       "@/lib/public-catalog-server-api": {
         isPublicCatalogNotFound: (error) => error?.status === 400 || error?.status === 404,
         listarAnunciosPublicos,
@@ -232,7 +234,7 @@ function emptyCatalog() {
       tamanho: 16,
       totalItens: 0,
       totalPaginas: 0,
-      ordemSeed: "seed-controlada",
+      ordemSeed: "123",
     },
   }
 }
@@ -268,11 +270,7 @@ function sitemapModule(fetchImpl) {
           atualizadoEm: "2026-08-20T10:00:00Z",
         }],
       },
-      "@/lib/seo/public-url": {
-        buildPublicPath: publicPath,
-        buildPublicUrl: publicUrl,
-        getPublicSiteBaseUrl: () => "https://topsdojob.com",
-      },
+      "@/lib/seo/public-url": publicUrlModule,
       "@/lib/seo/search-indexing-policy": {
         isSafeSitemapUrl: () => true,
         resolveSearchIndexingPolicy: () => ({ sitemapEnabled: true }),
@@ -419,6 +417,84 @@ await test("5xx do catalogo e propagado", async () => {
   )
 })
 
+await test("catalogo sem seed solicita nova ordem e preserva resposta SSR", async () => {
+  const requests = []
+  const catalog = emptyCatalog()
+  const module = anunciosModule(async (...args) => { requests.push(args); return catalog })
+  const rendered = await module.default({ searchParams: Promise.resolve({}) })
+  assert.deepEqual(requests, [["TODOS", "", 0, 16, undefined, ""]])
+  assert.equal(rendered.props.initialData, catalog)
+  assert.equal(rendered.props.initialRequest.currentPage, 1)
+  assert.equal(rendered.props.initialRequest.requestedSeed, undefined)
+  const metadata = await module.generateMetadata({ searchParams: Promise.resolve({}) })
+  assert.equal(metadata.robots.index, true)
+  assert.equal(metadata.alternates.canonical, "https://topsdojob.com/anuncios")
+})
+
+await test("catalogo rejeita paginas invalidas antes de consultar API", async () => {
+  let requests = 0
+  const module = anunciosModule(async () => { requests += 1; return emptyCatalog() })
+  for (const page of ["0", "", "-1", "1.5", "01", "abc", "9007199254740992", ["2", "3"]]) {
+    await assert.rejects(module.default({ searchParams: Promise.resolve({ page }) }), NotFoundSignal)
+    const metadata = await module.generateMetadata({ searchParams: Promise.resolve({ page }) })
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.robots.follow, true)
+    assert.equal(metadata.alternates, undefined)
+  }
+  assert.equal(requests, 0)
+})
+
+await test("catalogo rejeita seed invalida sem normalizar erro para sucesso", async () => {
+  let requests = 0
+  const module = anunciosModule(async () => { requests += 1; return emptyCatalog() })
+  for (const ordemSeed of ["", " ", "abc", "1.5", "1e3", "9223372036854775808", "-9223372036854775809", ["1", "2"]]) {
+    await assert.rejects(module.default({ searchParams: Promise.resolve({ ordemSeed }) }), NotFoundSignal)
+    const metadata = await module.generateMetadata({ searchParams: Promise.resolve({ ordemSeed }) })
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.alternates, undefined)
+  }
+  assert.equal(requests, 0)
+})
+
+await test("catalogo preserva precisao Java Long e normaliza somente representacao decimal", async () => {
+  for (const [requested, expected] of [["-000123", "-123"], ["9223372036854775807", "9223372036854775807"], ["-9223372036854775808", "-9223372036854775808"]]) {
+    const requests = []
+    const module = anunciosModule(async (...args) => { requests.push(args); return emptyCatalog() })
+    const rendered = await module.default({ searchParams: Promise.resolve({ ordemSeed: requested }) })
+    assert.equal(requests[0][4], expected)
+    assert.equal(rendered.props.initialRequest.requestedSeed, expected)
+    const metadata = await module.generateMetadata({ searchParams: Promise.resolve({ ordemSeed: requested }) })
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.alternates.canonical, "https://topsdojob.com/anuncios")
+  }
+})
+
+await test("catalogo fora do intervalo produz 404", async () => {
+  for (const totalPaginas of [0, 1, 3]) {
+    const requests = []
+    const page = String(Math.max(2, totalPaginas + 1))
+    const module = anunciosModule(async (...args) => {
+      requests.push(args)
+      return { ...emptyCatalog(), paginacao: { ...emptyCatalog().paginacao, totalPaginas } }
+    })
+    await assert.rejects(module.default({ searchParams: Promise.resolve({ page, ordemSeed: "123" }) }), NotFoundSignal)
+    assert.equal(requests[0][2], Number(page) - 1)
+    assert.equal(requests[0][4], "123")
+  }
+})
+
+await test("page=1 do catalogo redireciona permanentemente sem consulta API", async () => {
+  let requests = 0
+  const module = anunciosModule(async () => { requests += 1; return emptyCatalog() })
+  await assert.rejects(module.default({ searchParams: Promise.resolve({ page: "1" }) }), (error) => {
+    assert.ok(error instanceof RedirectSignal)
+    assert.equal(error.status, 308)
+    assert.equal(error.location, "/anuncios")
+    return true
+  })
+  assert.equal(requests, 0)
+})
+
 await test("blog vazio fica fora do sitemap", async () => {
   const module = sitemapModule(async (url) => ({
     ok: true,
@@ -457,7 +533,7 @@ await test("falha editorial preserva sitemap basico, localidades e anuncios", as
   try {
     const urls = (await module.default()).map((entry) => entry.url)
     assert.ok(urls.includes("https://topsdojob.com/"))
-    assert.ok(urls.includes("https://topsdojob.com/acompanhantes/GO/goiania"))
+    assert.ok(urls.includes("https://topsdojob.com/acompanhantes/go/goiania"))
     assert.ok(urls.includes("https://topsdojob.com/anuncios/anuncio-publico"))
     assert.equal(urls.some((url) => url.includes("/blog")), false)
   } finally {
@@ -489,5 +565,5 @@ await test("fontes nao mascaram falhas nem expõem contrato programatico", async
   assert.doesNotMatch(sitemap, /seed|ordemseed/i)
 })
 
-assert.equal(executed, 20)
+assert.equal(executed, 26)
 console.log(`PUBLIC_HTTP_STATES_RESULT=OK tests=${executed}`)

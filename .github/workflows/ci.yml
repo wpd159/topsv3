@@ -192,6 +192,7 @@ jobs:
           npx --no-install tsc --noEmit --incremental false
           npm run build
           node scripts/test-search-indexing-artifact.mjs blocked
+          npm run test:public-pagination
 
       - name: Preserve browser regression evidence
         if: always()
