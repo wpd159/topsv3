@@ -1,6 +1,11 @@
 import assert from "node:assert/strict"
+import * as crypto from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import ts from "typescript"
+import { runIndexNowAdminRaceTests } from "./test-indexnow-admin-races.mjs"
+
+// Nenhuma chamada externa e permitida, nem se uma dependency de teste for omitida.
+globalThis.fetch = async () => { throw new Error("Unexpected real transport in IndexNow test") }
 
 function source(relativePath) {
   return readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8")
@@ -23,6 +28,7 @@ function loadIndexNowModule(env = {}) {
     compiledModule.exports,
     (specifier) => {
       if (specifier === "server-only") return {}
+      if (specifier === "node:crypto") return crypto
       throw new Error(`Unexpected module in IndexNow server test: ${specifier}`)
     },
     testProcess,
@@ -60,6 +66,7 @@ function loadCatalogActionModule(sendIndexNow) {
   const compiledModule = { exports: {} }
   const afterCallbacks = []
   const revalidatedTags = []
+  const logs = []
   const requireStub = (specifier) => {
     if (specifier === "next/cache") {
       return { revalidateTag: (tag) => revalidatedTags.push(tag) }
@@ -79,13 +86,16 @@ function loadCatalogActionModule(sendIndexNow) {
     compiledModule,
     compiledModule.exports,
     requireStub,
-    { info: () => {}, warn: () => {} },
+    {
+      info: (message, details) => logs.push({ level: "info", message, details }),
+      warn: (message, details) => logs.push({ level: "warn", message, details }),
+    },
   )
-  return { ...compiledModule.exports, afterCallbacks, revalidatedTags }
+  return { ...compiledModule.exports, afterCallbacks, revalidatedTags, logs }
 }
 
-function response(status) {
-  return { status }
+function response(status, retryAfter) {
+  return { status, headers: new Headers(retryAfter == null ? {} : { "Retry-After": retryAfter }) }
 }
 
 function event(eventType, eventFingerprint, urls) {
@@ -183,10 +193,10 @@ assert.equal(immediateAction.afterCallbacks.length, 1)
 await immediateAction.afterCallbacks[0]()
 
 let slowNotificationStarted = false
+let rejectSlowNotification
 const slowAction = loadCatalogActionModule(async () => {
   slowNotificationStarted = true
-  await new Promise((resolve) => setTimeout(resolve, 4_000))
-  throw new Error("controlled timeout")
+  await new Promise((_, reject) => { rejectSlowNotification = reject })
 })
 const slowStartedAt = performance.now()
 await slowAction.revalidarCacheCatalogoPublico(updateEvent)
@@ -194,10 +204,13 @@ const slowResponseMs = performance.now() - slowStartedAt
 assert.equal(slowNotificationStarted, false)
 assert.ok(slowResponseMs < 1_000, `business response waited ${slowResponseMs.toFixed(1)}ms`)
 const slowBackgroundStartedAt = performance.now()
-await slowAction.afterCallbacks[0]()
+const slowBackground = slowAction.afterCallbacks[0]()
+assert.equal(slowNotificationStarted, true)
+rejectSlowNotification(new Error("controlled timeout"))
+await slowBackground
 const slowBackgroundMs = performance.now() - slowBackgroundStartedAt
 assert.equal(slowNotificationStarted, true)
-assert.ok(slowBackgroundMs >= 3_900, `controlled timeout ended in ${slowBackgroundMs.toFixed(1)}ms`)
+assert.equal(slowAction.logs[0].level, "warn")
 
 resetIndexNowStateForTests()
 let backgroundRetryCount = 0
@@ -329,6 +342,170 @@ for (const failure of ["http-500", "network", "timeout"]) {
   assert.equal(failed.attempts, 3)
   assert.equal(attempts, 3)
 }
+
+// Mais de um lote, sem descarte e sem consulta GET de URLs removidas/redirecionadas.
+const manyUrls = Array.from({ length: 70 }, (_, index) => `https://topsdojob.com/anuncios/sintetico-${index}`)
+resetIndexNowStateForTests()
+const allBatches = []
+const complete = await enviarUrlsParaIndexNow(event("RETIRADA", "seventy", manyUrls), {
+  fetchImpl: async (url, init) => {
+    assert.equal(url, "https://api.indexnow.org/indexnow")
+    assert.equal(init.method, "POST")
+    allBatches.push(JSON.parse(init.body).urlList)
+    return response(allBatches.length % 2 ? 200 : 202)
+  },
+})
+assert.equal(complete.ok, true)
+assert.deepEqual(allBatches.map((batch) => batch.length), [20, 20, 20, 10])
+assert.deepEqual(allBatches.flat(), manyUrls)
+assert.equal(complete.acceptedUrlCount, 70)
+assert.equal(complete.failedUrlCount, 0)
+assert.equal(complete.unattemptedUrlCount, 0)
+assert.equal(complete.attempts, 4)
+assert.deepEqual(filtrarUrlsDoHost([...manyUrls, manyUrls[0], "https://topsdojob.com/admin/privado"]), manyUrls)
+
+resetIndexNowStateForTests()
+let partialCalls = 0
+const partialEvent = event("RETIRADA", "partial", manyUrls)
+const partial = await enviarUrlsParaIndexNow(partialEvent, {
+  fetchImpl: async () => response(++partialCalls === 1 ? 202 : 422),
+  now: () => 60_000,
+})
+assert.equal(partial.ok, false)
+assert.equal(partial.status, 422)
+assert.equal(partial.reason, "HTTP")
+assert.equal(partial.urlCount, 70)
+assert.equal(partial.acceptedUrlCount, 20)
+assert.equal(partial.failedUrlCount, 20)
+assert.equal(partial.unattemptedUrlCount, 30)
+assert.equal(partial.attempts, 2)
+const partialAction = loadCatalogActionModule(async () => partial)
+await partialAction.revalidarCacheCatalogoPublico(partialEvent)
+await partialAction.afterCallbacks[0]()
+assert.equal(partialAction.logs[0].level, "warn")
+assert.equal(partialAction.logs[0].details.acceptedUrlCount, 20)
+assert.equal(partialAction.logs[0].details.failedUrlCount, 20)
+assert.equal(partialAction.logs[0].details.unattemptedUrlCount, 30)
+assert.equal(partialAction.logs[0].details.reason, "HTTP")
+const resumedBatches = []
+const resumed = await enviarUrlsParaIndexNow(partialEvent, {
+  fetchImpl: async (_url, init) => { resumedBatches.push(JSON.parse(init.body).urlList); return response(200) },
+  now: () => 60_001,
+})
+assert.equal(resumed.ok, true)
+assert.equal(resumed.deduplicatedCount, 20)
+assert.equal(resumed.acceptedUrlCount, 50)
+assert.deepEqual(resumedBatches.flat(), manyUrls.slice(20))
+assert.deepEqual(resumedBatches.map((batch) => batch.length), [20, 20, 10])
+
+resetIndexNowStateForTests()
+let fullFingerprintCalls = 0
+const longPrefix = "same-prefix:".repeat(60)
+const fingerprintDependencies = {
+  fetchImpl: async () => { fullFingerprintCalls += 1; return response(200) },
+  now: () => 70_000,
+}
+for (const [suffix, shouldSend] of [["one", true], ["one", false], ["two", true], ["two", false]]) {
+  const result = await enviarUrlsParaIndexNow(event("ATUALIZACAO", longPrefix + suffix, [publicUrl]), fingerprintDependencies)
+  assert.equal(result.externalRequest, shouldSend)
+  assert.equal(result.deduplicatedCount, shouldSend ? 0 : 1)
+}
+assert.equal(fullFingerprintCalls, 2, "identificadores distintos depois de512 nao sao deduplicados")
+const afterWindow = await enviarUrlsParaIndexNow(event("ATUALIZACAO", longPrefix + "two", [publicUrl]), {
+  ...fingerprintDependencies, now: () => 70_000 + 5 * 60_000,
+})
+assert.equal(afterWindow.externalRequest, true)
+assert.equal(fullFingerprintCalls, 3)
+
+function controlledClock() {
+  let time = Date.parse("Tue, 15 Sep 2026 12:00:00 GMT")
+  const sleeps = []
+  return {
+    now: () => time,
+    advance: (ms) => { time += ms },
+    sleeps,
+    sleep: async (ms) => { sleeps.push(ms); time += ms },
+  }
+}
+
+for (const headerType of ["seconds", "http-date", "invalid", "negative", "decimal", "past"]) {
+  resetIndexNowStateForTests()
+  const clock = controlledClock()
+  const callTimes = []
+  const header = {
+    seconds: "2",
+    "http-date": new Date(clock.now() + 2_000).toUTCString(),
+    invalid: "later",
+    negative: "-1",
+    decimal: "1.5",
+    past: new Date(clock.now() - 2_000).toUTCString(),
+  }[headerType]
+  const result = await enviarUrlsParaIndexNow(event("ATUALIZACAO", headerType, [publicUrl]), {
+    ...clock,
+    fetchImpl: async () => {
+      callTimes.push(clock.now())
+      return response(callTimes.length === 1 ? 429 : 200, header)
+    },
+  })
+  const expectedWait = ["seconds", "http-date"].includes(headerType) ? 2_000 : 250
+  assert.equal(result.ok, true)
+  assert.deepEqual(clock.sleeps, [expectedWait])
+  assert.equal(callTimes[1] - callTimes[0], expectedWait)
+}
+
+for (const headerType of ["seconds", "http-date"]) {
+  resetIndexNowStateForTests()
+  const clock = controlledClock()
+  let calls = 0
+  const result = await enviarUrlsParaIndexNow(event("RETIRADA", `budget-${headerType}`, manyUrls), {
+    ...clock,
+    fetchImpl: async () => {
+      calls += 1
+      return response(429, headerType === "seconds" ? "60" : new Date(clock.now() + 60_000).toUTCString())
+    },
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, "BUDGET")
+  assert.equal(result.status, 429)
+  assert.equal(calls, 1, "sem nova tentativa ou proximo lote antes do Retry-After")
+  assert.deepEqual(clock.sleeps, [])
+  assert.equal(result.acceptedUrlCount, 0)
+  assert.equal(result.failedUrlCount, 20)
+  assert.equal(result.unattemptedUrlCount, 50)
+}
+
+resetIndexNowStateForTests()
+const consumedClock = controlledClock()
+let consumedCalls = 0
+const consumedBudget = await enviarUrlsParaIndexNow(event("RETIRADA", "request-time-counts", manyUrls), {
+  ...consumedClock,
+  fetchImpl: async () => {
+    consumedCalls += 1
+    consumedClock.advance(4_000)
+    return response(503, "3")
+  },
+})
+assert.equal(consumedCalls, 2)
+assert.equal(consumedBudget.reason, "BUDGET")
+assert.deepEqual(consumedClock.sleeps, [3_000])
+assert.equal(consumedBudget.unattemptedUrlCount, 50)
+
+resetIndexNowStateForTests()
+const exhaustedClock = controlledClock()
+let exhaustedCalls = 0
+const exhausted = await enviarUrlsParaIndexNow(event("ATUALIZACAO", "budget-between-batches", manyUrls), {
+  ...exhaustedClock,
+  fetchImpl: async () => { exhaustedCalls += 1; exhaustedClock.advance(12_750); return response(202) },
+})
+assert.equal(exhaustedCalls, 1)
+assert.equal(exhausted.ok, false)
+assert.equal(exhausted.reason, "BUDGET")
+assert.equal(exhausted.acceptedUrlCount, 20)
+assert.equal(exhausted.failedUrlCount, 0)
+assert.equal(exhausted.unattemptedUrlCount, 50)
+
+console.log("IndexNow: lotes completos/parciais, fingerprint integral e Retry-After com relogio controlado aprovados; transporte real proibido.")
+await runIndexNowAdminRaceTests()
 
 const serverActionSource = source("src/app/(painel-admin)/admin/anuncios/actions.ts")
 const clientSource = source("src/lib/seo/indexnow-client.ts")
