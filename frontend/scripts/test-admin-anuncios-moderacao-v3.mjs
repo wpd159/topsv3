@@ -603,4 +603,258 @@ for (const field of ['titulo', 'descricao', 'categoria', 'preco', 'uf', 'cidade'
   assert.ok(edit.includes(field), `Campo canonico ausente no editor administrativo: ${field}`)
 }
 
+// Same deterministic hook/module boundary used by test-photo-upload-validation:
+// execute the real components, load effects and submit callbacks with synthetic
+// administrative responses. This is not a browser or production validation.
+function runtimeModule(name, imports = {}) {
+  const compiled = ts.transpileModule(source(name), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+    fileName: name,
+    reportDiagnostics: true,
+  })
+  assert.deepEqual((compiled.diagnostics ?? []).filter((item) => item.category === ts.DiagnosticCategory.Error), [])
+  const module = { exports: {} }
+  new Function('require', 'module', 'exports', compiled.outputText)((specifier) => {
+    assert.ok(Object.hasOwn(imports, specifier), `Fronteira não declarada: ${name}: ${specifier}`)
+    return imports[specifier]
+  }, module, module.exports)
+  return module.exports
+}
+
+function componentHooks() {
+  const slots = [], effects = []
+  let index = 0, dirty = false, component, tree
+  const changed = (previous, next) => !previous || !next || next.some((value, i) => !Object.is(value, previous[i]))
+  const react = {
+    useState(initialValue) {
+      const slot = index++
+      if (!slots[slot]) slots[slot] = { value: typeof initialValue === 'function' ? initialValue() : initialValue }
+      return [slots[slot].value, (next) => {
+        const value = typeof next === 'function' ? next(slots[slot].value) : next
+        dirty ||= !Object.is(value, slots[slot].value)
+        slots[slot].value = value
+      }]
+    },
+    useRef(initialValue) { const slot = index++; return slots[slot] ??= { current: initialValue } },
+    useMemo(callback, dependencies) {
+      const slot = index++
+      if (!slots[slot] || changed(slots[slot].dependencies, dependencies)) slots[slot] = { value: callback(), dependencies }
+      return slots[slot].value
+    },
+    useCallback(callback, dependencies) { return react.useMemo(() => callback, dependencies) },
+    useEffect(callback, dependencies) {
+      const slot = index++
+      if (!slots[slot] || changed(slots[slot].dependencies, dependencies)) {
+        const old = slots[slot]
+        slots[slot] = { dependencies, cleanup: old?.cleanup }
+        effects.push(() => { old?.cleanup?.(); slots[slot].cleanup = callback() })
+      }
+    },
+  }
+  function render() {
+    index = 0; dirty = false; tree = component({ anuncioId: 'synthetic-ad' })
+    effects.splice(0).forEach((effect) => effect())
+  }
+  return {
+    react,
+    mount(next) { component = next; render() },
+    async settle() {
+      for (let iteration = 0; iteration < 12; iteration++) {
+        await new Promise((resolve) => setImmediate(resolve))
+        if (dirty) render()
+      }
+      assert.equal(dirty, false, 'O componente deve estabilizar sem efeitos em ciclo.')
+    },
+    get tree() { return tree },
+    unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
+  }
+}
+
+const element = (type, props) => ({ type, props: props ?? {} })
+const jsxRuntime = { jsx: element, jsxs: element, Fragment: 'Fragment' }
+const icons = new Proxy({}, { get: (_, key) => String(key) })
+const contractRuntime = runtimeModule('lib/api-contract.ts')
+const feedbackRuntime = runtimeModule('components/feedback/contract-state.tsx', {
+  react: {}, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
+  '@/components/ui/button': { Button: 'Button' }, '@/lib/api-contract': contractRuntime,
+})
+function renderedNodes(tree) {
+  if (tree == null || typeof tree === 'boolean') return []
+  if (Array.isArray(tree)) return tree.flatMap(renderedNodes)
+  if (typeof tree !== 'object') return [tree]
+  if (tree.type === feedbackRuntime.ContractState) return renderedNodes(tree.type(tree.props))
+  return [tree, ...renderedNodes(tree.props?.children)]
+}
+const visibleText = (tree) => renderedNodes(tree).filter((node) => typeof node === 'string' || typeof node === 'number').join(' ')
+const controls = (tree, predicate) => renderedNodes(tree).filter((node) => typeof node === 'object' && predicate(node))
+const editableForms = (tree) => controls(tree, (node) => node.type === 'form')
+const removedMessage = 'Este anúncio foi removido e não pode ser editado.'
+const syntheticAd = {
+  id: 'synthetic-ad', slug: 'anuncio-sintetico', titulo: 'Anúncio sintético para edição',
+  status: 'PUBLICADO', statusModeracao: 'APROVADO', descricao: 'Descrição sintética preservada para edição.',
+  categoria: 'ACOMPANHANTE', preco: 99, whatsapp: null, atendimentoExclusivamenteVirtual: false,
+  localizacao: { uf: 'SP', cidade: 'Cidade sintética', bairro: 'Bairro sintético' },
+  locaisAtendimento: [], servicos: [], fotosAprovadasTotal: 1, fotosAguardandoDecisaoTotal: 0,
+  anunciante: { id: 'synthetic-owner', status: 'ATIVO' },
+  metricas: { visualizacoes: { total: 0, situacao: 'ZERO_LEGITIMO' }, cliquesWhatsapp: 0, beneficiosPremiumVigentes: [] },
+}
+const adminSession = { papeis: ['ADMIN'], permissoes: ['ANUNCIO_MODERAR'] }
+const removedAd = { ...syntheticAd, status: 'REMOVIDO' }
+
+async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticAd], update, session = adminSession } = {}) {
+  const runner = componentHooks(), calls = [], effects = [], unexpected = []
+  let readIndex = 0
+  const apiBoundary = new Proxy({
+    async getAdminAd(id) {
+      assert.equal(id, syntheticAd.id)
+      calls.push('GET')
+      assert.ok(readIndex < reads.length, 'Consulta administrativa adicional inesperada.')
+      const response = reads[readIndex++]
+      if (response instanceof Error) throw response
+      return typeof response === 'function' ? response() : response
+    },
+    async updateAdminAd(id, payload) {
+      calls.push('UPDATE')
+      assert.equal(id, syntheticAd.id)
+      assert.ok(update, 'Envio inesperado do editor bloqueado.')
+      return update(payload)
+    },
+    async listAdminAdHistory(id) {
+      assert.equal(id, syntheticAd.id)
+      return [{ id: 'synthetic-history', acao: 'REMOVER', alvoTipo: 'ANUNCIO', motivo: 'Histórico sintético preservado' }]
+    },
+  }, { get: (target, name) => name in target ? target[name] : () => { unexpected.push(String(name)); throw new Error(`Operação inesperada: ${String(name)}`) } })
+  const imports = {
+    react: runner.react, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
+    'next/link': { default: 'Link' },
+    'next/navigation': { useRouter: () => Object.fromEntries(['push', 'replace', 'refresh'].map((method) => [method, (...args) => effects.push([method, ...args])])) },
+    '@/lib/admin-auth-api': { getAdminSession: async () => session },
+    '@/lib/api-contract': contractRuntime,
+    '@/components/feedback/contract-state': feedbackRuntime,
+    '@/components/forms/masked-phone-input': { MaskedPhoneInput: 'MaskedPhoneInput' },
+    '@/lib/phone-mask': { maskPhoneBR: (value) => value, phoneToE164BR: (value) => value || null },
+    '@/features/anuncio-wizard/wizard-constants': { categorias: [], locais: [], servicos: [] },
+    '@/lib/seo/indexnow-client': {
+      anuncioEstaPublicamenteIndexavel: (status) => status === 'PUBLICADO',
+      montarEventoIndexNowAnuncio: (event) => event,
+      enviarIndexNowNoCliente: (event) => { effects.push(['INDEXNOW', event]); return Promise.resolve() },
+    },
+    './api': apiBoundary,
+  }
+  for (const [module, names] of Object.entries({
+    button: ['Button'], input: ['Input'], textarea: ['Textarea'], badge: ['Badge'], label: ['Label'],
+    dialog: ['Dialog', 'DialogContent', 'DialogDescription', 'DialogFooter', 'DialogHeader', 'DialogTitle'],
+    select: ['Select', 'SelectContent', 'SelectItem', 'SelectTrigger', 'SelectValue'],
+    tabs: ['Tabs', 'TabsContent', 'TabsList', 'TabsTrigger'],
+  })) imports[`@/components/ui/${module}`] = Object.fromEntries(names.map((name) => [name, name]))
+  if (mode === 'detail') Object.assign(imports, {
+    sonner: { toast: { success: (message) => effects.push(['TOAST', message]) } },
+    '@/app/(painel-admin)/admin/anuncios/actions': {}, '@/features/admin-usuarios/api': {}, '@/lib/cpf-mask': {},
+    './admin-anuncio-documentos': { AdminAnuncioDocumentos: 'AdminAnuncioDocumentos' },
+    './admin-anuncio-midia-uploader': { AdminAnuncioMidiaUploader: 'AdminAnuncioMidiaUploader' },
+    './admin-anuncio-premium': { AdminAnuncioPremium: 'AdminAnuncioPremium' },
+    './queue-context': runtimeModule('features/admin-anuncios/queue-context.ts'),
+  })
+  const module = runtimeModule(`features/admin-anuncios/admin-anuncio-${mode === 'edit' ? 'edit-form' : 'moderacao'}.tsx`, imports)
+  runner.mount(mode === 'edit' ? module.AdminAnuncioEditForm : module.AdminAnuncioModeracao)
+  await runner.settle()
+  return { runner, calls, effects, finish() { assert.deepEqual(unexpected, []); runner.unmount() } }
+}
+
+for (const ad of [removedAd, syntheticAd]) {
+  const detailCase = await mountAdministrativeComponent({ mode: 'detail', reads: [ad] })
+  const tree = detailCase.runner.tree
+  assert.equal(controls(tree, (node) => node.type === 'Link' && node.props.href === '/admin/anuncios/synthetic-ad/editar').length, ad.status === 'REMOVIDO' ? 0 : 1)
+  if (ad.status === 'REMOVIDO') assert.match(visibleText(tree), /Anúncio removido/)
+  assert.ok(visibleText(tree).includes(ad.titulo), 'O detalhe deve preservar os dados para consulta.')
+  assert.ok(visibleText(tree).includes('Histórico sintético preservado'), 'O histórico permanece consultável após remoção.')
+  assert.deepEqual(detailCase.calls, ['GET'])
+  assert.deepEqual(detailCase.effects, [])
+  detailCase.finish()
+}
+
+const directRemoved = await mountAdministrativeComponent({ reads: [removedAd] })
+assert.ok(visibleText(directRemoved.runner.tree).includes(removedMessage))
+assert.equal(editableForms(directRemoved.runner.tree).length, 0, 'URL direta removida não monta formulário editável.')
+assert.equal(controls(directRemoved.runner.tree, (node) => ['Input', 'Textarea', 'MaskedPhoneInput'].includes(node.type)).length, 0)
+assert.equal(controls(directRemoved.runner.tree, (node) => node.type === 'Link' && node.props.href === '/admin/anuncios/synthetic-ad').length, 1)
+assert.deepEqual(directRemoved.calls, ['GET'])
+assert.deepEqual(directRemoved.effects, [])
+directRemoved.finish()
+
+const editable = await mountAdministrativeComponent({ update: async (payload) => {
+  assert.equal(payload.titulo, 'Título sintético alterado')
+  assert.equal(payload.descricao, syntheticAd.descricao)
+  return { ...syntheticAd, ...payload, atualizadoEm: '2026-01-01T00:00:00Z' }
+} })
+controls(editable.runner.tree, (node) => node.type === 'Input' && node.props.value === syntheticAd.titulo)[0].props.onChange({ target: { value: 'Título sintético alterado' } })
+await editable.runner.settle()
+await editableForms(editable.runner.tree)[0].props.onSubmit({ preventDefault() {} })
+await editable.runner.settle()
+assert.deepEqual(editable.calls, ['GET', 'UPDATE'])
+assert.deepEqual(editable.effects.map(([kind]) => kind), ['INDEXNOW', 'push', 'refresh'])
+assert.deepEqual(editable.effects[1], ['push', '/admin/anuncios/synthetic-ad'])
+editable.finish()
+
+const notFound = await contractRuntime.apiErrorFromResponse(
+  new Response(JSON.stringify({ message: 'Recurso não encontrado.' }), { status: 404 }),
+  { preserveServerMessage: true },
+)
+assert.equal(notFound.kind, 'INTEGRATION_MISSING', 'A fixture 404 deve usar o mesmo contrato recebido pelo editor.')
+let confirmRemoval
+const confirmation = new Promise((resolve) => { confirmRemoval = resolve })
+const concurrentRemoval = await mountAdministrativeComponent({ reads: [syntheticAd, () => confirmation], update: async () => { throw notFound } })
+const pendingSubmit = editableForms(concurrentRemoval.runner.tree)[0].props.onSubmit({ preventDefault() {} })
+await concurrentRemoval.runner.settle()
+assert.deepEqual(concurrentRemoval.calls, ['GET', 'UPDATE', 'GET'])
+assert.ok(!visibleText(concurrentRemoval.runner.tree).includes(removedMessage), '404 isolado não comprova remoção antes do GET administrativo.')
+assert.deepEqual(concurrentRemoval.effects, [], 'Falha nunca pode navegar ou emitir IndexNow de sucesso.')
+confirmRemoval(removedAd)
+await pendingSubmit
+await concurrentRemoval.runner.settle()
+assert.ok(visibleText(concurrentRemoval.runner.tree).includes(removedMessage))
+assert.equal(editableForms(concurrentRemoval.runner.tree).length, 0)
+assert.deepEqual(concurrentRemoval.effects, [])
+concurrentRemoval.finish()
+
+const offline = new contractRuntime.ApiContractError('Falha sintética de rede.', 'NETWORK_FAILURE', null, true)
+const invalid = new contractRuntime.ApiContractError('Revise o título sintético.', 'INVALID_REQUEST', 400, false)
+const accessDenied = new contractRuntime.ApiContractError('Permissão de edição revogada.', 'ACCESS_DENIED', 403, false)
+const serverFailure = await contractRuntime.apiErrorFromResponse(new Response(null, { status: 500 }))
+for (const [failure, recheck, expectedMessage] of [
+  [notFound, syntheticAd, 'O salvamento não foi confirmado. Tente novamente.'],
+  [notFound, offline, 'O salvamento não foi confirmado. Tente novamente.'],
+  [offline, syntheticAd, 'O salvamento não foi confirmado. Tente novamente.'],
+  [serverFailure, syntheticAd, 'O salvamento não foi confirmado. Tente novamente.'],
+  [invalid, syntheticAd, invalid.message],
+  [accessDenied, accessDenied, accessDenied.message],
+]) {
+  const failed = await mountAdministrativeComponent({ reads: [syntheticAd, recheck], update: async () => { throw failure } })
+  await editableForms(failed.runner.tree)[0].props.onSubmit({ preventDefault() {} })
+  await failed.runner.settle()
+  const message = visibleText(failed.runner.tree)
+  assert.ok(message.includes('Não foi possível salvar o anúncio'))
+  assert.ok(message.includes(expectedMessage))
+  assert.ok(!message.includes(removedMessage), 'Falha comum/consulta inconclusiva não pode ser classificada como remoção.')
+  assert.doesNotMatch(message, /N[aã]o foi poss[ií]vel carregar/)
+  assert.equal(editableForms(failed.runner.tree).length, 1, 'Falha de salvamento deve preservar o formulário preenchido.')
+  assert.deepEqual(failed.calls, ['GET', 'UPDATE', 'GET'])
+  assert.deepEqual(failed.effects, [])
+  failed.finish()
+}
+
+const loadFailure = await mountAdministrativeComponent({ reads: [notFound] })
+assert.match(visibleText(loadFailure.runner.tree), /Nao foi possivel carregar/)
+assert.doesNotMatch(visibleText(loadFailure.runner.tree), /Não foi possível salvar|Este anúncio foi removido/)
+assert.equal(editableForms(loadFailure.runner.tree).length, 0)
+assert.deepEqual(loadFailure.calls, ['GET'])
+loadFailure.finish()
+for (const session of [{ papeis: ['MODERADOR'], permissoes: ['ANUNCIO_MODERAR'] }, { papeis: ['ADMIN'], permissoes: [] }]) {
+  const denied = await mountAdministrativeComponent({ reads: [syntheticAd], session })
+  assert.equal(editableForms(denied.runner.tree).length, 0, 'A correção deve preservar ADMIN + ANUNCIO_MODERAR para edição.')
+  assert.deepEqual(denied.calls, ['GET'])
+  assert.deepEqual(denied.effects, [])
+  denied.finish()
+}
+console.log('ADMIN_REMOVED_EDITOR_RESULT=OK cases=14 componentCallbacks=real transport=synthetic loadSaveErrors=distinct')
 console.log('Moderacao V3 de anuncios e midias: contrato frontend aprovado.')
