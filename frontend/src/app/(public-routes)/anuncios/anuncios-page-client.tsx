@@ -1,6 +1,5 @@
 "use client"
 
-import { Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { XMarkIcon } from "@heroicons/react/24/outline"
 import { BarraLocalizacao } from "@/components/anuncios/barra-localizacao"
@@ -8,12 +7,14 @@ import AnunciosGrid from "@/components/anuncios/anuncios-grid"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { Button } from "@/components/ui/button"
 import type { PublicCategoryList } from "@/lib/public-catalog-api"
+import { parsePublicOrderSeed } from "@/lib/seo/public-url"
 
 type InitialRequest = {
   categoria: string
   busca: string
   anunciante: string
   currentPage: number
+  requestedSeed?: string
 }
 
 type AnunciosPageClientProps = {
@@ -27,19 +28,21 @@ function parsePageParam(value: string | null) {
   return Math.floor(parsed)
 }
 
-function AnunciosPageContent({ initialData, initialRequest }: AnunciosPageClientProps) {
+export default function AnunciosPageClient({ initialData, initialRequest }: AnunciosPageClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const categoriaParam = searchParams.get("categoria") || "TODOS"
-  const buscaParam = searchParams.get("busca") || ""
+  const categoriaParam = searchParams.get("categoria")?.trim() || "TODOS"
+  const buscaParam = searchParams.get("busca")?.trim() || ""
   const anuncianteParam = (searchParams.get("anunciante") || "").trim()
   const paginaAtual = parsePageParam(searchParams.get("page"))
+  const requestedSeed = parsePublicOrderSeed(searchParams.get("ordemSeed") ?? undefined) ?? undefined
 
   const removerFiltroAnunciante = () => {
     const params = new URLSearchParams(searchParams)
     params.delete("anunciante")
     params.delete("page")
+    params.delete("ordemSeed")
     const query = params.toString()
     router.push(query ? `/anuncios?${query}` : "/anuncios", { scroll: false })
   }
@@ -78,17 +81,11 @@ function AnunciosPageContent({ initialData, initialRequest }: AnunciosPageClient
         busca={buscaParam}
         anunciante={anuncianteParam}
         currentPage={paginaAtual}
+        requestedSeed={requestedSeed}
+        paginationQuery={Object.fromEntries([...searchParams.keys()].map((key) => [key, searchParams.getAll(key)]))}
         initialData={initialData}
         initialRequest={initialRequest}
       />
     </section>
-  )
-}
-
-export default function AnunciosPageClient(props: AnunciosPageClientProps) {
-  return (
-    <Suspense fallback={<div className="py-16 text-center text-gray-500">Carregando anúncios...</div>}>
-      <AnunciosPageContent {...props} />
-    </Suspense>
   )
 }

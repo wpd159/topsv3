@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, permanentRedirect } from "next/navigation"
 import AnunciosPageClient from "./anuncios-page-client"
-import { buildPublicUrl } from "@/lib/seo/public-url"
+import { buildPublicPageHref, buildPublicUrl, parsePublicOrderSeed, parsePublicPage } from "@/lib/seo/public-url"
 import {
   buildPublicListingIndexingDecision,
   buildPublicRobotsMetadata,
@@ -28,28 +28,20 @@ function searchValue(value: string | string[] | undefined) {
   return typeof value === "string" ? value : ""
 }
 
-function parsePositivePage(value?: string | string[]) {
-  if (Array.isArray(value)) return null
-  if (value === undefined) return 1
-  if (value === "") return null
-  if (!/^[1-9]\d*$/.test(value)) return null
-  const parsed = Number(value)
-  return Number.isSafeInteger(parsed) ? parsed : null
-}
-
 export async function generateMetadata({
   searchParams: searchParamsPromise,
 }: {
   searchParams: Promise<AnunciosSearchParams>
 }): Promise<Metadata> {
   const searchParams = await searchParamsPromise
-  const page = parsePositivePage(searchParams.page)
-  if (page === null) {
+  const pageIndex = parsePublicPage(searchParams.page, 1)
+  if (pageIndex === null || parsePublicOrderSeed(searchParams.ordemSeed) === null) {
     return {
       title: "Página inválida | Tops do Job",
       robots: buildPublicRobotsMetadata(false),
     }
   }
+  const page = pageIndex + 1
   const busca = searchValue(searchParams.busca).trim()
   const categoria = searchValue(searchParams.categoria).trim()
   const anunciante = searchValue(searchParams.anunciante).trim()
@@ -103,8 +95,13 @@ export default async function AnunciosPage({
   searchParams: Promise<AnunciosSearchParams>
 }) {
   const searchParams = await searchParamsPromise
-  const currentPage = parsePositivePage(searchParams.page)
-  if (currentPage === null) notFound()
+  const pageIndex = parsePublicPage(searchParams.page, 1)
+  const requestedSeed = parsePublicOrderSeed(searchParams.ordemSeed)
+  if (pageIndex === null || requestedSeed === null) notFound()
+  if (searchParams.page === "1") {
+    permanentRedirect(buildPublicPageHref("/anuncios", 0, requestedSeed, searchParams, 1))
+  }
+  const currentPage = pageIndex + 1
   const categoria = searchValue(searchParams.categoria).trim() || "TODOS"
   const busca = searchValue(searchParams.busca).trim()
   const anunciante = searchValue(searchParams.anunciante).trim()
@@ -116,7 +113,7 @@ export default async function AnunciosPage({
       busca,
       currentPage - 1,
       16,
-      undefined,
+      requestedSeed,
       anunciante,
     )
   } catch (error) {
@@ -133,7 +130,7 @@ export default async function AnunciosPage({
   return (
     <AnunciosPageClient
       initialData={initialData}
-      initialRequest={{ categoria, busca, anunciante, currentPage }}
+      initialRequest={{ categoria, busca, anunciante, currentPage, requestedSeed }}
     />
   )
 }

@@ -38,6 +38,13 @@ function loadTypeScript(relativePath, dependencies = {}) {
 }
 
 class NotFoundSignal extends Error {}
+class RedirectSignal extends Error {
+  constructor(location) {
+    super("NEXT_REDIRECT")
+    this.location = location
+    this.status = 308
+  }
+}
 class ContractError extends Error {
   constructor(status) {
     super(`status-${status}`)
@@ -60,14 +67,18 @@ function emptyCatalog() {
 }
 
 function loadListingPage(listarAnunciosPublicos) {
+  const policy = loadTypeScript("src/lib/seo/search-indexing-policy.ts")
+  const publicUrl = loadTypeScript("src/lib/seo/public-url.ts", {
+    "@/lib/seo/search-indexing-policy": policy,
+  })
   return loadTypeScript("src/app/(public-routes)/anuncios/page.tsx", {
     "./anuncios-page-client": function AnunciosPageClient() {},
-    "next/navigation": { notFound: () => { throw new NotFoundSignal() } },
-    "@/lib/seo/public-url": { buildPublicUrl: (path) => `https://topsdojob.com${path}` },
-    "@/lib/seo/search-indexing-policy": {
-      buildPublicListingIndexingDecision: () => ({ indexable: false, canonicalQuery: "" }),
-      buildPublicRobotsMetadata: (index) => ({ index, follow: true }),
+    "next/navigation": {
+      notFound: () => { throw new NotFoundSignal() },
+      permanentRedirect: (location) => { throw new RedirectSignal(location) },
     },
+    "@/lib/seo/public-url": publicUrl,
+    "@/lib/seo/search-indexing-policy": policy,
     "@/lib/public-catalog-server-api": {
       isPublicCatalogNotFound: (error) => error?.status === 400 || error?.status === 404,
       listarAnunciosPublicos,
@@ -146,6 +157,54 @@ await test("seed nao entra no canonical", () => {
   assert.equal(decision.canonicalQuery, "busca=termo")
 })
 
+await test("busca paginada SSR continua one-based e preserva filtros, seed e canonical proprio", async () => {
+  for (const publicPage of [2, 3]) {
+    const requests = []
+    const page = loadListingPage(async (...args) => {
+      requests.push(args)
+      return { ...emptyCatalog(), paginacao: { pagina: publicPage - 1, tamanho: 16, totalItens: 33, totalPaginas: 3, ordemSeed: "9007199254740993" } }
+    })
+    const searchParams = { page: String(publicPage), busca: "café 100%_vip\\foto", categoria: "TODOS", anunciante: "anunciante-teste", ordemSeed: "9007199254740993", utm_source: "teste" }
+    const metadata = await page.generateMetadata({ searchParams: Promise.resolve(searchParams) })
+    const rendered = await page.default({ searchParams: Promise.resolve(searchParams) })
+    assert.deepEqual(requests, [["TODOS", "café 100%_vip\\foto", publicPage - 1, 16, "9007199254740993", "anunciante-teste"]])
+    assert.equal(rendered.props.initialRequest.currentPage, publicPage)
+    assert.equal(rendered.props.initialRequest.requestedSeed, "9007199254740993")
+    assert.equal(rendered.props.initialData.paginacao.ordemSeed, "9007199254740993")
+    const canonical = new URL(metadata.alternates.canonical)
+    assert.equal(canonical.searchParams.get("page"), String(publicPage))
+    assert.equal(canonical.searchParams.get("busca"), searchParams.busca)
+    assert.equal(canonical.searchParams.get("anunciante"), "anunciante-teste")
+    assert.equal(canonical.searchParams.has("ordemSeed"), false)
+    assert.equal(canonical.searchParams.has("utm_source"), false)
+    assert.equal(metadata.openGraph.url, canonical.toString())
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.robots.follow, true)
+    assert.match(metadata.title, new RegExp(`Página ${publicPage}`))
+  }
+})
+
+await test("page=1 remove somente page e preserva busca, filtros repetidos e seed", async () => {
+  let requests = 0
+  const page = loadListingPage(async () => { requests += 1; return emptyCatalog() })
+  const searchParams = { page: "1", busca: "café 100%", categoria: "TODOS", ordemSeed: "9223372036854775807", filter: ["com-local", "foto"], estadoId: "estado-teste", utm_source: "teste" }
+  await assert.rejects(page.default({ searchParams: Promise.resolve(searchParams) }), (error) => {
+    assert.ok(error instanceof RedirectSignal)
+    assert.equal(error.status, 308)
+    const redirect = new URL(error.location, "https://topsdojob.com")
+    assert.equal(redirect.pathname, "/anuncios")
+    assert.equal(redirect.searchParams.has("page"), false)
+    assert.equal(redirect.searchParams.get("busca"), searchParams.busca)
+    assert.equal(redirect.searchParams.get("categoria"), "TODOS")
+    assert.equal(redirect.searchParams.get("ordemSeed"), searchParams.ordemSeed)
+    assert.deepEqual(redirect.searchParams.getAll("filter"), searchParams.filter)
+    assert.equal(redirect.searchParams.get("estadoId"), "estado-teste")
+    assert.equal(redirect.searchParams.get("utm_source"), "teste")
+    return true
+  })
+  assert.equal(requests, 0)
+})
+
 await test("URL interna permanece fora do bundle cliente", () => {
   assert.doesNotMatch(apiSource, /INTERNAL_API|BACKEND_INTERNAL|127\.0\.0\.1/)
   assert.match(serverApiSource, /^import 'server-only'/)
@@ -182,5 +241,5 @@ await test("ordenacao comercial e seed permanecem canonicas", () => {
   assert.doesNotMatch(repositorySource, /order by a\.publicado_em desc/)
 })
 
-assert.equal(executed, 14)
+assert.equal(executed, 16)
 console.log(`PUBLIC_SEARCH_RESULT=OK tests=${executed}`)

@@ -13,6 +13,14 @@ class NotFoundSignal extends Error {
   }
 }
 
+class RedirectSignal extends Error {
+  constructor(location) {
+    super("NEXT_REDIRECT")
+    this.location = location
+    this.status = 308
+  }
+}
+
 class ContractError extends Error {
   constructor(status) {
     super(`contract-${status}`)
@@ -53,7 +61,10 @@ function loadTypeScriptModule(
     react: { cache: memoize },
     "react/jsx-runtime": jsxRuntime,
     "next/link": function Link() {},
-    "next/navigation": { notFound: () => { throw new NotFoundSignal() } },
+    "next/navigation": {
+      notFound: () => { throw new NotFoundSignal() },
+      permanentRedirect: (location) => { throw new RedirectSignal(location) },
+    },
     "@heroicons/react/24/solid": { ArrowLeftIcon() {}, ArrowRightIcon() {} },
   }
   const requireModule = (specifier) => {
@@ -81,13 +92,13 @@ function loadTypeScriptModule(
   return module.exports
 }
 
-function publicUrl(path) {
-  return `https://topsdojob.com${path}`
-}
-
-function publicPath(...parts) {
-  return `/${parts.map((part) => String(part).replace(/^\/+|\/+$/g, "")).join("/")}`
-}
+const policyModule = loadTypeScriptModule("src/lib/seo/search-indexing-policy.ts", {
+  environment: { SEARCH_INDEXING_MODE: "public", NEXT_PUBLIC_SITE_URL: "https://topsdojob.com" },
+})
+const publicUrlModule = loadTypeScriptModule("src/lib/seo/public-url.ts", {
+  dependencies: { "@/lib/seo/search-indexing-policy": policyModule },
+  environment: { NEXT_PUBLIC_SITE_URL: "https://topsdojob.com" },
+})
 
 function robots(index) {
   return { index, follow: true }
@@ -144,7 +155,7 @@ function blogHomeModule({ posts, categories = [category()], failure = null }) {
           return categories
         },
       },
-      "@/lib/seo/public-url": { buildPublicUrl: publicUrl },
+      "@/lib/seo/public-url": publicUrlModule,
       "@/lib/seo/search-indexing-policy": { buildPublicRobotsMetadata: robots },
     },
   })
@@ -171,10 +182,7 @@ function blogCategoryModule({ categories, posts = [], failure = null }) {
           },
         },
         "@/lib/public-site-assets": { getPublicLogoUrl: () => "/logo.png" },
-        "@/lib/seo/public-url": {
-          buildPublicPath: publicPath,
-          buildPublicUrl: publicUrl,
-        },
+        "@/lib/seo/public-url": publicUrlModule,
         "@/lib/seo/search-indexing-policy": { buildPublicRobotsMetadata: robots },
       },
     },
@@ -196,10 +204,7 @@ function blogPostModule(result) {
       },
       "@/lib/public-site-assets": { getPublicLogoUrl: () => "/logo.png" },
       "@/lib/seo/json-ld": { serializeJsonLd: JSON.stringify },
-      "@/lib/seo/public-url": {
-        buildPublicPath: publicPath,
-        buildPublicUrl: publicUrl,
-      },
+      "@/lib/seo/public-url": publicUrlModule,
       "./blog-post-page-client": function BlogPostPageClient() {},
     },
   })
@@ -210,17 +215,70 @@ function anunciosModule(listarAnunciosPublicos) {
   return loadTypeScriptModule("src/app/(public-routes)/anuncios/page.tsx", {
     dependencies: {
       "./anuncios-page-client": function AnunciosPageClient() {},
-      "@/lib/seo/public-url": { buildPublicUrl: publicUrl },
-      "@/lib/seo/search-indexing-policy": {
-        buildPublicListingIndexingDecision: () => ({ indexable: true, canonicalQuery: "" }),
-        buildPublicRobotsMetadata: robots,
-      },
+      "@/lib/seo/public-url": publicUrlModule,
+      "@/lib/seo/search-indexing-policy": policyModule,
       "@/lib/public-catalog-server-api": {
         isPublicCatalogNotFound: (error) => error?.status === 400 || error?.status === 404,
         listarAnunciosPublicos,
       },
     },
   })
+}
+
+const geographicScopes = [
+  { route: "[estado]", path: "/acompanhantes/go", method: "listarPublicosPorEstado", segments: ["go"] },
+  { route: "[estado]/[cidade]", path: "/acompanhantes/go/goiania", method: "listarPublicosPorCidade", segments: ["go", "goiania"] },
+  { route: "[estado]/[cidade]/[bairro]", path: "/acompanhantes/go/goiania/centro", method: "listarPublicosPorBairro", segments: ["go", "goiania", "centro"] },
+]
+const geographicDependencies = {
+  "@/lib/seo/public-url": publicUrlModule,
+  "@/lib/seo/search-indexing-policy": policyModule,
+  "@/components/stories/stories-bar": { StoriesBar() {} },
+  "@/lib/media/public-media": { selecionarCapaPublicaSegura: () => null, fontePublicaSegura: () => null },
+}
+for (const name of ["text/encoding", "seo/local-labels", "seo/local-indexing", "seo/public-metadata", "seo/programmatic-content", "seo/cidadeSeo", "seo/seoContentGeneratorBairro", "seo/acompanhantes-navigation", "seo/json-ld"]) {
+  geographicDependencies[`@/lib/${name}`] = loadTypeScriptModule(`src/lib/${name}.ts`, {
+    dependencies: geographicDependencies,
+  })
+}
+const geographicListing = loadTypeScriptModule("src/components/anuncios/listagem-publica-paginada.tsx", {
+  dependencies: { "@/lib/seo/public-url": publicUrlModule, "./anuncio-card": function AnuncioCard() {} },
+})
+geographicDependencies["@/components/anuncios/listagem-publica-paginada"] = geographicListing
+
+function localityModule(scope) {
+  const requests = []
+  const indexacao = { indexavel: true, canonica: true, motivo: "INVENTARIO_SUFICIENTE", anunciosElegiveisUnicos: 83, minimoNecessario: 5 }
+  const aggregate = {
+    estadoUf: "GO", estadoNome: "Goiás", cidadeNome: "Goiânia", cidadeSlug: "goiania", totalAnunciosAtivos: 83, indexacao,
+    bairros: [{ bairroNome: "Centro", bairroSlug: "centro", indexacao }], categoriasPrincipais: [], cidadesRelacionadas: [],
+  }
+  const module = loadTypeScriptModule(`src/app/(public-routes)/acompanhantes/${scope.route}/page.tsx`, {
+    dependencies: {
+      ...geographicDependencies,
+      "@/lib/public-catalog-server-api": {
+        isPublicCatalogNotFound: (error) => error?.status === 400 || error?.status === 404,
+        descobrirLocalidadesPublicas: async () => ({ estados: [{ uf: "GO", indexacao, cidades: [] }] }),
+        obterAgregadoPublicoCidade: async () => aggregate,
+        [scope.method]: async (...args) => {
+          requests.push(args)
+          const [pagina, tamanho, ordemSeed] = args.slice(scope.segments.length)
+          return {
+            itens: Array.from({ length: Math.max(0, Math.min(tamanho, 83 - pagina * tamanho)) }, (_, index) => ({ id: `teste-${pagina * tamanho + index}`, slug: `teste-${pagina * tamanho + index}`, titulo: "Anúncio sintético", midias: [] })),
+            localidade: { uf: "GO", estado: "Goiás", cidade: "Goiânia", bairro: "Centro" },
+            paginacao: { pagina, tamanho, totalItens: 83, totalPaginas: 5, ordemSeed: ordemSeed ?? "123" },
+          }
+        },
+      },
+    },
+  })
+  return { module, requests }
+}
+
+function elementNodes(root, predicate) {
+  if (Array.isArray(root)) return root.flatMap((child) => elementNodes(child, predicate))
+  if (!root || typeof root !== "object") return []
+  return [...(predicate(root) ? [root] : []), ...elementNodes(root.props?.children, predicate)]
 }
 
 function emptyCatalog() {
@@ -232,7 +290,7 @@ function emptyCatalog() {
       tamanho: 16,
       totalItens: 0,
       totalPaginas: 0,
-      ordemSeed: "seed-controlada",
+      ordemSeed: "123",
     },
   }
 }
@@ -268,11 +326,7 @@ function sitemapModule(fetchImpl) {
           atualizadoEm: "2026-08-20T10:00:00Z",
         }],
       },
-      "@/lib/seo/public-url": {
-        buildPublicPath: publicPath,
-        buildPublicUrl: publicUrl,
-        getPublicSiteBaseUrl: () => "https://topsdojob.com",
-      },
+      "@/lib/seo/public-url": publicUrlModule,
       "@/lib/seo/search-indexing-policy": {
         isSafeSitemapUrl: () => true,
         resolveSearchIndexingPolicy: () => ({ sitemapEnabled: true }),
@@ -419,6 +473,123 @@ await test("5xx do catalogo e propagado", async () => {
   )
 })
 
+await test("catalogo sem seed solicita nova ordem e preserva resposta SSR", async () => {
+  const requests = []
+  const catalog = emptyCatalog()
+  const module = anunciosModule(async (...args) => { requests.push(args); return catalog })
+  const rendered = await module.default({ searchParams: Promise.resolve({}) })
+  assert.deepEqual(requests, [["TODOS", "", 0, 16, undefined, ""]])
+  assert.equal(rendered.props.initialData, catalog)
+  assert.equal(rendered.props.initialRequest.currentPage, 1)
+  assert.equal(rendered.props.initialRequest.requestedSeed, undefined)
+  const metadata = await module.generateMetadata({ searchParams: Promise.resolve({}) })
+  assert.equal(metadata.robots.index, true)
+  assert.equal(metadata.alternates.canonical, "https://topsdojob.com/anuncios")
+})
+
+await test("catalogo rejeita paginas invalidas antes de consultar API", async () => {
+  let requests = 0
+  const module = anunciosModule(async () => { requests += 1; return emptyCatalog() })
+  for (const page of ["0", "", "-1", "1.5", "01", "abc", "9007199254740992", ["2", "3"]]) {
+    await assert.rejects(module.default({ searchParams: Promise.resolve({ page }) }), NotFoundSignal)
+    const metadata = await module.generateMetadata({ searchParams: Promise.resolve({ page }) })
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.robots.follow, true)
+    assert.equal(metadata.alternates, undefined)
+  }
+  assert.equal(requests, 0)
+})
+
+await test("catalogo rejeita seed invalida sem normalizar erro para sucesso", async () => {
+  let requests = 0
+  const module = anunciosModule(async () => { requests += 1; return emptyCatalog() })
+  for (const ordemSeed of ["", " ", "abc", "1.5", "1e3", "9223372036854775808", "-9223372036854775809", ["1", "2"]]) {
+    await assert.rejects(module.default({ searchParams: Promise.resolve({ ordemSeed }) }), NotFoundSignal)
+    const metadata = await module.generateMetadata({ searchParams: Promise.resolve({ ordemSeed }) })
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.alternates, undefined)
+  }
+  assert.equal(requests, 0)
+})
+
+await test("catalogo preserva precisao Java Long e normaliza somente representacao decimal", async () => {
+  for (const [requested, expected] of [["-000123", "-123"], ["9223372036854775807", "9223372036854775807"], ["-9223372036854775808", "-9223372036854775808"]]) {
+    const requests = []
+    const module = anunciosModule(async (...args) => { requests.push(args); return emptyCatalog() })
+    const rendered = await module.default({ searchParams: Promise.resolve({ ordemSeed: requested }) })
+    assert.equal(requests[0][4], expected)
+    assert.equal(rendered.props.initialRequest.requestedSeed, expected)
+    const metadata = await module.generateMetadata({ searchParams: Promise.resolve({ ordemSeed: requested }) })
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.alternates.canonical, "https://topsdojob.com/anuncios")
+  }
+})
+
+await test("catalogo fora do intervalo produz 404", async () => {
+  for (const totalPaginas of [0, 1, 3]) {
+    const requests = []
+    const page = String(Math.max(2, totalPaginas + 1))
+    const module = anunciosModule(async (...args) => {
+      requests.push(args)
+      return { ...emptyCatalog(), paginacao: { ...emptyCatalog().paginacao, totalPaginas } }
+    })
+    await assert.rejects(module.default({ searchParams: Promise.resolve({ page, ordemSeed: "123" }) }), NotFoundSignal)
+    assert.equal(requests[0][2], Number(page) - 1)
+    assert.equal(requests[0][4], "123")
+  }
+})
+
+await test("page=1 do catalogo redireciona permanentemente sem consulta API", async () => {
+  let requests = 0
+  const module = anunciosModule(async () => { requests += 1; return emptyCatalog() })
+  await assert.rejects(module.default({ searchParams: Promise.resolve({ page: "1" }) }), (error) => {
+    assert.ok(error instanceof RedirectSignal)
+    assert.equal(error.status, 308)
+    assert.equal(error.location, "/anuncios")
+    return true
+  })
+  assert.equal(requests, 0)
+})
+
+for (const scope of geographicScopes) {
+  await test(`${scope.path}: ausente e page=0/1/2 preservam API, canonical e navegacao zero-based sem redirect`, async () => {
+    for (const pageValue of [undefined, "0", "1", "2"]) {
+      const { module, requests } = localityModule(scope)
+      const pageIndex = pageValue === undefined ? 0 : Number(pageValue)
+      const query = { page: pageValue, ordemSeed: "9007199254740993", filter: ["com-local", "foto"] }
+      const props = { params: Promise.resolve({ estado: "go", cidade: "goiania", bairro: "centro" }), searchParams: Promise.resolve(query) }
+      const metadata = await module.generateMetadata(props)
+      const tree = await module.default(props)
+      assert.deepEqual(requests, [[...scope.segments, pageIndex, 20, "9007199254740993"]])
+      const canonical = `https://topsdojob.com${scope.path}${pageIndex > 0 ? `?page=${pageIndex}` : ""}`
+      assert.equal(metadata.alternates.canonical, canonical)
+      assert.equal(metadata.openGraph.url, canonical)
+      assert.equal(metadata.robots.index, pageValue === undefined)
+      assert.equal(metadata.robots.follow, true)
+      if (pageIndex > 0) assert.match(metadata.title, new RegExp(`Página ${pageIndex + 1}`))
+      const previous = elementNodes(tree, (node) => node.type === "link" && node.props.rel === "prev")
+      const next = elementNodes(tree, (node) => node.type === "link" && node.props.rel === "next")
+      assert.equal(previous.length, pageIndex > 0 ? 1 : 0)
+      if (previous.length) assert.equal(previous[0].props.href, `https://topsdojob.com${scope.path}${pageIndex > 1 ? `?page=${pageIndex - 1}` : ""}`)
+      assert.equal(next.length, 1)
+      assert.equal(next[0].props.href, `https://topsdojob.com${scope.path}?page=${pageIndex + 1}`)
+      const listing = elementNodes(tree, (node) => node.type === geographicListing.ListagemPublicaPaginada)
+      assert.equal(listing.length, 1)
+      assert.equal(listing[0].props.initialData.paginacao.pagina, pageIndex)
+      assert.equal(listing[0].props.searchParams, query)
+      const navigation = geographicListing.ListagemPublicaPaginada(listing[0].props)
+      const nextLink = elementNodes(navigation, (node) => node.props?.children === "Proxima")[0]
+      const nextUrl = new URL(nextLink.props.href, "https://topsdojob.com")
+      assert.equal(nextUrl.pathname, scope.path)
+      assert.equal(nextUrl.searchParams.get("page"), String(pageIndex + 1))
+      assert.equal(nextUrl.searchParams.get("ordemSeed"), "9007199254740993")
+      assert.deepEqual(nextUrl.searchParams.getAll("filter"), ["com-local", "foto"])
+      assert.equal(nextLink.props.onClick, undefined)
+      assert.equal(nextLink.props.prefetch, false)
+    }
+  })
+}
+
 await test("blog vazio fica fora do sitemap", async () => {
   const module = sitemapModule(async (url) => ({
     ok: true,
@@ -457,7 +628,7 @@ await test("falha editorial preserva sitemap basico, localidades e anuncios", as
   try {
     const urls = (await module.default()).map((entry) => entry.url)
     assert.ok(urls.includes("https://topsdojob.com/"))
-    assert.ok(urls.includes("https://topsdojob.com/acompanhantes/GO/goiania"))
+    assert.ok(urls.includes("https://topsdojob.com/acompanhantes/go/goiania"))
     assert.ok(urls.includes("https://topsdojob.com/anuncios/anuncio-publico"))
     assert.equal(urls.some((url) => url.includes("/blog")), false)
   } finally {
@@ -489,5 +660,5 @@ await test("fontes nao mascaram falhas nem expõem contrato programatico", async
   assert.doesNotMatch(sitemap, /seed|ordemseed/i)
 })
 
-assert.equal(executed, 20)
+assert.equal(executed, 29)
 console.log(`PUBLIC_HTTP_STATES_RESULT=OK tests=${executed}`)

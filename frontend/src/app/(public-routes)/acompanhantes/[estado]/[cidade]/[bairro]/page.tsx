@@ -28,6 +28,7 @@ import {
   getPublicSiteBaseUrl,
   isCleanPublicFirstPage,
   isPublicPageOutOfRange,
+  parsePublicOrderSeed,
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
@@ -38,14 +39,12 @@ interface PageProps {
     cidade: string
     bairro: string
   }>
-  searchParams: Promise<{
-    page?: string
-  }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-const carregarBairro = cache(async (estado: string, cidade: string, bairro: string, page: number) => {
+const carregarBairro = cache(async (estado: string, cidade: string, bairro: string, page: number, ordemSeed?: string) => {
   const [data, agregadoCidade] = await Promise.all([
-    listarPublicosPorBairro(estado, cidade, bairro, page),
+    listarPublicosPorBairro(estado, cidade, bairro, page, 20, ordemSeed),
     obterAgregadoPublicoCidade(estado, cidade),
   ])
   return { data, agregadoCidade }
@@ -56,9 +55,11 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const { estado, cidade, bairro } = await params
-  const pageValue = (await searchParams).page
+  const query = await searchParams
+  const pageValue = query.page
   const page = parsePublicPage(pageValue)
-  if (page === null) {
+  const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
+  if (page === null || ordemSeed === null) {
     return {
       title: "Página inválida | Tops do Job",
       robots: buildPublicRobotsMetadata(false),
@@ -67,7 +68,7 @@ export async function generateMetadata({
 
   let carregado
   try {
-    carregado = await carregarBairro(estado, cidade, bairro, page)
+    carregado = await carregarBairro(estado, cidade, bairro, page, ordemSeed)
   } catch (error) {
     if (isPublicCatalogNotFound(error)) {
       return {
@@ -132,12 +133,15 @@ export async function generateMetadata({
 
 export default async function BairroPage({ params, searchParams }: PageProps) {
   const { estado, cidade, bairro } = await params
-  const page = parsePublicPage((await searchParams).page)
-  if (page === null) notFound()
+  const query = await searchParams
+  const page = parsePublicPage(query.page)
+  const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
+  if (page === null || ordemSeed === null) notFound()
+  const bairroPath = buildPublicPath("acompanhantes", estado, cidade, bairro)
 
   let carregado
   try {
-    carregado = await carregarBairro(estado, cidade, bairro, page)
+    carregado = await carregarBairro(estado, cidade, bairro, page, ordemSeed)
   } catch (error) {
     if (isPublicCatalogNotFound(error)) notFound()
     throw error
@@ -172,7 +176,6 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
   const baseUrl = getPublicSiteBaseUrl()
   const estadoPath = buildPublicPath("acompanhantes", estado)
   const cidadePath = buildPublicPath("acompanhantes", estado, cidade)
-  const bairroPath = buildPublicPath("acompanhantes", estado, cidade, bairro)
   const breadcrumbSchema = gerarBreadcrumbSchemaBairro(
     baseUrl,
     bairroNome,
@@ -198,7 +201,6 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
   }
 
   const faqSchema = page === 0 ? gerarFaqSchema(seo.faq) : null
-  const url = buildPublicUrl(bairroPath)
   const bairroLabel = labelAcompanhantesBairro(bairroNome)
   const bairroComparacaoTitulo = bairroLabel.replace("Acompanhantes", "Como comparar anúncios")
   const bairroSingularTitulo = `${bairroLabel.replace("Acompanhantes", "Acompanhante")}, ${cidadeNome}: como refinar sua busca`
@@ -233,10 +235,9 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
       <StoriesBar />
 
       <ListagemPublicaPaginada
-        key={data.paginacao.ordemSeed}
         caminhoBase={bairroPath}
-        escopo={{ tipo: "bairro", uf: estado, cidade, bairro }}
         initialData={data}
+        searchParams={query}
       >
 
       {page === 0 && (
@@ -336,11 +337,11 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
       />
 
       {page > 0 && (
-        <link rel="prev" href={page === 1 ? url : `${url}?page=${page - 1}`} />
+        <link rel="prev" href={buildPublicUrl(bairroPath, page - 1)} />
       )}
 
       {page < data.paginacao.totalPaginas - 1 && (
-        <link rel="next" href={`${url}?page=${page + 1}`} />
+        <link rel="next" href={buildPublicUrl(bairroPath, page + 1)} />
       )}
     </main>
   )
