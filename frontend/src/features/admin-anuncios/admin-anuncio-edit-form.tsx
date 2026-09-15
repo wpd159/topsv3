@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { categorias, locais, servicos } from '@/features/anuncio-wizard/wizard-constants'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { ApiContractError } from '@/lib/api-contract'
 import { maskPhoneBR, phoneToE164BR } from '@/lib/phone-mask'
 import {
   anuncioEstaPublicamenteIndexavel,
@@ -47,17 +48,22 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
   const [saving, setSaving] = useState(false)
   const [hadWhatsapp, setHadWhatsapp] = useState(false)
   const [error, setError] = useState<unknown>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setSaveError(null)
+    setForm(null)
+    setOriginal(null)
     try {
       const [ad, session] = await Promise.all([getAdminAd(anuncioId), getAdminSession()])
       if (!session?.papeis.includes('ADMIN') || !session.permissoes.includes('ANUNCIO_MODERAR')) {
         throw new Error('Seu perfil não possui permissão para editar dados comerciais.')
       }
-      setForm(initial(ad))
       setOriginal(ad)
+      if (ad.status === 'REMOVIDO') return
+      setForm(initial(ad))
       setHadWhatsapp(Boolean(ad.whatsapp))
     } catch (reason) {
       setError(reason)
@@ -80,14 +86,14 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (!form || saving) return
+    if (!form || saving || original?.status === 'REMOVIDO') return
     const normalizedWhatsapp = phoneToE164BR(form.whatsapp || '')
     if ((form.whatsapp && !normalizedWhatsapp) || (hadWhatsapp && !normalizedWhatsapp)) {
-      setError(new Error('Informe DDD e número completo antes de salvar o WhatsApp.'))
+      setSaveError('Informe DDD e número completo antes de salvar o WhatsApp.')
       return
     }
     setSaving(true)
-    setError(null)
+    setSaveError(null)
     try {
       const updated = await updateAdminAd(anuncioId, {
         ...form,
@@ -114,7 +120,17 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
       router.push(`/admin/anuncios/${anuncioId}`)
       router.refresh()
     } catch (reason) {
-      setError(reason)
+      // A recusa do salvamento, inclusive 404, nao comprova remocao por si so.
+      const current = await getAdminAd(anuncioId).catch(() => null)
+      if (current?.status === 'REMOVIDO') {
+        setOriginal(current)
+        setForm(null)
+      } else {
+        setSaveError(reason instanceof ApiContractError
+          && ['INVALID_REQUEST', 'CONFLICT', 'SESSION_REQUIRED', 'ACCESS_DENIED'].includes(reason.kind)
+          ? reason.message
+          : 'O salvamento não foi confirmado. Tente novamente.')
+      }
     } finally {
       setSaving(false)
     }
@@ -122,6 +138,15 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
 
   if (loading) return <p className="flex items-center justify-center gap-2 py-16 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Carregando anúncio...</p>
   if (error && !form) return <ContractState error={error} onRetry={() => void load()} />
+  if (original?.status === 'REMOVIDO') return (
+    <section className="mx-auto max-w-4xl space-y-4">
+      <div role="status" className="border border-amber-300 bg-amber-50 p-4 text-amber-900">
+        <h1 className="font-semibold">Anúncio removido</h1>
+        <p className="mt-1">Este anúncio foi removido e não pode ser editado.</p>
+      </div>
+      <Button asChild type="button" variant="outline"><Link href={`/admin/anuncios/${anuncioId}`}>Voltar ao detalhe</Link></Button>
+    </section>
+  )
   if (!form) return null
 
   return (
@@ -130,7 +155,12 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
         <div><p className="text-sm font-semibold text-pink-700">Edição administrativa</p><h1 className="mt-1 text-2xl font-bold text-zinc-950">Editar anúncio</h1><p className="mt-1 text-sm text-zinc-600">As mesmas regras canônicas do wizard são aplicadas e a ação fica auditada.</p></div>
         <Button asChild type="button" variant="outline"><Link href={`/admin/anuncios/${anuncioId}`}>Cancelar</Link></Button>
       </header>
-      {error ? <ContractState error={error} compact /> : null}
+      {saveError ? (
+        <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">Não foi possível salvar o anúncio</p>
+          <p className="mt-1">{saveError}</p>
+        </div>
+      ) : null}
       <div className="grid gap-5 sm:grid-cols-2">
         <label className="sm:col-span-2"><span className="mb-1 block text-sm font-semibold">Título</span><Input value={form.titulo} minLength={10} maxLength={80} onChange={(event) => setForm({ ...form, titulo: event.target.value })} required /></label>
         <label className="sm:col-span-2"><span className="mb-1 block text-sm font-semibold">Descrição</span><Textarea value={form.descricao} minLength={20} maxLength={600} rows={7} onChange={(event) => setForm({ ...form, descricao: event.target.value })} required /></label>

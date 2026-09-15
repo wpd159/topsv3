@@ -1349,10 +1349,17 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 {'Excluir an\u00fancio'}
               </Button>
             ) : null}
-            {isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline" className={headerActionClass}><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-1.5 h-4 w-4" />Editar anúncio</Link></Button> : null}
+            {isAdmin && canModerateAd && !removed ? <Button asChild size="sm" variant="outline" className={headerActionClass}><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-1.5 h-4 w-4" />Editar anúncio</Link></Button> : null}
           </div>
         </div>
       </header>
+
+      {removed ? (
+        <div role="status" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">Anúncio removido</p>
+          <p className="mt-1">Este anúncio foi removido e não pode ser editado. Os dados e o histórico continuam disponíveis para consulta.</p>
+        </div>
+      ) : null}
 
       {canApproveAd && photoApprovalBlockReason ? (
         <div id="admin-ad-photo-approval-block" role="status" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
