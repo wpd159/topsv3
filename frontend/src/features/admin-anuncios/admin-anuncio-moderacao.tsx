@@ -1157,7 +1157,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         }
       } else if (legalIntent.kind === 'BLOCK_USER') {
         if (!category) return
-        const publicAdsPromise = ad.anunciante?.id
+        // Aguarde a captura anterior; o bloqueio pode retirar todos os anuncios da consulta.
+        const previous = await (ad.anunciante?.id
           ? getAdminUser(ad.anunciante.id).then((user) => Promise.allSettled(
               user.anuncios
                 .filter((anuncio) => anuncio.status === 'PUBLICADO')
@@ -1166,13 +1167,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
               ? [indexNowContext(result.value)]
               : []
             )).catch(() => anuncioEstaPublicamenteIndexavel(ad.status) ? [indexNowContext(ad)] : [])
-          : Promise.resolve(anuncioEstaPublicamenteIndexavel(ad.status) ? [indexNowContext(ad)] : [])
+          : Promise.resolve(anuncioEstaPublicamenteIndexavel(ad.status) ? [indexNowContext(ad)] : []))
         const response = await blockAdminAdAndUser(ad.id, {
           categoria: category,
           motivo: reason.trim(),
           observacaoInterna: internalNote.trim() || null,
         })
-        void publicAdsPromise.then((previous) => {
+        void Promise.resolve().then(() => {
           if (previous.length > 0) {
             void enviarIndexNowNoCliente(montarEventoIndexNowAnuncios({
               eventType: 'RETIRADA',

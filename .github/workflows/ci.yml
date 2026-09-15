@@ -184,6 +184,7 @@ jobs:
           node scripts/test-owner-photo-preview.mjs
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
+          node scripts/test-indexnow-v3.mjs
           npm run test:search-indexing
           node scripts/test-search-indexing-artifact-selftest.mjs
           npm run test:seo-ai

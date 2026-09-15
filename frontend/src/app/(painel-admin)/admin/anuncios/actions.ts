@@ -15,13 +15,18 @@ export async function revalidarCacheCatalogoPublico(event?: IndexNowPublicEvent)
     const startedAt = Date.now()
     try {
       const result = await enviarUrlsParaIndexNow(event)
-      console.info('[IndexNow] public change processed.', {
+      const logResult = result.ok ? console.info : console.warn
+      logResult('[IndexNow] public change processed.', {
         eventType: result.eventType,
         status: result.status,
         ok: result.ok,
         attempts: result.attempts,
         urlCount: result.urlCount,
+        acceptedUrlCount: result.acceptedUrlCount,
+        failedUrlCount: result.failedUrlCount,
+        unattemptedUrlCount: result.unattemptedUrlCount,
         deduplicatedCount: result.deduplicatedCount,
+        reason: result.reason,
         durationMs: Date.now() - startedAt,
       })
     } catch (error) {

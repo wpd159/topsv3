@@ -101,7 +101,8 @@ export function AdminUsuarioDeleteDialog({
     setError(null)
     try {
       const eventFingerprint = idempotencyKey.current
-      const publicAdsPromise = getAdminUser(usuarioId)
+      // Capture os vinculos publicos antes que a exclusao os torne indisponiveis.
+      const publicAds = await getAdminUser(usuarioId)
         .then((user) => Promise.allSettled(
           user.anuncios
             .filter((anuncio) => anuncio.status === 'PUBLICADO')
@@ -109,9 +110,11 @@ export function AdminUsuarioDeleteDialog({
         ))
         .catch(() => [])
       const result = await deleteAdminUser(usuarioId, reason.trim(), eventFingerprint)
-      await revalidarCacheCatalogoPublico()
-      void publicAdsPromise.then((results) => {
-        const previous = results.flatMap((entry) => entry.status === 'fulfilled' ? [{
+      await revalidarCacheCatalogoPublico().catch(() => {
+        // A falha auxiliar de cache nao altera o resultado da exclusao.
+      })
+      void Promise.resolve().then(() => {
+        const previous = publicAds.flatMap((entry) => entry.status === 'fulfilled' ? [{
           slug: entry.value.slug,
           estadoUf: entry.value.localizacao?.uf,
           cidadeNome: entry.value.localizacao?.cidade,
