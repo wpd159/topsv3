@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { notFound, permanentRedirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import Link from "next/link"
 import { cache } from "react"
 import {
@@ -23,7 +23,6 @@ import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
-  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
@@ -139,9 +138,6 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
   const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
   if (page === null || ordemSeed === null) notFound()
   const bairroPath = buildPublicPath("acompanhantes", estado, cidade, bairro)
-  if (query.page === "1") {
-    permanentRedirect(buildPublicPageHref(bairroPath, 0, ordemSeed, query))
-  }
 
   let carregado
   try {

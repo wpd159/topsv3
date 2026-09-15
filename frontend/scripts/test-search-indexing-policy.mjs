@@ -172,11 +172,18 @@ assert.deepEqual(buildPublicListingIndexingDecision({ page: "3" }, 3), {
   canonicalQuery: "page=3",
 })
 assert.equal(parsePublicPage(undefined), 0)
-assert.equal(parsePublicPage("1"), 0)
-assert.equal(parsePublicPage("2"), 1)
-assert.equal(parsePublicPage("9007199254740991"), Number.MAX_SAFE_INTEGER - 1)
-for (const invalidPage of ["", "0", "-1", "abc", "1.5", "01", "+1", " 1", "1 ", "1e2", "9007199254740992", ["1"], ["2", "3"]]) {
+assert.equal(parsePublicPage("0"), 0)
+assert.equal(parsePublicPage("1"), 1)
+assert.equal(parsePublicPage("2"), 2)
+assert.equal(parsePublicPage("9007199254740991"), Number.MAX_SAFE_INTEGER)
+assert.equal(parsePublicPage(undefined, 1), 0)
+assert.equal(parsePublicPage("1", 1), 0)
+assert.equal(parsePublicPage("2", 1), 1)
+assert.equal(parsePublicPage("9007199254740991", 1), Number.MAX_SAFE_INTEGER - 1)
+assert.equal(parsePublicPage("0", 1), null)
+for (const invalidPage of ["", "-1", "abc", "1.5", "01", "+1", " 1", "1 ", "1e2", "9007199254740992", ["1"], ["2", "3"]]) {
   assert.equal(parsePublicPage(invalidPage), null)
+  assert.equal(parsePublicPage(invalidPage, 1), null)
 }
 assert.equal(isCleanPublicFirstPage(undefined, 0), true)
 assert.equal(isCleanPublicFirstPage("0", 0), false)
@@ -194,13 +201,15 @@ for (const [value, normalized] of [
 for (const value of ["", " ", "123 ", "+1", "1.5", "1e2", "abc", "0x10", "--1", "9223372036854775808", "-9223372036854775809", ["1"], ["1", "2"]]) {
   assert.equal(parsePublicOrderSeed(value), null)
 }
-for (const path of ["/anuncios", "/acompanhantes/sp", "/acompanhantes/sp/sao-paulo", "/acompanhantes/sp/sao-paulo/centro"]) {
+for (const path of ["/acompanhantes/sp", "/acompanhantes/sp/sao-paulo", "/acompanhantes/sp/sao-paulo/centro"]) {
   assert.equal(buildPublicUrl(path, 0), `https://topsdojob.com${path}`)
-  assert.equal(buildPublicUrl(path, 1), `https://topsdojob.com${path}?page=2`)
-  assert.equal(buildPublicUrl(path, 2), `https://topsdojob.com${path}?page=3`)
+  assert.equal(buildPublicUrl(path, 1), `https://topsdojob.com${path}?page=1`)
+  assert.equal(buildPublicUrl(path, 2), `https://topsdojob.com${path}?page=2`)
   assert.doesNotMatch(buildPublicUrl(path, 2), /seed/i)
+}
+for (const [path, pageBase] of [["/anuncios", 1], ["/acompanhantes/sp", 0], ["/acompanhantes/sp/sao-paulo", 0], ["/acompanhantes/sp/sao-paulo/centro", 0]]) {
   const filters = { page: "1", busca: "café 100%", categoria: "TODOS", ordemSeed: "123", filter: ["com-local", "foto"], utm_source: "teste", unused: undefined }
-  const first = new URL(buildPublicPageHref(path, 0, undefined, filters), "https://topsdojob.com")
+  const first = new URL(buildPublicPageHref(path, 0, undefined, filters, pageBase), "https://topsdojob.com")
   assert.equal(first.pathname, path)
   assert.equal(first.searchParams.has("page"), false)
   assert.equal(first.searchParams.get("busca"), "café 100%")
@@ -209,8 +218,8 @@ for (const path of ["/anuncios", "/acompanhantes/sp", "/acompanhantes/sp/sao-pau
   assert.deepEqual(first.searchParams.getAll("filter"), ["com-local", "foto"])
   assert.equal(first.searchParams.get("utm_source"), "teste")
   assert.equal(first.searchParams.has("unused"), false)
-  const next = new URL(buildPublicPageHref(path, 1, "9007199254740993", filters), "https://topsdojob.com")
-  assert.equal(next.searchParams.get("page"), "2")
+  const next = new URL(buildPublicPageHref(path, 1, "9007199254740993", filters, pageBase), "https://topsdojob.com")
+  assert.equal(next.searchParams.get("page"), String(1 + pageBase))
   assert.deepEqual(next.searchParams.getAll("ordemSeed"), ["9007199254740993"])
   assert.equal(next.searchParams.get("busca"), "café 100%")
   assert.deepEqual(next.searchParams.getAll("filter"), ["com-local", "foto"])
@@ -395,7 +404,7 @@ assert.doesNotMatch(rootLayoutSource, /SearchAction|potentialAction/)
 assert.match(listingPageSource, /buildPublicListingIndexingDecision/)
 assert.match(listingPageSource, /url\.search = indexingDecision\.canonicalQuery/)
 assert.match(listingPageSource, /buildPublicRobotsMetadata\(indexingDecision\.indexable/)
-assert.match(listingPageSource, /parsePublicPage\(searchParams\.page\)/)
+assert.match(listingPageSource, /parsePublicPage\(searchParams\.page, 1\)/)
 assert.match(listingPageSource, /parsePublicOrderSeed\(searchParams\.ordemSeed\)/)
 assert.match(statePageSource, /estadoDescoberto\.indexacao\.indexavel/)
 assert.match(cityPageSource, /isCidadeIndexavelLocal\(agregado\)/)

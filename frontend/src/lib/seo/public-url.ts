@@ -19,19 +19,19 @@ export function buildPublicPath(...segments: string[]) {
 
 export function buildPublicUrl(path: string, page = 0) {
   const url = new URL(path, `${getPublicSiteBaseUrl()}/`)
-  if (page > 0) url.searchParams.set("page", String(page + 1))
+  if (page > 0) url.searchParams.set("page", String(page))
   return url.toString()
 }
 
-// URLs use one-based pages; the catalog API remains zero-based.
-export function parsePublicPage(value?: string | string[]) {
+// Geographic URLs are zero-based; /anuncios explicitly uses one-based URLs.
+export function parsePublicPage(value?: string | string[], pageBase: 0 | 1 = 0) {
   if (value === undefined) return 0
   if (Array.isArray(value)) return null
   if (value === "") return null
-  if (!/^[1-9]\d*$/.test(value)) return null
+  if (!/^(0|[1-9]\d*)$/.test(value)) return null
 
   const page = Number(value)
-  return Number.isSafeInteger(page) ? page - 1 : null
+  return Number.isSafeInteger(page) && page >= pageBase ? page - pageBase : null
 }
 
 export function parsePublicOrderSeed(value?: string | string[]) {
@@ -47,6 +47,7 @@ export function buildPublicPageHref(
   page: number,
   ordemSeed?: string,
   searchParams: Record<string, string | string[] | undefined> = {},
+  pageBase: 0 | 1 = 0,
 ) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(searchParams)) {
@@ -55,7 +56,7 @@ export function buildPublicPageHref(
     }
   }
   query.delete("page")
-  if (page > 0) query.set("page", String(page + 1))
+  if (page > 0) query.set("page", String(page + pageBase))
   if (ordemSeed !== undefined) query.set("ordemSeed", ordemSeed)
   const suffix = query.toString()
   return suffix ? `${path}?${suffix}` : path

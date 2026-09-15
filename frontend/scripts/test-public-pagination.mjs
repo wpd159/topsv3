@@ -26,11 +26,14 @@ assert.equal(indexingMode, 'blocked', 'This fixture reuses the blocked CI build;
 const MAX_SEED = '9223372036854775807'
 const MIN_SEED = '-9223372036854775808'
 const routes = [
-  { name: 'catalog', pathname: '/anuncios', size: 16 },
-  { name: 'state', pathname: '/acompanhantes/go', size: 20 },
-  { name: 'city', pathname: '/acompanhantes/go/goiania', size: 20 },
-  { name: 'neighborhood', pathname: '/acompanhantes/go/goiania/centro', size: 20 },
+  { name: 'catalog', pathname: '/anuncios', size: 16, urlPageBase: 1 },
+  { name: 'state', pathname: '/acompanhantes/go', size: 20, urlPageBase: 0 },
+  { name: 'city', pathname: '/acompanhantes/go/goiania', size: 20, urlPageBase: 0 },
+  { name: 'neighborhood', pathname: '/acompanhantes/go/goiania/centro', size: 20, urlPageBase: 0 },
 ]
+// API indices are zero-based for both families. Geographic URLs retain their
+// historical zero-based convention; /anuncios alone uses one-based URLs.
+const pageParameter = (route, apiPage) => apiPage === 0 ? null : String(apiPage + route.urlPageBase)
 const requests = [], results = [], unexpected = [], browserErrors = [], cleanupErrors = []
 const syntheticLogo = await require('sharp')({ create: { width: 80, height: 24, channels: 3, background: '#fce7f3' } }).png().toBuffer()
 let freshSeeds = 0
@@ -209,21 +212,47 @@ async function slugsOnPage(page) {
     return new URL(link.getAttribute('href'), location.origin).pathname.split('/').at(-1)
   }))
 }
-async function metadata(page, pathname, pageNumber, filters = {}) {
+function serverPageRequests(start, route, apiPage, requestedSeed) {
+  const observed = requests.slice(start).filter((entry) => entry.boundary === 'server' && entry.path === `/api/public${route.pathname}`)
+  assert.ok(observed.length > 0, 'The actual Next route must request the selected API page.')
+  for (const entry of observed) {
+    assert.equal(new URLSearchParams(entry.query).get('pagina'), String(apiPage), `${route.pathname}: wrong API pagina`)
+    assert.equal(entry.page, apiPage)
+    assert.equal(entry.requestedSeed, requestedSeed)
+  }
+  return observed
+}
+async function metadata(page, route, apiPage, filters = {}) {
   const canonicals = await page.locator('link[rel="canonical"]').evaluateAll((nodes) => nodes.map((node) => node.href))
   assert.equal(canonicals.length, 1, 'Each HTML document has exactly one canonical.')
   const canonical = new URL(canonicals[0])
   assert.equal(canonical.origin, siteOrigin)
-  assert.equal(canonical.pathname, pathname)
-  assert.equal(canonical.searchParams.get('page'), pageNumber === 1 ? null : String(pageNumber))
+  assert.equal(canonical.pathname, route.pathname)
+  assert.equal(canonical.searchParams.get('page'), pageParameter(route, apiPage))
   assert.equal([...canonical.searchParams.keys()].some((key) => /seed/i.test(key)), false)
   for (const [key, value] of Object.entries(filters)) assert.equal(canonical.searchParams.get(key), value)
   const robots = await page.locator('meta[name="robots"]').evaluateAll((nodes) => nodes.map((node) => node.content).join(','))
   assert.match(robots, /noindex/)
   assert.match(robots, /nofollow/)
-  return { canonical: canonical.href, robots }
+  const relations = {}
+  if (route.urlPageBase === 0) {
+    for (const [rel, destination] of [['prev', apiPage - 1], ['next', apiPage + 1]]) {
+      const available = destination >= 0 && destination < Math.ceil(inventory.length / route.size)
+      const hrefs = await page.locator(`link[rel="${rel}"]`).evaluateAll((nodes) => nodes.map((node) => node.href))
+      assert.equal(hrefs.length, available ? 1 : 0, `${route.pathname}: incorrect rel=${rel}`)
+      if (available) {
+        const url = new URL(hrefs[0])
+        assert.equal(url.origin, siteOrigin)
+        assert.equal(url.pathname, route.pathname)
+        assert.equal(url.searchParams.get('page'), pageParameter(route, destination))
+        assert.equal(url.searchParams.has('ordemSeed'), false)
+        relations[rel] = url.href
+      }
+    }
+  }
+  return { canonical: canonical.href, robots, relations }
 }
-async function checkLinks(page, route, seed, filters = {}) {
+async function checkLinks(page, route, apiPage, seed, filters = {}) {
   const links = await pagination(page).locator('a[href]').evaluateAll((nodes) => nodes.map((node) => ({ href: node.getAttribute('href'), text: node.textContent.trim() })))
   assert.ok(links.length > 0, 'Pagination contains genuine HTML anchors.')
   for (const link of links) {
@@ -232,8 +261,14 @@ async function checkLinks(page, route, seed, filters = {}) {
     assert.equal(url.pathname, route.pathname)
     assert.equal(url.searchParams.get('ordemSeed'), seed, 'Every navigation link preserves the exact response seed.')
     const pageValue = url.searchParams.get('page')
-    assert.ok(pageValue === null || (/^[1-9]\d*$/.test(pageValue) && Number(pageValue) > 1), 'Page one has a clean URL; other links are one-based.')
+    assert.ok(pageValue === null || (/^[1-9]\d*$/.test(pageValue) && Number(pageValue) > route.urlPageBase), 'The first page link is clean; subsequent links use the route family convention.')
     for (const [key, value] of Object.entries(filters)) assert.equal(url.searchParams.get(key), value)
+  }
+  for (const [name, destination] of [[/anterior/i, apiPage - 1], [/pr[oó]xim/i, apiPage + 1]]) {
+    const available = destination >= 0 && destination < Math.ceil(inventory.length / route.size)
+    const navigationLinks = links.filter((link) => name.test(link.text))
+    assert.equal(navigationLinks.length, available ? 1 : 0, `${route.pathname}: incorrect previous/next anchor`)
+    if (available) assert.equal(new URL(navigationLinks[0].href, origin).searchParams.get('page'), pageParameter(route, destination))
   }
   return links
 }
@@ -281,10 +316,12 @@ try {
     indexingMode, siteOrigin, realNextSSR: true, realBackend: false, protectedMedia: false,
     syntheticGlobalAgeAcceptance: true, syntheticExplicitVerification: false, personalProfileUsed: false,
     syntheticLogoSha256: sha256(syntheticLogo),
+    pageConventions: routes.map(({ pathname, urlPageBase }) => ({ pathname, urlPageBase, apiPageBase: 0 })),
   })
 
   for (const route of routes) {
     await scenario(`nojs-${route.name}-complete`, false, async (page) => {
+      let requestStart = requests.length
       let response = await page.goto(`${origin}${route.pathname}`, { waitUntil: 'load' })
       const firstHref = await nextLink(page).getAttribute('href')
       const seed = new URL(firstHref, origin).searchParams.get('ordemSeed')
@@ -292,20 +329,24 @@ try {
       assert.ok(requests.some((entry) => entry.path === `/api/public${route.pathname}` && entry.requestedSeed === null && entry.seed === seed))
       const pages = Math.ceil(inventory.length / route.size), seen = [], observations = []
       for (let number = 1; number <= pages; number++) {
+        const apiPage = number - 1
         assert.equal(response.status(), 200)
         assert.match(response.headers()['content-type'], /text\/html/)
         assert.match(response.headers()['x-robots-tag'], /noindex/)
         const slugs = await slugsOnPage(page)
         assert.deepEqual(slugs, expectedSlugs(seed, number, route.size))
+        assert.equal(new URL(page.url()).searchParams.get('page'), pageParameter(route, apiPage))
+        serverPageRequests(requestStart, route, apiPage, number === 1 ? null : seed)
         seen.push(...slugs)
-        const meta = await metadata(page, route.pathname, number)
-        const links = await checkLinks(page, route, seed)
-        observations.push({ page: number, url: page.url(), slugs, ...meta, links })
+        const meta = await metadata(page, route, apiPage)
+        const links = await checkLinks(page, route, apiPage, seed)
+        observations.push({ position: number, apiPage, pageParameter: pageParameter(route, apiPage), url: page.url(), slugs, ...meta, links })
         write(`nojs-${route.name}-page-${number}.html`, await response.body())
         if (number === 1 || number === pages) await page.screenshot({ path: path.join(evidence, `nojs-${route.name}-page-${number}.png`), fullPage: true })
         if (number < pages) {
           const href = await nextLink(page).getAttribute('href')
-          assert.equal(new URL(href, origin).searchParams.get('page'), String(number + 1))
+          assert.equal(new URL(href, origin).searchParams.get('page'), pageParameter(route, apiPage + 1))
+          requestStart = requests.length
           ;[response] = await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), nextLink(page).click()])
         } else assert.equal(await pagination(page).getByRole('link', { name: /pr[oó]xim/i }).count(), 0)
       }
@@ -321,29 +362,56 @@ try {
 
   await scenario('nojs-direct-seeds-filters-and-invalid', false, async (page) => {
     const filters = { categoria: 'MASSAGENS', busca: 'fixture café & 100%_💖', anunciante: 'fixture-owner' }
+    const conventionObservations = []
     for (const route of routes) {
+      const directPages = route.urlPageBase === 0 ? [undefined, '0', '1', '2'] : [undefined, '2']
+      for (const value of directPages) {
+        const query = new URLSearchParams({ ordemSeed: MAX_SEED })
+        if (value !== undefined) query.set('page', value)
+        const requestedUrl = `${origin}${route.pathname}?${query}`
+        const requestStart = requests.length
+        const response = await page.goto(requestedUrl, { waitUntil: 'load' })
+        const apiPage = value === undefined ? 0 : Number(value) - route.urlPageBase
+        assert.equal(response.status(), 200)
+        assert.equal(response.request().redirectedFrom(), null, 'Valid direct pages must retain their historical URL without a redirect.')
+        assert.equal(page.url(), requestedUrl)
+        assert.deepEqual(await slugsOnPage(page), expectedSlugs(MAX_SEED, apiPage + 1, route.size))
+        const observed = serverPageRequests(requestStart, route, apiPage, MAX_SEED)
+        const meta = await metadata(page, route, apiPage)
+        const links = await checkLinks(page, route, apiPage, MAX_SEED)
+        conventionObservations.push({ pathname: route.pathname, requestedPage: value ?? null, url: page.url(), status: response.status(), apiPages: observed.map((entry) => entry.page), ...meta, links })
+      }
       for (const [inputSeed, seed] of [[MAX_SEED, MAX_SEED], [MIN_SEED, MIN_SEED], ['00042', '42']]) {
         const params = new URLSearchParams({ page: '2', ordemSeed: inputSeed, ...(route.name === 'catalog' ? filters : {}) })
+        const requestStart = requests.length
         const response = await page.goto(`${origin}${route.pathname}?${params}`, { waitUntil: 'load' })
+        const apiPage = 2 - route.urlPageBase
         assert.equal(response.status(), 200)
-        assert.deepEqual(await slugsOnPage(page), expectedSlugs(seed, 2, route.size))
-        await metadata(page, route.pathname, 2, route.name === 'catalog' ? filters : {})
-        await checkLinks(page, route, seed, route.name === 'catalog' ? filters : {})
+        assert.deepEqual(await slugsOnPage(page), expectedSlugs(seed, apiPage + 1, route.size))
+        serverPageRequests(requestStart, route, apiPage, seed)
+        await metadata(page, route, apiPage, route.name === 'catalog' ? filters : {})
+        await checkLinks(page, route, apiPage, seed, route.name === 'catalog' ? filters : {})
       }
-      const redirectQuery = new URLSearchParams({ page: '1', ordemSeed: MAX_SEED, utm_source: 'fixture', tag: 'a & b' })
-      const redirect = await fetch(`${origin}${route.pathname}?${redirectQuery}`, { redirect: 'manual' })
-      assert.equal(redirect.status, 308, 'Explicit page one normalizes with an HTTP permanent redirect.')
-      const destination = new URL(redirect.headers.get('location'), origin)
-      redirectQuery.delete('page')
-      assert.equal(destination.pathname, route.pathname)
-      assert.deepEqual([...destination.searchParams].sort(), [...redirectQuery].sort(), 'Page-one redirect removes only page.')
-      await redirect.arrayBuffer()
-      for (const query of ['page=0', 'page=-1', 'page=', 'page=1.5', 'page=9007199254740992', 'page=2&page=3', 'page=99', 'ordemSeed=', 'ordemSeed=nope', 'ordemSeed=9223372036854775808', 'ordemSeed=-9223372036854775809', 'ordemSeed=1&ordemSeed=2']) {
+      if (route.urlPageBase === 1) {
+        const redirectQuery = new URLSearchParams({ page: '1', ordemSeed: MAX_SEED, utm_source: 'fixture', tag: 'a & b' })
+        const redirect = await fetch(`${origin}${route.pathname}?${redirectQuery}`, { redirect: 'manual' })
+        assert.equal(redirect.status, 308, 'Only /anuncios page one normalizes with an HTTP permanent redirect.')
+        const destination = new URL(redirect.headers.get('location'), origin)
+        redirectQuery.delete('page')
+        assert.equal(destination.pathname, route.pathname)
+        assert.deepEqual([...destination.searchParams].sort(), [...redirectQuery].sort(), 'Page-one redirect removes only page.')
+        conventionObservations.push({ pathname: route.pathname, requestedPage: '1', status: redirect.status, destination: destination.href })
+        await redirect.arrayBuffer()
+      }
+      const invalidPages = [...(route.urlPageBase === 1 ? ['page=0'] : []), 'page=-1', 'page=', 'page=1.5', 'page=9007199254740992', 'page=2&page=3', 'page=99', 'ordemSeed=', 'ordemSeed=nope', 'ordemSeed=9223372036854775808', 'ordemSeed=-9223372036854775809', 'ordemSeed=1&ordemSeed=2']
+      for (const query of invalidPages) {
         const response = await page.goto(`${origin}${route.pathname}?${query}`, { waitUntil: 'load' })
         assert.equal(response.status(), 404, `${route.pathname}?${query} must not render a valid catalog.`)
         assert.equal(await page.locator('.public-anuncio-card').count(), 0)
+        if (query === 'page=0') conventionObservations.push({ pathname: route.pathname, requestedPage: '0', status: response.status() })
       }
     }
+    writeJson('nojs-page-conventions.json', conventionObservations)
     const failed = await page.goto(`${origin}/anuncios?busca=fixture-503`, { waitUntil: 'load' })
     assert.equal(failed.status(), 500, 'An upstream 503 remains a technical failure, not a successful empty listing.')
   })
@@ -370,7 +438,7 @@ try {
     await nextLink(page).click()
     await page.waitForURL(continuation.href)
     await waitFor(async () => (await slugsOnPage(page))[0] === expectedSlugs(seed, 5, 16)[0], 'deep link renders the selected page')
-    await metadata(page, '/anuncios', 5)
+    await metadata(page, routes[0], 4)
     const browserPages = requests.filter((entry) => entry.boundary === 'browser' && entry.path === '/api/public/anuncios')
     assert.ok(browserPages.length >= 3)
     assert.equal(browserPages.every((entry) => entry.requestedSeed === seed), true)
@@ -418,7 +486,7 @@ try {
     const afterSearchSeed = new URL(await nextLink(page).getAttribute('href'), origin).searchParams.get('ordemSeed')
     assert.ok(requests.slice(beforeSearch).some((entry) => entry.path === '/api/public/anuncios' && entry.requestedSeed === null && entry.seed === afterSearchSeed))
     assert.notEqual(afterSearchSeed, afterRemoveSeed)
-    await metadata(page, '/anuncios', 1, { busca: 'fixture outra busca' })
+    await metadata(page, routes[0], 0, { busca: 'fixture outra busca' })
     await page.screenshot({ path: path.join(evidence, 'js-new-search-fresh-chain.png'), fullPage: false })
   })
 
@@ -426,12 +494,14 @@ try {
     const route = routes[2]
     await page.goto(`${origin}${route.pathname}?ordemSeed=${MIN_SEED}`, { waitUntil: 'load' })
     const href = new URL(await nextLink(page).getAttribute('href'), origin).href
+    assert.equal(new URL(href).searchParams.get('page'), '1', 'The second geographic result page keeps its historical page=1 URL.')
     const before = requests.length
     await nextLink(page).click()
     await page.waitForURL(href)
     await waitFor(async () => (await slugsOnPage(page))[0] === expectedSlugs(MIN_SEED, 2, 20)[0], 'geographic page two')
     assert.deepEqual(await slugsOnPage(page), expectedSlugs(MIN_SEED, 2, 20))
-    await metadata(page, route.pathname, 2)
+    serverPageRequests(before, route, 1, MIN_SEED)
+    await metadata(page, route, 1)
     assert.equal(requests.slice(before).some((entry) => entry.boundary === 'browser' && entry.path.startsWith('/api/public/acompanhantes/')), false, 'Locality links use Next navigation, not a second manual API path.')
     await page.screenshot({ path: path.join(evidence, 'js-city-page-two-mobile.png'), fullPage: true })
   }, { width: 390, height: 844 })

@@ -225,6 +225,62 @@ function anunciosModule(listarAnunciosPublicos) {
   })
 }
 
+const geographicScopes = [
+  { route: "[estado]", path: "/acompanhantes/go", method: "listarPublicosPorEstado", segments: ["go"] },
+  { route: "[estado]/[cidade]", path: "/acompanhantes/go/goiania", method: "listarPublicosPorCidade", segments: ["go", "goiania"] },
+  { route: "[estado]/[cidade]/[bairro]", path: "/acompanhantes/go/goiania/centro", method: "listarPublicosPorBairro", segments: ["go", "goiania", "centro"] },
+]
+const geographicDependencies = {
+  "@/lib/seo/public-url": publicUrlModule,
+  "@/lib/seo/search-indexing-policy": policyModule,
+  "@/components/stories/stories-bar": { StoriesBar() {} },
+  "@/lib/media/public-media": { selecionarCapaPublicaSegura: () => null, fontePublicaSegura: () => null },
+}
+for (const name of ["text/encoding", "seo/local-labels", "seo/local-indexing", "seo/public-metadata", "seo/programmatic-content", "seo/cidadeSeo", "seo/seoContentGeneratorBairro", "seo/acompanhantes-navigation", "seo/json-ld"]) {
+  geographicDependencies[`@/lib/${name}`] = loadTypeScriptModule(`src/lib/${name}.ts`, {
+    dependencies: geographicDependencies,
+  })
+}
+const geographicListing = loadTypeScriptModule("src/components/anuncios/listagem-publica-paginada.tsx", {
+  dependencies: { "@/lib/seo/public-url": publicUrlModule, "./anuncio-card": function AnuncioCard() {} },
+})
+geographicDependencies["@/components/anuncios/listagem-publica-paginada"] = geographicListing
+
+function localityModule(scope) {
+  const requests = []
+  const indexacao = { indexavel: true, canonica: true, motivo: "INVENTARIO_SUFICIENTE", anunciosElegiveisUnicos: 83, minimoNecessario: 5 }
+  const aggregate = {
+    estadoUf: "GO", estadoNome: "Goiás", cidadeNome: "Goiânia", cidadeSlug: "goiania", totalAnunciosAtivos: 83, indexacao,
+    bairros: [{ bairroNome: "Centro", bairroSlug: "centro", indexacao }], categoriasPrincipais: [], cidadesRelacionadas: [],
+  }
+  const module = loadTypeScriptModule(`src/app/(public-routes)/acompanhantes/${scope.route}/page.tsx`, {
+    dependencies: {
+      ...geographicDependencies,
+      "@/lib/public-catalog-server-api": {
+        isPublicCatalogNotFound: (error) => error?.status === 400 || error?.status === 404,
+        descobrirLocalidadesPublicas: async () => ({ estados: [{ uf: "GO", indexacao, cidades: [] }] }),
+        obterAgregadoPublicoCidade: async () => aggregate,
+        [scope.method]: async (...args) => {
+          requests.push(args)
+          const [pagina, tamanho, ordemSeed] = args.slice(scope.segments.length)
+          return {
+            itens: Array.from({ length: Math.max(0, Math.min(tamanho, 83 - pagina * tamanho)) }, (_, index) => ({ id: `teste-${pagina * tamanho + index}`, slug: `teste-${pagina * tamanho + index}`, titulo: "Anúncio sintético", midias: [] })),
+            localidade: { uf: "GO", estado: "Goiás", cidade: "Goiânia", bairro: "Centro" },
+            paginacao: { pagina, tamanho, totalItens: 83, totalPaginas: 5, ordemSeed: ordemSeed ?? "123" },
+          }
+        },
+      },
+    },
+  })
+  return { module, requests }
+}
+
+function elementNodes(root, predicate) {
+  if (Array.isArray(root)) return root.flatMap((child) => elementNodes(child, predicate))
+  if (!root || typeof root !== "object") return []
+  return [...(predicate(root) ? [root] : []), ...elementNodes(root.props?.children, predicate)]
+}
+
 function emptyCatalog() {
   return {
     itens: [],
@@ -495,6 +551,45 @@ await test("page=1 do catalogo redireciona permanentemente sem consulta API", as
   assert.equal(requests, 0)
 })
 
+for (const scope of geographicScopes) {
+  await test(`${scope.path}: ausente e page=0/1/2 preservam API, canonical e navegacao zero-based sem redirect`, async () => {
+    for (const pageValue of [undefined, "0", "1", "2"]) {
+      const { module, requests } = localityModule(scope)
+      const pageIndex = pageValue === undefined ? 0 : Number(pageValue)
+      const query = { page: pageValue, ordemSeed: "9007199254740993", filter: ["com-local", "foto"] }
+      const props = { params: Promise.resolve({ estado: "go", cidade: "goiania", bairro: "centro" }), searchParams: Promise.resolve(query) }
+      const metadata = await module.generateMetadata(props)
+      const tree = await module.default(props)
+      assert.deepEqual(requests, [[...scope.segments, pageIndex, 20, "9007199254740993"]])
+      const canonical = `https://topsdojob.com${scope.path}${pageIndex > 0 ? `?page=${pageIndex}` : ""}`
+      assert.equal(metadata.alternates.canonical, canonical)
+      assert.equal(metadata.openGraph.url, canonical)
+      assert.equal(metadata.robots.index, pageValue === undefined)
+      assert.equal(metadata.robots.follow, true)
+      if (pageIndex > 0) assert.match(metadata.title, new RegExp(`Página ${pageIndex + 1}`))
+      const previous = elementNodes(tree, (node) => node.type === "link" && node.props.rel === "prev")
+      const next = elementNodes(tree, (node) => node.type === "link" && node.props.rel === "next")
+      assert.equal(previous.length, pageIndex > 0 ? 1 : 0)
+      if (previous.length) assert.equal(previous[0].props.href, `https://topsdojob.com${scope.path}${pageIndex > 1 ? `?page=${pageIndex - 1}` : ""}`)
+      assert.equal(next.length, 1)
+      assert.equal(next[0].props.href, `https://topsdojob.com${scope.path}?page=${pageIndex + 1}`)
+      const listing = elementNodes(tree, (node) => node.type === geographicListing.ListagemPublicaPaginada)
+      assert.equal(listing.length, 1)
+      assert.equal(listing[0].props.initialData.paginacao.pagina, pageIndex)
+      assert.equal(listing[0].props.searchParams, query)
+      const navigation = geographicListing.ListagemPublicaPaginada(listing[0].props)
+      const nextLink = elementNodes(navigation, (node) => node.props?.children === "Proxima")[0]
+      const nextUrl = new URL(nextLink.props.href, "https://topsdojob.com")
+      assert.equal(nextUrl.pathname, scope.path)
+      assert.equal(nextUrl.searchParams.get("page"), String(pageIndex + 1))
+      assert.equal(nextUrl.searchParams.get("ordemSeed"), "9007199254740993")
+      assert.deepEqual(nextUrl.searchParams.getAll("filter"), ["com-local", "foto"])
+      assert.equal(nextLink.props.onClick, undefined)
+      assert.equal(nextLink.props.prefetch, false)
+    }
+  })
+}
+
 await test("blog vazio fica fora do sitemap", async () => {
   const module = sitemapModule(async (url) => ({
     ok: true,
@@ -565,5 +660,5 @@ await test("fontes nao mascaram falhas nem expõem contrato programatico", async
   assert.doesNotMatch(sitemap, /seed|ordemseed/i)
 })
 
-assert.equal(executed, 26)
+assert.equal(executed, 29)
 console.log(`PUBLIC_HTTP_STATES_RESULT=OK tests=${executed}`)

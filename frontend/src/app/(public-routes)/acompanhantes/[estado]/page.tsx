@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { notFound, permanentRedirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import Link from "next/link"
 import { cache } from "react"
 import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
@@ -17,7 +17,6 @@ import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { getEstadoNomePorUf } from "@/lib/seo/acompanhantes-navigation"
 import {
-  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
@@ -181,9 +180,6 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
   const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
   if (page === null || ordemSeed === null) notFound()
   const estadoPath = buildPublicPath("acompanhantes", estado)
-  if (query.page === "1") {
-    permanentRedirect(buildPublicPageHref(estadoPath, 0, ordemSeed, query))
-  }
 
   let carregado
   try {

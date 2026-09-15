@@ -286,7 +286,7 @@ export default function AnunciosGrid({
         <nav aria-label="Paginação do catálogo" className="flex flex-wrap justify-center gap-3 border-t py-4">
           {currentPage > 1 && (
             <Link
-              href={buildPublicPageHref("/anuncios", currentPage - 2, ordemSeed, paginationQuery)}
+              href={buildPublicPageHref("/anuncios", currentPage - 2, ordemSeed, paginationQuery, 1)}
               prefetch={false}
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
             >
@@ -295,7 +295,7 @@ export default function AnunciosGrid({
           )}
           {proximaPagina !== null && (
             <Link
-              href={buildPublicPageHref("/anuncios", proximaPagina, ordemSeed, paginationQuery)}
+              href={buildPublicPageHref("/anuncios", proximaPagina, ordemSeed, paginationQuery, 1)}
               prefetch={false}
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
             >

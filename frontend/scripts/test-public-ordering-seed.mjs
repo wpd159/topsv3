@@ -177,19 +177,20 @@ assert.equal(
 )
 
 const scopes = [
-  { path: "/anuncios", size: 16, fetchPage: (page, seed) => catalogApi.listarAnunciosPublicos("TODOS", "termo", page, 16, seed) },
-  { path: "/acompanhantes/go", size: 20, fetchPage: (page, seed) => catalogApi.listarPublicosPorEstado("go", page, 20, seed) },
-  { path: "/acompanhantes/go/goiania", size: 20, fetchPage: (page, seed) => catalogApi.listarPublicosPorCidade("go", "goiania", page, 20, seed) },
-  { path: "/acompanhantes/go/goiania/centro", size: 20, fetchPage: (page, seed) => catalogApi.listarPublicosPorBairro("go", "goiania", "centro", page, 20, seed) },
+  { path: "/anuncios", pageBase: 1, size: 16, fetchPage: (page, seed) => catalogApi.listarAnunciosPublicos("TODOS", "termo", page, 16, seed) },
+  { path: "/acompanhantes/go", pageBase: 0, size: 20, fetchPage: (page, seed) => catalogApi.listarPublicosPorEstado("go", page, 20, seed) },
+  { path: "/acompanhantes/go/goiania", pageBase: 0, size: 20, fetchPage: (page, seed) => catalogApi.listarPublicosPorCidade("go", "goiania", page, 20, seed) },
+  { path: "/acompanhantes/go/goiania/centro", pageBase: 0, size: 20, fetchPage: (page, seed) => catalogApi.listarPublicosPorBairro("go", "goiania", "centro", page, 20, seed) },
 ]
-for (const { path, size, fetchPage } of scopes) {
+for (const { path, pageBase, size, fetchPage } of scopes) {
   for (const seed of ["101", "202"]) {
     const seenIds = []
     let href = `${path}?ordemSeed=${seed}`
     let pagesVisited = 0
     while (href) {
       const url = new URL(href, "https://topsdojob.com")
-      const pageIndex = publicUrl.parsePublicPage(url.searchParams.get("page") ?? undefined)
+      const pageIndex = publicUrl.parsePublicPage(url.searchParams.get("page") ?? undefined, pageBase)
+      assert.equal(url.searchParams.get("page"), pagesVisited === 0 ? null : String(pagesVisited + pageBase))
       const parsedSeed = publicUrl.parsePublicOrderSeed(url.searchParams.get("ordemSeed"))
       const data = await fetchPage(pageIndex, parsedSeed)
       assert.equal(requests.at(-1).requestUrl.searchParams.get("pagina"), String(pagesVisited))
@@ -199,7 +200,7 @@ for (const { path, size, fetchPage } of scopes) {
       seenIds.push(...data.itens.map(({ id }) => id))
       pagesVisited += 1
       href = pagesVisited < data.paginacao.totalPaginas
-        ? publicUrl.buildPublicPageHref(path, pagesVisited, data.paginacao.ordemSeed)
+        ? publicUrl.buildPublicPageHref(path, pagesVisited, data.paginacao.ordemSeed, {}, pageBase)
         : null
     }
     assert.ok(pagesVisited > 3)
@@ -228,28 +229,31 @@ function nodes(root, predicate) {
   if (!root || typeof root !== "object") return []
   return [...(predicate(root) ? [root] : []), ...nodes(root.props?.children, predicate)]
 }
-for (const pageIndex of [0, 2, 4]) {
-  const data = await catalogApi.listarPublicosPorEstado("go", pageIndex, 20, "101")
-  const tree = listingComponent.ListagemPublicaPaginada({
-    caminhoBase: "/acompanhantes/go",
-    initialData: data,
-    searchParams: { filter: ["com-local", "foto"], ordemSeed: "202" },
-  })
-  const links = nodes(tree, (node) => node.type === Link)
-  const previous = links.find((link) => link.props.children === "Anterior")
-  const next = links.find((link) => link.props.children === "Proxima")
-  assert.equal(Boolean(previous), pageIndex > 0)
-  assert.equal(Boolean(next), pageIndex < 4)
-  for (const link of links) {
-    const url = new URL(link.props.href, "https://topsdojob.com")
-    assert.equal(url.searchParams.get("ordemSeed"), "101", "navigation uses the returned seed")
-    assert.deepEqual(url.searchParams.getAll("filter"), ["com-local", "foto"])
-    assert.equal(link.props.prefetch, false)
-    assert.equal(link.props.onClick, undefined, "SSR navigation must reach the page and its metadata")
+for (const { path, fetchPage } of scopes.filter((scope) => scope.pageBase === 0)) {
+  for (const pageIndex of [0, 1, 2, 4]) {
+    const data = await fetchPage(pageIndex, "101")
+    const tree = listingComponent.ListagemPublicaPaginada({
+      caminhoBase: path,
+      initialData: data,
+      searchParams: { filter: ["com-local", "foto"], ordemSeed: "202" },
+    })
+    const links = nodes(tree, (node) => node.type === Link)
+    const previous = links.find((link) => link.props.children === "Anterior")
+    const next = links.find((link) => link.props.children === "Proxima")
+    assert.equal(Boolean(previous), pageIndex > 0)
+    assert.equal(Boolean(next), pageIndex < 4)
+    for (const link of links) {
+      const url = new URL(link.props.href, "https://topsdojob.com")
+      assert.equal(url.pathname, path)
+      assert.equal(url.searchParams.get("ordemSeed"), "101", "navigation uses the returned seed")
+      assert.deepEqual(url.searchParams.getAll("filter"), ["com-local", "foto"])
+      assert.equal(link.props.prefetch, false)
+      assert.equal(link.props.onClick, undefined, "SSR navigation must reach the page and its metadata")
+    }
+    if (previous) assert.equal(new URL(previous.props.href, "https://topsdojob.com").searchParams.get("page"), pageIndex === 1 ? null : String(pageIndex - 1))
+    if (next) assert.equal(new URL(next.props.href, "https://topsdojob.com").searchParams.get("page"), String(pageIndex + 1))
+    assert.equal(links.find((link) => link.props["aria-current"] === "page").props.children, pageIndex + 1)
   }
-  if (previous) assert.equal(new URL(previous.props.href, "https://topsdojob.com").searchParams.get("page"), String(pageIndex))
-  if (next) assert.equal(new URL(next.props.href, "https://topsdojob.com").searchParams.get("page"), String(pageIndex + 2))
-  assert.equal(links.find((link) => link.props["aria-current"] === "page").props.children, pageIndex + 1)
 }
 
 assert.match(api, /ordemSeed: string/)

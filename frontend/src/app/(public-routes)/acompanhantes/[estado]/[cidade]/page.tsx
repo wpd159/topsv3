@@ -1,6 +1,6 @@
 import { Metadata } from "next"
 import Link from "next/link"
-import { notFound, permanentRedirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { cache } from "react"
 import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
@@ -27,7 +27,6 @@ import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
-  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
@@ -116,9 +115,6 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
   const ordemSeed = parsePublicOrderSeed(query.ordemSeed)
   if (page === null || ordemSeed === null) notFound()
   const cidadePath = buildPublicPath("acompanhantes", estado, cidade)
-  if (query.page === "1") {
-    permanentRedirect(buildPublicPageHref(cidadePath, 0, ordemSeed, query))
-  }
 
   let carregado
   try {

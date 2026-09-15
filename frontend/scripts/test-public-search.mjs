@@ -157,29 +157,31 @@ await test("seed nao entra no canonical", () => {
   assert.equal(decision.canonicalQuery, "busca=termo")
 })
 
-await test("busca paginada SSR preserva filtros, seed e canonical proprio", async () => {
-  const requests = []
-  const page = loadListingPage(async (...args) => {
-    requests.push(args)
-    return { ...emptyCatalog(), paginacao: { pagina: 1, tamanho: 16, totalItens: 33, totalPaginas: 3, ordemSeed: "9007199254740993" } }
-  })
-  const searchParams = { page: "2", busca: "café 100%_vip\\foto", categoria: "TODOS", anunciante: "anunciante-teste", ordemSeed: "9007199254740993", utm_source: "teste" }
-  const metadata = await page.generateMetadata({ searchParams: Promise.resolve(searchParams) })
-  const rendered = await page.default({ searchParams: Promise.resolve(searchParams) })
-  assert.deepEqual(requests, [["TODOS", "café 100%_vip\\foto", 1, 16, "9007199254740993", "anunciante-teste"]])
-  assert.equal(rendered.props.initialRequest.currentPage, 2)
-  assert.equal(rendered.props.initialRequest.requestedSeed, "9007199254740993")
-  assert.equal(rendered.props.initialData.paginacao.ordemSeed, "9007199254740993")
-  const canonical = new URL(metadata.alternates.canonical)
-  assert.equal(canonical.searchParams.get("page"), "2")
-  assert.equal(canonical.searchParams.get("busca"), searchParams.busca)
-  assert.equal(canonical.searchParams.get("anunciante"), "anunciante-teste")
-  assert.equal(canonical.searchParams.has("ordemSeed"), false)
-  assert.equal(canonical.searchParams.has("utm_source"), false)
-  assert.equal(metadata.openGraph.url, canonical.toString())
-  assert.equal(metadata.robots.index, false)
-  assert.equal(metadata.robots.follow, true)
-  assert.match(metadata.title, /Página 2/)
+await test("busca paginada SSR continua one-based e preserva filtros, seed e canonical proprio", async () => {
+  for (const publicPage of [2, 3]) {
+    const requests = []
+    const page = loadListingPage(async (...args) => {
+      requests.push(args)
+      return { ...emptyCatalog(), paginacao: { pagina: publicPage - 1, tamanho: 16, totalItens: 33, totalPaginas: 3, ordemSeed: "9007199254740993" } }
+    })
+    const searchParams = { page: String(publicPage), busca: "café 100%_vip\\foto", categoria: "TODOS", anunciante: "anunciante-teste", ordemSeed: "9007199254740993", utm_source: "teste" }
+    const metadata = await page.generateMetadata({ searchParams: Promise.resolve(searchParams) })
+    const rendered = await page.default({ searchParams: Promise.resolve(searchParams) })
+    assert.deepEqual(requests, [["TODOS", "café 100%_vip\\foto", publicPage - 1, 16, "9007199254740993", "anunciante-teste"]])
+    assert.equal(rendered.props.initialRequest.currentPage, publicPage)
+    assert.equal(rendered.props.initialRequest.requestedSeed, "9007199254740993")
+    assert.equal(rendered.props.initialData.paginacao.ordemSeed, "9007199254740993")
+    const canonical = new URL(metadata.alternates.canonical)
+    assert.equal(canonical.searchParams.get("page"), String(publicPage))
+    assert.equal(canonical.searchParams.get("busca"), searchParams.busca)
+    assert.equal(canonical.searchParams.get("anunciante"), "anunciante-teste")
+    assert.equal(canonical.searchParams.has("ordemSeed"), false)
+    assert.equal(canonical.searchParams.has("utm_source"), false)
+    assert.equal(metadata.openGraph.url, canonical.toString())
+    assert.equal(metadata.robots.index, false)
+    assert.equal(metadata.robots.follow, true)
+    assert.match(metadata.title, new RegExp(`Página ${publicPage}`))
+  }
 })
 
 await test("page=1 remove somente page e preserva busca, filtros repetidos e seed", async () => {

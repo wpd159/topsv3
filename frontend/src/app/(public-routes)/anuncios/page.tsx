@@ -34,7 +34,7 @@ export async function generateMetadata({
   searchParams: Promise<AnunciosSearchParams>
 }): Promise<Metadata> {
   const searchParams = await searchParamsPromise
-  const pageIndex = parsePublicPage(searchParams.page)
+  const pageIndex = parsePublicPage(searchParams.page, 1)
   if (pageIndex === null || parsePublicOrderSeed(searchParams.ordemSeed) === null) {
     return {
       title: "Página inválida | Tops do Job",
@@ -95,11 +95,11 @@ export default async function AnunciosPage({
   searchParams: Promise<AnunciosSearchParams>
 }) {
   const searchParams = await searchParamsPromise
-  const pageIndex = parsePublicPage(searchParams.page)
+  const pageIndex = parsePublicPage(searchParams.page, 1)
   const requestedSeed = parsePublicOrderSeed(searchParams.ordemSeed)
   if (pageIndex === null || requestedSeed === null) notFound()
   if (searchParams.page === "1") {
-    permanentRedirect(buildPublicPageHref("/anuncios", 0, requestedSeed, searchParams))
+    permanentRedirect(buildPublicPageHref("/anuncios", 0, requestedSeed, searchParams, 1))
   }
   const currentPage = pageIndex + 1
   const categoria = searchValue(searchParams.categoria).trim() || "TODOS"

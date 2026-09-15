@@ -172,7 +172,7 @@ assert.ok(
 
 assert.ok(
   listingPageSource.includes('buildPublicListingIndexingDecision(searchParams, page)') &&
-    listingPageSource.includes('parsePublicPage(searchParams.page)') &&
+    listingPageSource.includes('parsePublicPage(searchParams.page, 1)') &&
     listingPageSource.includes('parsePublicOrderSeed(searchParams.ordemSeed)'),
   'the one-based listing must reject ambiguous pages and use the indexing policy',
 )
@@ -181,9 +181,11 @@ for (const localityPageSource of [statePageSource, cityPageSource, neighborhoodP
     localityPageSource.includes('isCleanPublicFirstPage(pageValue, page)'),
     'only the clean locality first page may be indexable',
   )
+  assert.match(localityPageSource, /parsePublicPage\(query\.page\)/)
+  assert.doesNotMatch(localityPageSource, /permanentRedirect/)
 }
+assert.match(listingPageSource, /permanentRedirect\(buildPublicPageHref\(/)
 for (const pageSource of [listingPageSource, statePageSource, cityPageSource, neighborhoodPageSource]) {
-  assert.match(pageSource, /permanentRedirect\(buildPublicPageHref\(/)
   assert.match(pageSource, /parsePublicOrderSeed\(/)
   assert.doesNotMatch(pageSource, /buildPublicUrl\([^)]*ordemSeed/)
 }
