@@ -429,6 +429,7 @@ function ConvertTo-TopsSecretCandidateValue {
 function Test-TopsAllowedExternalSecretReference {
   param([AllowNull()][string]$Value)
   $clean = ConvertTo-TopsSecretCandidateValue $Value
+  if ($clean -cmatch '\A\$\{\{[ \t]*github\.token[ \t]*\}\}\z') { return $true }
   $allowedNames = @(
     "EFI_CLIENT_SECRET",
     "DATABASE_PASSWORD",
