@@ -232,12 +232,13 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   async redirects() {
-    const temas = ["acompanhantes", "garotas-de-programa", "anuncios-adultos"] as const
-    return temas.map((tema) => ({
-      source: `/blog/${tema}/:cidade`,
-      destination: `/blog/cidade/${tema}/:cidade`,
-      permanent: true,
-    }))
+    return [
+      {
+        source: "/privacidade",
+        destination: "/politica-de-privacidade",
+        permanent: true,
+      },
+    ]
   },
 
   images: {

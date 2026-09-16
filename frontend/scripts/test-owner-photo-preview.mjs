@@ -30,6 +30,8 @@ const { webpack } = bundledWebpack
 const config = await loadConfig(PHASE_PRODUCTION_BUILD, frontend)
 const baseRef = process.env.TOPS_OWNER_BASE_REF
 const detailBaseRef = process.env.TOPS_OWNER_DETAIL_BASE_REF
+const publicCardBaseRef = process.env.TOPS_SEO_BASE_REF
+const publicCardSource = 'src/components/anuncios/anuncio-card.tsx'
 const detailSource = 'src/components/anuncios/meu-anuncio-detalhe-view.tsx'
 const guardSource = 'src/components/auth/private-session-guard.tsx'
 const ownerListSource = 'src/app/(private-routes)/meus-anuncios/page.tsx'
@@ -44,6 +46,15 @@ const inputs = [...baseFiles, detailSource, guardSource, ownerListSource, 'src/c
 const inputHashes = Object.fromEntries(inputs.map((name) => [name, digest(fs.readFileSync(path.join(frontend, name)))]))
 write('inputs-before.json', JSON.stringify(inputHashes, null, 2))
 const privateOrigin = 'https://00000000000000000000000000000000.r2.cloudflarestorage.com'
+const publicOrigin = 'https://pub-00000000000000000000000000000000.r2.dev'
+const publicCards = Array.from({ length: 12 }, (_, card) => ({
+  id: `public-card-${card}`, slug: `perfil-sintetico-${card}`, nome: `Perfil sintético ${card}`, valor: 'R$ 100',
+  carrosselDisponivel: true, midias: Array.from({ length: 3 }, (_, photo) => ({
+    id: `photo-${card}-${photo}`, tipo: 'FOTO', ordem: photo, visibilidadeMidia: 'LIVRE', autorizada: true,
+    urlPublica: `${publicOrigin}/synthetic-public/card-${card}-photo-${photo}.png`,
+  })),
+}))
+const publicCardMeasurements = []
 const privateUrl = (photo = 'a', generation = 1) => `${privateOrigin}/synthetic-owner/photo-${photo}.png?X-Amz-Expires=300&X-Amz-${'Signature'}=EXEMPLO_NAO_REAL_${generation}`
 const expiry = () => new Date(Date.now() + 300000).toISOString()
 const lifecycle = { id: 'owner-ad', slug: 'anuncio-sintetico', status: 'PENDENTE_REVISAO', statusModeracao: 'PENDENTE', atualizadoEm: '2026-09-13T12:00:00Z', acoesPermitidas: { pausar: false, reativar: false, remover: true, corrigirEReenviar: false } }
@@ -114,6 +125,7 @@ function App({initial}){
  if(config.mode==='detail')return <main id="owner-detail"><MeuAnuncioDetalheView slug="anuncio-sintetico"/></main>;
  if(config.mode==='guarded-list')return <main id="guarded-list"><PrivateSessionGuard><MeusAnunciosPage/></PrivateSessionGuard></main>;
  if(config.mode==='public')return <main id="public-card"><AnuncioCard id="owner-ad" slug="anuncio-sintetico" nome="Perfil de demonstração" valor="R$ 100" previewImagens={[config.url]} midias={[]} previewMode={false}/></main>;
+ if(config.mode==='public-gallery')return <main id="public-gallery">{config.cards.map(card=><AnuncioCard key={card.id} {...card}/>)}</main>;
  const previewMedia=config.mode==='selection'?urls:[config.url];
  return <><div id="selection">{config.mode==='selection'&&<WizardStepFotos initialFiles={files} fotoNomes={files.map(file=>file.name)} onChange={setFiles} videosNovos={[]} onChangeVideosNovos={()=>{}}/>}</div><button id="open-preview" onClick={()=>setOpen(true)}>Abrir prévia</button><WizardPreview showMobile={false} showDesktop={config.mode==='preview'} renderDialog open={open} onOpenChange={setOpen} onOpenRequest={()=>setOpen(true)} highlightedPreview quietPreview={false} previewHintActive={false} previewTitle="Perfil de demonstração" previewPrice="R$ 100" previewDescription="Prévia das fotos privadas do proprietário." previewMedia={previewMedia} previewReference="" idade={30} hasVirtual={false} hasExistingKyc premiumChoice="gratis" estadoUf="SP" cidadeNome="Cidade exemplo" bairroNome="Centro"/></>;
 }
@@ -123,7 +135,8 @@ window.__control={mount(config){setActor(config.actor);window.__allowFixtureLogi
 async function compile(variant) {
   const overrides = variant === 'before'
     ? Object.fromEntries(baseFiles.map((name) => [path.join(frontend, name), readBase(name)]))
-    : variant === 'before-detail' ? { [path.join(frontend, detailSource)]: readBase(detailSource, detailBaseRef) } : {}
+    : variant === 'before-detail' ? { [path.join(frontend, detailSource)]: readBase(detailSource, detailBaseRef) }
+    : variant === 'before-public-gallery' ? { [path.join(frontend, publicCardSource)]: readBase(publicCardSource, publicCardBaseRef) } : {}
   write(`${variant}-overrides.json`, JSON.stringify(overrides))
   write(`${variant}-loader.cjs`, `const fs=require('node:fs');const overrides=JSON.parse(fs.readFileSync(${JSON.stringify(path.join(evidence, `${variant}-overrides.json`))},'utf8'));const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(overrides[this.resourcePath]??source,{fileName:this.resourcePath,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText}`)
   const compiler = webpack({
@@ -162,15 +175,17 @@ try {
     assert.equal(readBase('next.config.ts', detailBaseRef).replace(/\r\n/g, '\n'), fs.readFileSync(path.join(frontend, 'next.config.ts'), 'utf8').replace(/\r\n/g, '\n'), 'Detail before/after must use the same actual Next config.')
     await compile('before-detail')
   }
+  if (publicCardBaseRef) await compile('before-public-gallery')
   await compile('after')
   const css = `body{font:14px system-ui;background:#f7f4ef;color:#20242a;margin:0;padding:24px}*{box-sizing:border-box}button{cursor:pointer}svg{width:20px;height:20px}p{line-height:1.5}article,.public-anuncio-card{width:330px;background:white;border:1px solid #ddd;border-radius:12px;overflow:hidden}article>div:first-child,.public-anuncio-card>div:first-child{position:relative;width:330px;height:440px;background:#eee}article>div+div,.public-anuncio-card>div+div{padding:16px}article>div:first-child>span{position:relative;z-index:2;display:inline-block;padding:5px;background:#fff8dd}article a{margin:8px}.public-anuncio-card>div:first-child>div:first-child{position:absolute;inset:0}.public-anuncio-card>div:first-child>div:first-child>div{height:100%;position:relative}.public-anuncio-card img,article img{object-fit:cover}.public-anuncio-card>div:first-child>div:not(:first-child){display:none}[data-slot=dialog-overlay]{position:fixed;inset:0;background:#0004}[role=dialog]{position:fixed;z-index:50;inset:24px;background:#f7f4ef;border-radius:24px;overflow:auto;padding:24px}[role=dialog] .public-anuncio-card{margin:20px auto}[role=dialog]>div>div:last-child{display:grid;grid-template-columns:360px 1fr;gap:30px}[role=dialog]>div>div:first-child{padding:5px 16px;border-bottom:1px solid #ddd}[role=dialog]h2{font-size:24px}[role=dialog]h3{font-size:16px}[role=dialog] ul{padding-left:20px}#owner-card{display:flex;justify-content:center}#selection{max-width:600px}#selection input{display:block}#root>div{max-width:1100px;margin:auto}img{max-width:100%}#owner-detail{max-width:1100px;margin:auto}#owner-detail article{width:100%}#owner-detail article>div:first-child{width:auto;height:auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.9fr)}#owner-detail article section{min-width:0;padding:12px}#owner-detail section[aria-labelledby=galeria-anuncio]>div:first-of-type{position:relative;height:360px;overflow:hidden;background:#e2e8f0;border-radius:12px}#owner-detail section[aria-labelledby=galeria-anuncio] img{width:100%;height:100%;object-fit:cover}#owner-detail [aria-label="Escolher foto da galeria"]{display:flex;gap:8px;margin-top:12px}#owner-detail [aria-label="Escolher foto da galeria"] button{position:relative;width:64px;height:72px;padding:0;overflow:hidden}#owner-detail nav{display:flex;gap:8px;overflow:auto}#owner-detail nav a{white-space:nowrap;padding:8px}#owner-detail>section>div:first-child{padding:12px;background:white;border-radius:12px;margin-bottom:12px}#owner-detail h1{font-size:22px}#owner-detail dd{margin-left:0}#owner-detail .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}@media(max-width:700px){body{padding:12px}[role=dialog]{inset:8px;padding:12px}[role=dialog]>div>div:last-child{display:block}[role=dialog]>div>div:last-child>div+div{display:none}#owner-detail article>div:first-child{display:block}}`
-  write('harness.css', css)
+  const publicGalleryCss = '#public-gallery .public-anuncio-card>div:first-child>button[aria-label="Próxima mídia"],#public-gallery .public-anuncio-card>div:first-child>button[aria-label="Mídia anterior"]{position:absolute;top:50%;z-index:20}#public-gallery button[aria-label="Próxima mídia"]{right:8px}#public-gallery button[aria-label="Mídia anterior"]{left:8px}'
+  write('harness.css', css + publicGalleryCss)
   server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://fixture.invalid')
     if (bundles.has(url.pathname)) { response.writeHead(200, { 'Content-Type': 'text/javascript' }); response.end(bundles.get(url.pathname)); return }
-    if (url.pathname === '/' && ['before', 'before-detail', 'after'].includes(url.searchParams.get('variant'))) {
+    if (url.pathname === '/' && ['before', 'before-detail', 'before-public-gallery', 'after'].includes(url.searchParams.get('variant'))) {
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      response.end(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root"></div><script src="/${url.searchParams.get('variant')}.js"></script></body></html>`); return
+      response.end(`<!doctype html><html><head><meta charset="utf-8"><style>${css}${publicGalleryCss}</style></head><body><div id="root"></div><script src="/${url.searchParams.get('variant')}.js"></script></body></html>`); return
     }
     if (url.pathname === '/_next/image') {
       const query = Object.fromEntries(url.searchParams)
@@ -200,6 +215,11 @@ try {
     page.on('pageerror', (error) => browserErrors.push({ name, message: error.message }))
     await context.route('**/*', async (route) => {
       const request = route.request(), url = new URL(request.url())
+      if (url.origin === publicOrigin && /^\/synthetic-public\/card-\d+-photo-[012]\.png$/.test(url.pathname)) {
+        const body = url.pathname.endsWith('photo-1.png') ? imageB : imageA
+        requests.push({ name, boundary: 'synthetic-public-image', path: url.pathname, status: 200, bytes: body.length })
+        await route.fulfill({ status: 200, contentType: 'image/png', body, headers: { 'cache-control': 'no-store' } }); return
+      }
       if (url.origin === privateOrigin && /^\/synthetic-owner\/photo-[ab]\.png$/.test(url.pathname)) {
         const denied = state.rejectGeneration !== null && url.searchParams.get('X-Amz-' + 'Signature') === `EXEMPLO_NAO_REAL_${state.rejectGeneration}`
         requests.push({ name, boundary: 'synthetic-private-image', path: safeUrl(url.href), generation: Number(url.searchParams.get('X-Amz-' + 'Signature')?.split('_').at(-1)), status: denied ? 403 : 200 })
@@ -302,6 +322,36 @@ try {
     const observations = await page.locator('img').evaluateAll((images) => images.map((image) => ({ src: image.currentSrc || image.getAttribute('src'), width: image.naturalWidth, height: image.naturalHeight, complete: image.complete })))
     write(`${name}.json`, JSON.stringify(observations.map((item) => ({ ...item, src: safeUrl(item.src) })), null, 2))
   }
+  // Same bytes, cards, viewport and empty browser context for both variants.
+  // Only AnuncioCard comes from the base; this measures transfer requests, not
+  // field Core Web Vitals or the production inventory's total image weight.
+  for (const variant of [...(publicCardBaseRef ? ['before-public-gallery'] : []), 'after']) {
+    await scenario(`${variant}-public-carousel-mobile`, variant, { mode: 'public-gallery', cards: publicCards }, async ({ page, entries }) => {
+      const first = '#public-gallery .public-anuncio-card:first-child img'
+      const original = await loaded(page, first, 'card-0-photo-0.png')
+      await page.waitForLoadState('networkidle')
+      const initial = entries().filter((entry) => entry.boundary === 'synthetic-public-image')
+      const neighbors = initial.filter((entry) => /photo-[12]\.png$/.test(entry.path))
+      assert.equal(neighbors.length, variant === 'after' ? 0 : 24, 'Unselected photos must not be downloaded just because carousel cards mounted.')
+      assert.equal(original.naturalWidth, 480)
+      assert.equal(original.naturalHeight, 640)
+      assert.equal(await page.locator('#public-gallery .public-anuncio-card').count(), publicCards.length)
+      assert.equal(entries().filter((entry) => entry.boundary === 'real-next-validator' || entry.boundary === 'synthetic-private-image').length, 0)
+      publicCardMeasurements.push({ variant, cards: publicCards.length, photosPerCard: 3, initialRequests: initial.length, initialBytes: initial.reduce((total, entry) => total + entry.bytes, 0), unselectedRequests: neighbors.length, firstSource: original.src, firstWidth: original.naturalWidth, firstHeight: original.naturalHeight })
+      await capture(page, `${variant}-public-carousel-mobile`)
+      await page.getByRole('button', { name: 'Próxima mídia', exact: true }).first().click()
+      assert.equal((await loaded(page, first, 'card-0-photo-1.png')).naturalWidth, 360)
+      await page.getByRole('button', { name: 'Mídia anterior', exact: true }).first().click()
+      assert.equal((await loaded(page, first, 'card-0-photo-0.png')).naturalWidth, 480)
+    }, { width: 390, height: 844 })
+  }
+  if (publicCardBaseRef) {
+    const [before, after] = publicCardMeasurements
+    assert.equal(after.firstSource, before.firstSource)
+    assert.equal(after.initialRequests, before.initialRequests - 24)
+    assert.equal(after.initialBytes, before.initialBytes - 12 * (imageA.length + imageB.length))
+  }
+  write('public-card-before-after.json', JSON.stringify({ baseRef: publicCardBaseRef ?? null, viewport: { width: 390, height: 844 }, cache: 'fresh context; synthetic no-store', observations: publicCardMeasurements, fieldPerformanceClaim: false }, null, 2))
   if (baseRef) {
     await scenario('before-private-wizard-optimizer-rejection', 'before', { mode: 'preview', url: privateUrl() }, async ({ page, entries }) => {
       await waitFor(() => entries().some((item) => item.boundary === 'real-next-validator' && item.status === 400), 'real optimizer rejection')
