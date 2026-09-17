@@ -27,7 +27,7 @@ const DAYS_180 = 60 * 60 * 24 * 180
 const defaultConsent: ConsentState = {
   necessary: true,
   functional: false,
-  analytics: true,
+  analytics: false,
   marketing: false,
 }
 
@@ -66,7 +66,7 @@ export function CookiePreferences() {
         setConsent({
           necessary: true,
           functional: Boolean(parsed.functional),
-          analytics: typeof parsed.analytics === 'boolean' ? parsed.analytics : true,
+          analytics: parsed.analytics === true,
           marketing: Boolean(parsed.marketing),
           ts: parsed.ts,
         })

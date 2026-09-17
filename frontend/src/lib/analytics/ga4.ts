@@ -1,51 +1,89 @@
 "use client"
 
 type EventoGA4 = Record<string, string | number | boolean | null | undefined>
-type EventoEnfileirado = {
-  evento: string
-  params: EventoGA4
-  dedupeKey?: string
-}
+export const GA_MEASUREMENT_ID = "G-E0CNBH6WPM"
+export const GA_CONSENT_EVENT = "tops:cookie-consent-updated"
+const PUBLIC_ORIGIN = "https://topsdojob.com"
 
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void
+    dataLayer?: IArguments[]
   }
 }
 
-const filaEventos: EventoEnfileirado[] = []
 const eventosDedupe = new Set<string>()
-let timerFlush: number | null = null
 
 function obterDedupeKey(evento: string, dedupeKey?: string) {
   return dedupeKey ? `${evento}:${dedupeKey}` : null
 }
 
-function gtagDisponivel() {
-  return typeof window !== "undefined" && typeof window.gtag === "function"
+// Lista de contextos públicos, não uma política de indexação ou de acesso.
+// Segmentos livres, títulos e parâmetros de busca nunca vão para a coleta.
+function pathPublicoGA4(path: string) {
+  if (/^\/(?:anuncios|acompanhantes|blog|contato|cookies|faq|sobre|politica-de-privacidade|termos-de-uso)?\/?$/.test(path)) {
+    return path.replace(/\/$/, "") || "/"
+  }
+  if (/^\/anuncios\/[^/]+\/?$/.test(path)) return "/anuncios/[slug]"
+  if (/^\/blog\/[^/]+\/?$/.test(path)) return "/blog/[slug]"
+  if (/^\/blog\/categoria\/[^/]+\/?$/.test(path)) return "/blog/categoria/[slug]"
+  if (/^\/blog\/cidade\/[^/]+\/[^/]+\/?$/.test(path)) return "/blog/cidade/[tema]/[cidade]"
+  if (/^\/politicas\/(?:verificacao-etaria|termos-conteudo-restrito|privacidade-conteudo-restrito|aviso-legal-conteudo-restrito)\/?$/.test(path)) return path.replace(/\/$/, "")
+  const localidade = path.match(/^\/acompanhantes\/[a-z]{2}(\/[^/]+)?(\/[^/]+)?\/?$/)
+  if (localidade) return "/acompanhantes/[uf]" + (localidade[1] ? "/[cidade]" : "") + (localidade[2] ? "/[bairro]" : "")
+  return null
 }
 
-function flushFilaGA4() {
-  if (!gtagDisponivel()) return
-
-  while (filaEventos.length > 0) {
-    const item = filaEventos.shift()
-    if (!item) continue
-    window.gtag?.("event", item.evento, item.params)
-  }
-
-  if (timerFlush) {
-    window.clearInterval(timerFlush)
-    timerFlush = null
+export function analyticsPermitido() {
+  if (typeof window === "undefined" || typeof document === "undefined") return false
+  if (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "true") return false
+  if (window.location.origin !== PUBLIC_ORIGIN || !pathPublicoGA4(window.location.pathname)) return false
+  try {
+    const cookie = document.cookie.match(/(?:^|;\s*)cookie_consent=([^;]*)/)
+    return Boolean(cookie && JSON.parse(decodeURIComponent(cookie[1]))?.analytics === true)
+  } catch {
+    return false
   }
 }
 
-function garantirTentativaFlush() {
-  if (typeof window === "undefined" || timerFlush) return
+export function contextoPaginaGA4() {
+  const path = pathPublicoGA4(window.location.pathname) ?? "/"
+  const params = new URLSearchParams(window.location.search)
+  const page = params.get("page")
+  const query = page && /^\d{1,6}$/.test(page) && /^\/(anuncios|acompanhantes)(\/|$)/.test(path)
+    ? `?page=${page}` : ""
+  let referrer = ""
+  try {
+    const url = new URL(document.referrer)
+    // Referência externa limitada à origem; sem credenciais, caminho ou query.
+    if (url.protocol === "https:" && url.origin !== PUBLIC_ORIGIN) referrer = url.origin
+  } catch { /* Referência ausente ou inválida não é coletada. */ }
+  return {
+    page_location: `${PUBLIC_ORIGIN}${path}${query}`,
+    page_path: `${path}${query}`,
+    page_title: `Tops do Job | ${path}`,
+    page_referrer: referrer,
+  }
+}
 
-  timerFlush = window.setInterval(() => {
-    flushFilaGA4()
-  }, 1000)
+export function atualizarPrivacidadeGA4() {
+  // O SDK consulta esta propriedade antes de enviar. O getter não espera o
+  // efeito React: bloqueia também uma mudança de URL/cookie entre renders.
+  Object.defineProperty(window, `ga-disable-${GA_MEASUREMENT_ID}`, {
+    configurable: true,
+    get: () => !analyticsPermitido(),
+  })
+  if (!analyticsPermitido()) {
+    eventosDedupe.clear()
+    // Preserve a identidade do dataLayer (e seu push do SDK), removendo apenas
+    // eventos ainda enfileirados. Não repetir ações anteriores ao consentimento.
+    const layer = window.dataLayer
+    if (layer) {
+      for (let index = layer.length - 1; index >= 0; index--) {
+        if (layer[index]?.[0] === "event") layer.splice(index, 1)
+      }
+    }
+  }
 }
 
 export function identificarOrigemTrafego() {
@@ -89,31 +127,27 @@ export function identificarContextoPagina() {
 
 export function registrarEventoGA4(
   evento: string,
-  params: EventoGA4 = {},
+  _params: EventoGA4 = {},
   options?: { dedupeKey?: string }
 ) {
-  if (typeof window === "undefined") return
+  if (!analyticsPermitido() || typeof window.gtag !== "function") return false
+  if (evento !== "page_view" && evento !== "click_whatsapp") return false
 
   const chaveDedupe = obterDedupeKey(evento, options?.dedupeKey)
   if (chaveDedupe && eventosDedupe.has(chaveDedupe)) {
-    return
+    return false
   }
 
-  if (chaveDedupe) {
-    eventosDedupe.add(chaveDedupe)
+  // Não propagar parâmetros arbitrários, slugs, telefone ou URL do WhatsApp.
+  // O nome preservado mede intenção de clique, nunca contato ou pagamento.
+  try {
+    const payload = evento === "click_whatsapp"
+      ? { event_category: "engagement", event_label: "card_anuncio", ...contextoPaginaGA4() }
+      : contextoPaginaGA4()
+    window.gtag("event", evento, payload)
+    if (chaveDedupe) eventosDedupe.add(chaveDedupe)
+    return true
+  } catch {
+    return false // Falha de telemetria não bloqueia o fluxo funcional.
   }
-
-  if (gtagDisponivel()) {
-    window.gtag?.("event", evento, params)
-    flushFilaGA4()
-    return
-  }
-
-  filaEventos.push({
-    evento,
-    params,
-    dedupeKey: options?.dedupeKey,
-  })
-
-  garantirTentativaFlush()
 }
