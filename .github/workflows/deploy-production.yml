@@ -116,6 +116,7 @@ jobs:
     environment: production
     permissions:
       contents: read
+      actions: read
 
     steps:
       - name: Checkout
@@ -129,6 +130,14 @@ jobs:
         env:
           DEPLOY_SHA: ${{ inputs.deploy_sha }}
         run: test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
+
+      - name: Require successful main CI for deploy SHA
+        shell: bash
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+        run: python3 ./scripts/deploy/validar-ci-main-production.py "${DEPLOY_SHA}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -149,18 +158,6 @@ jobs:
           fixture_image_id="$(docker image inspect --format '{{.Id}}' python:3.12-slim-bookworm)"
           [[ "$fixture_image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
           printf 'TOPSV3_BACKFILL_FIXTURE_IMAGE_ID=%s\n' "$fixture_image_id" >> "$GITHUB_ENV"
-
-      - name: Run full backend Maven gate
-        working-directory: backend
-        shell: bash
-        env:
-          LOCALIDADES_POSTGRES17_ENABLED: "true"
-          FOTO_ELEGIVEL_POSTGRES17_ENABLED: "true"
-          PREVIEW_BACKFILL_POSTGRES17_ENABLED: "true"
-          PUBLIC_SEARCH_POSTGRES17_ENABLED: "true"
-          ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
-          ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
-        run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4

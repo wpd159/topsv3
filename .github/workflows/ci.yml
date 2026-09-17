@@ -238,6 +238,10 @@ jobs:
           [[ "$fixture_image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
           printf 'TOPSV3_BACKFILL_FIXTURE_IMAGE_ID=%s\n' "$fixture_image_id" >> "$GITHUB_ENV"
 
+      - name: Test main CI reuse gate
+        shell: bash
+        run: python3 ./scripts/deploy/testar-ci-main-production.py
+
       - name: Validate composed operation contract
         shell: pwsh
         run: ./scripts/deploy/validar-deploy-production-local.ps1

@@ -31,6 +31,16 @@ const routes = [
   { name: 'city', pathname: '/acompanhantes/go/goiania', size: 20, urlPageBase: 0 },
   { name: 'neighborhood', pathname: '/acompanhantes/go/goiania/centro', size: 20, urlPageBase: 0 },
 ]
+const scenarioNames = [
+  'nojs-institutional-metadata-and-privacy-alias', 'nojs-retired-programmatic-blog-routes',
+  ...routes.map(({ name }) => `nojs-${name}-complete`),
+  'nojs-direct-seeds-filters-and-invalid', 'js-load-more-and-link-continuity',
+  'js-seed-mismatch-retry', 'js-filter-changes-request-fresh-seeds',
+  'js-locality-next-updates-url-and-metadata', 'metadata-transition-contract',
+]
+const args = process.argv.slice(2)
+assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--scenario' && scenarioNames.includes(args[1])), 'Use --scenario with one exact scenario name, or no arguments for the complete suite.')
+const selectedScenario = args[1]
 // API indices are zero-based for both families. Geographic URLs retain their
 // historical zero-based convention; /anuncios alone uses one-based URLs.
 const pageParameter = (route, apiPage) => apiPage === 0 ? null : String(apiPage + route.urlPageBase)
@@ -187,6 +197,7 @@ async function openContext(javaScriptEnabled, viewport = { width: 1280, height: 
   return { context, page }
 }
 async function scenario(name, javaScriptEnabled, action, viewport) {
+  if (selectedScenario && name !== selectedScenario) return
   const before = requests.length
   const { context, page } = await openContext(javaScriptEnabled, viewport)
   try {
@@ -222,8 +233,8 @@ function serverPageRequests(start, route, apiPage, requestedSeed) {
   }
   return observed
 }
-async function metadata(page, route, apiPage, filters = {}) {
-  const canonicals = await page.locator('link[rel="canonical"]').evaluateAll((nodes) => nodes.map((node) => node.href))
+function assertMetadata(snapshot, route, apiPage, filters) {
+  const { canonicals, robots } = snapshot
   assert.equal(canonicals.length, 1, 'Each HTML document has exactly one canonical.')
   const canonical = new URL(canonicals[0])
   assert.equal(canonical.origin, siteOrigin)
@@ -231,14 +242,13 @@ async function metadata(page, route, apiPage, filters = {}) {
   assert.equal(canonical.searchParams.get('page'), pageParameter(route, apiPage))
   assert.equal([...canonical.searchParams.keys()].some((key) => /seed/i.test(key)), false)
   for (const [key, value] of Object.entries(filters)) assert.equal(canonical.searchParams.get(key), value)
-  const robots = await page.locator('meta[name="robots"]').evaluateAll((nodes) => nodes.map((node) => node.content).join(','))
   assert.match(robots, /noindex/)
   assert.match(robots, /nofollow/)
   const relations = {}
   if (route.urlPageBase === 0) {
     for (const [rel, destination] of [['prev', apiPage - 1], ['next', apiPage + 1]]) {
       const available = destination >= 0 && destination < Math.ceil(inventory.length / route.size)
-      const hrefs = await page.locator(`link[rel="${rel}"]`).evaluateAll((nodes) => nodes.map((node) => node.href))
+      const hrefs = snapshot[rel]
       assert.equal(hrefs.length, available ? 1 : 0, `${route.pathname}: incorrect rel=${rel}`)
       if (available) {
         const url = new URL(hrefs[0])
@@ -250,7 +260,35 @@ async function metadata(page, route, apiPage, filters = {}) {
       }
     }
   }
-  return { canonical: canonical.href, robots, relations }
+  return { canonical: canonical.href, robots, relations, url: snapshot.url, nextHref: snapshot.nextHref }
+}
+async function metadata(page, route, apiPage, filters = {}) {
+  let snapshot, observation, lastAssertion
+  try {
+    await waitFor(async () => {
+      // One browser evaluation: never combine metadata from different React commits.
+      snapshot = await page.evaluate(() => ({
+        url: location.href,
+        canonicals: [...document.querySelectorAll('link[rel="canonical"]')].map((node) => node.href),
+        robots: [...document.querySelectorAll('meta[name="robots"]')].map((node) => node.content).join(','),
+        prev: [...document.querySelectorAll('link[rel="prev"]')].map((node) => node.href),
+        next: [...document.querySelectorAll('link[rel="next"]')].map((node) => node.href),
+        nextHref: [...document.querySelectorAll('nav a[href]')].find((node) => /pr[oó]xim/i.test(node.textContent))?.href ?? null,
+      }))
+      try {
+        observation = assertMetadata(snapshot, route, apiPage, filters)
+        return true
+      } catch (error) {
+        if (!(error instanceof assert.AssertionError)) throw error
+        lastAssertion = error
+        return false
+      }
+    }, 'coherent canonical and robots after navigation')
+  } catch (error) {
+    if (error.message === 'Observation timeout: coherent canonical and robots after navigation' && lastAssertion) throw lastAssertion
+    throw error
+  }
+  return observation
 }
 async function checkLinks(page, route, apiPage, seed, filters = {}) {
   const links = await pagination(page).locator('a[href]').evaluateAll((nodes) => nodes.map((node) => ({ href: node.getAttribute('href'), text: node.textContent.trim() })))
@@ -546,10 +584,15 @@ try {
       const href = await nextLink(page).getAttribute('href')
       return new URL(href, origin).searchParams.get('ordemSeed') !== MAX_SEED
     }, 'new search resets the ordering chain')
-    const afterSearchSeed = new URL(await nextLink(page).getAttribute('href'), origin).searchParams.get('ordemSeed')
+    const searchMetadata = await metadata(page, routes[0], 0, { busca: 'fixture outra busca' })
+    const searchUrl = new URL(searchMetadata.url)
+    assert.equal(searchUrl.searchParams.get('busca'), 'fixture outra busca')
+    assert.equal(searchUrl.searchParams.has('page') || searchUrl.searchParams.has('ordemSeed'), false)
+    const afterSearchSeed = new URL(searchMetadata.nextHref).searchParams.get('ordemSeed')
+    assert.notEqual(afterSearchSeed, MAX_SEED)
     assert.ok(requests.slice(beforeSearch).some((entry) => entry.path === '/api/public/anuncios' && entry.requestedSeed === null && entry.seed === afterSearchSeed))
     assert.notEqual(afterSearchSeed, afterRemoveSeed)
-    await metadata(page, routes[0], 0, { busca: 'fixture outra busca' })
+    writeJson('js-search-transition.json', { ...searchMetadata, afterRemoveSeed, afterSearchSeed })
     await page.screenshot({ path: path.join(evidence, 'js-new-search-fresh-chain.png'), fullPage: false })
   })
 
@@ -569,6 +612,32 @@ try {
     await page.screenshot({ path: path.join(evidence, 'js-city-page-two-mobile.png'), fullPage: true })
   }, { width: 390, height: 844 })
 
+  await scenario('metadata-transition-contract', true, async (page) => {
+    const canonical = `<link rel="canonical" href="${siteOrigin}/anuncios">`
+    await page.setContent(`<html><head>${canonical}</head><body></body></html>`)
+    let reads = 0
+    const transitioningPage = {
+      evaluate: async (read) => {
+        const snapshot = await page.evaluate(read)
+        if (++reads === 1) await page.evaluate(() => {
+          const robots = document.createElement('meta')
+          robots.name = 'robots'
+          robots.content = 'noindex, nofollow'
+          document.head.append(robots)
+        })
+        return snapshot
+      },
+    }
+    assert.match((await metadata(transitioningPage, routes[0], 0)).robots, /noindex/)
+    assert.ok(reads >= 2, 'A canonical without robots must not finish the observation.')
+    for (const robots of ['', '<meta name="robots" content="index, follow">']) {
+      await page.setContent(`<html><head>${canonical}${robots}</head><body></body></html>`)
+      const started = performance.now()
+      await assert.rejects(metadata(page, routes[0], 0), /noindex/)
+      assert.ok(performance.now() - started >= 10000, 'Persistent invalid metadata must exhaust the existing deadline, not pass.')
+    }
+  })
+
   assert.deepEqual(unexpected, [], 'Every transport request must remain inside the explicit synthetic fixture.')
   assert.deepEqual(browserErrors, [], 'There must be no hydration or browser runtime errors.')
 } catch (error) {
@@ -580,7 +649,7 @@ try {
   if (application) try { await bounded(application.close(), 'Next close') } catch (error) { cleanupErrors.push(String(error)) }
   if (apiServer) try { await closeServer(apiServer) } catch (error) { cleanupErrors.push(String(error)) }
   writeJson('outcome.json', {
-    result: !failure && !cleanupErrors.length ? 'PASS' : 'FAIL', cases: results, failure: failure?.stack,
+    result: !failure && !cleanupErrors.length ? 'PASS' : 'FAIL', selectedScenario: selectedScenario ?? null, cases: results, failure: failure?.stack,
     cleanupErrors, unexpected, browserErrors, requests, evidence,
     proof: 'Actual blocked Next build with synthetic fixed inventory; no production or backend-ordering claim.',
   })

@@ -1,4 +1,6 @@
-﻿Set-StrictMode -Version Latest
+﻿param([switch]$GitHubTokenOnly)
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -324,9 +326,48 @@ function Test-HookOrder {
   return ($one -ge 0 -and $two -gt $one -and $three -gt $two)
 }
 
+function Test-GitHubTokenReference {
+  foreach ($reference in @('${{ github.token }}', '${{github.token}}', '"${{ github.token }}"')) {
+    Run-PassingCase "GitHub token nativo completo: $reference" {
+      param($repo)
+      $line = New-AssignmentLine (New-KeyName @("GH_", "TOKEN")) $reference -Delimiter ": "
+      Write-TestText $repo ".github/workflows/test.yml" ("env:`n  " + $line + "`n")
+      Stage-TestPath $repo ".github/workflows/test.yml"
+    }
+  }
+  foreach ($reference in @(
+    '${{ github.token || ''literal'' }}',
+    '${{ github.token }}suffix',
+    'prefix${{ github.token }}',
+    '${{ github.token_other }}',
+    '${{ secrets.UNLISTED }}',
+    (New-TokenValue)
+  )) {
+    Run-BlockingCase "GitHub token literal ou referencia nao permitida" "segredos" $scannerSegredos 1 {
+      param($repo)
+      $line = New-AssignmentLine (New-KeyName @("GH_", "TOKEN")) $reference -Delimiter ": "
+      Write-TestText $repo ".github/workflows/test.yml" ("env:`n  " + $line + "`n")
+      Stage-TestPath $repo ".github/workflows/test.yml"
+    }
+  }
+  Run-BlockingCase "GitHub token nativo nao libera outro segredo na mesma linha" "segredos" $scannerSegredos 1 {
+    param($repo)
+    $line = (New-AssignmentLine (New-KeyName @("GH_", "TOKEN")) '${{ github.token }}' -Delimiter ": ")
+    $line += " " + (New-AssignmentLine (New-KeyName @("client", "_secret")) (New-RealValue) -DoubleQuoted)
+    Write-TestText $repo ".github/workflows/test.yml" $line
+    Stage-TestPath $repo ".github/workflows/test.yml"
+  }
+}
+
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
 try {
+  Test-GitHubTokenReference
+  if ($GitHubTokenOnly) {
+    if (@($results | Where-Object { $_.Resultado -ne "OK" }).Count -gt 0) { exit 1 }
+    Write-Host "GitHub token reference regression: $($results.Count) scenarios PASS."
+    exit 0
+  }
   Run-BlockingCase ".env real" "arquivos" $scannerArquivos 1 {
     param($repo)
     Write-TestText $repo ".env" (New-AssignmentLine (New-KeyName @("APP_", "PASSWORD")) (New-RealValue))
@@ -787,7 +828,13 @@ try {
   }
 } finally {
   if (Test-Path -LiteralPath $tempRoot) {
-    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+    $resolvedTempRoot = (Resolve-Path -LiteralPath $tempRoot).Path
+    $expectedParent = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\', '/')
+    if ((Split-Path -Parent $resolvedTempRoot) -ne $expectedParent -or
+        (Split-Path -Leaf $resolvedTempRoot) -notmatch '^topsv3-testes-hooks-[a-f0-9-]{36}$') {
+      throw "Cleanup recusado: diretorio temporario de teste inesperado."
+    }
+    Remove-Item -LiteralPath $resolvedTempRoot -Recurse -Force
   }
 }
 

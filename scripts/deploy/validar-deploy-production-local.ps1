@@ -165,6 +165,23 @@ Add-Check "workflow testa gate de banco antes do deploy" (
   ($workflow.Contains("Test production database safety gate")) -and
   ($workflow.IndexOf("Test production database safety gate") -lt $workflow.IndexOf("Validate pinned SSH host key"))
 )
+Add-Check "workflow exige CI da main do SHA exato antes do build e upload" (
+  ($deployJob.Contains('actions: read')) -and
+  ($deployJob.Contains('python3 ./scripts/deploy/validar-ci-main-production.py "${DEPLOY_SHA}"')) -and
+  ($deployJob.IndexOf('Require successful main CI for deploy SHA') -gt
+    $deployJob.IndexOf('Validate checked out deploy SHA')) -and
+  ($deployJob.IndexOf('Require successful main CI for deploy SHA') -lt
+    $deployJob.IndexOf('Run frontend dependency, lint and build gates')) -and
+  ($deployJob.IndexOf('Require successful main CI for deploy SHA') -lt
+    $deployJob.IndexOf('Upload immutable release'))
+)
+Add-Check "CI preserva Maven integral e deploy reutiliza somente essa prova" (
+  $ciWorkflow.Contains('mvn --batch-mode --no-transfer-progress verify') -and
+  (-not $deployJob.Contains('mvn --batch-mode --no-transfer-progress verify')) -and
+  $deployJob.Contains('Validate production deployment contract') -and
+  $deployJob.Contains('Test production database safety gate') -and
+  $deployJob.Contains('BACKUP_RESTORE_RUNS=10/10')
+)
 Add-Check "workflow nao exige igualdade absoluta de contagens mutaveis" (
   -not ($deploymentContract -match 'test\s+"\$\{counts_after\}"\s+=\s+"\$\{counts_before\}"')
 )
