@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { existsSync, readFileSync } from "node:fs"
 import ts from "typescript"
+import * as jsxRuntime from "react/jsx-runtime"
 
 import { EXPECTED_SCOPED_NOINDEX_ROUTES } from "./test-search-indexing-artifact.mjs"
 
@@ -15,6 +16,7 @@ function loadTypeScriptModule(relativePath, processEnvironment = {}, dependencie
       compilerOptions: {
         module: ts.ModuleKind.CommonJS,
         target: ts.ScriptTarget.ES2022,
+        jsx: ts.JsxEmit.ReactJSX,
       },
     },
   )
@@ -464,5 +466,71 @@ assert.doesNotMatch(
   preprodComposeSource,
   /COPY --from=build \/app\/src\/lib\/seo\/search-indexing-policy\.ts/,
 )
+
+// Exercise the real institutional metadata/config/sitemap with synthetic API
+// boundaries. Public and blocked modes must retain their existing policy.
+for (const mode of ["public", "blocked"]) {
+  const environment = {
+    NEXT_PUBLIC_SITE_URL: "https://topsdojob.com",
+    SEARCH_INDEXING_MODE: mode,
+  }
+  const policy = loadTypeScriptModule("src/lib/seo/search-indexing-policy.ts", environment)
+  const urls = loadTypeScriptModule("src/lib/seo/public-url.ts", environment, {
+    "@/lib/seo/search-indexing-policy": policy,
+  })
+  const staticMetadata = loadTypeScriptModule("src/lib/seo/public-static-metadata.ts", environment, {
+    "@/lib/seo/public-url": urls,
+  })
+  const contact = loadTypeScriptModule("src/app/(public-routes)/contato/page.tsx", environment, {
+    "@/lib/seo/public-static-metadata": staticMetadata,
+    "./contato-page-client": { default: () => null },
+    "react/jsx-runtime": jsxRuntime,
+  })
+  assert.equal(contact.metadata.title, "Contato e suporte | Tops do Job")
+  assert.equal(contact.metadata.alternates.canonical, "https://topsdojob.com/contato")
+  assert.equal(contact.metadata.openGraph.url, contact.metadata.alternates.canonical)
+  assert.equal(contact.metadata.openGraph.description, contact.metadata.description)
+  assert.equal(contact.metadata.robots, undefined, "contact inherits the existing global indexing policy")
+  assert.doesNotMatch(source("src/app/(public-routes)/contato/page.tsx"), /['"]use client['"]/)
+  assert.match(source("src/app/(public-routes)/contato/contato-page-client.tsx"), /open-suporte-ticket/)
+
+  let apiCalls = 0
+  const syntheticRead = async (value) => { apiCalls += 1; return value }
+  const sitemapModule = loadTypeScriptModule("src/app/sitemap.ts", environment, {
+    "@/lib/blog-api": {
+      fetchPublicBlogCategorias: () => syntheticRead([]),
+      fetchPublicBlogSitemap: () => syntheticRead([]),
+    },
+    "@/lib/public-catalog-server-api": {
+      descobrirAnunciosIndexaveisSitemap: () => syntheticRead([]),
+      descobrirLocalidadesPublicas: () => syntheticRead({ estados: [] }),
+    },
+    "@/lib/seo/public-url": urls,
+    "@/lib/seo/search-indexing-policy": policy,
+  })
+  const entries = await sitemapModule.default()
+  assert.equal(entries.filter(({ url }) => url === "https://topsdojob.com/contato").length, mode === "public" ? 1 : 0)
+  assert.equal(entries.some(({ url }) => url.endsWith("/privacidade")), false, "alias must not enter the sitemap")
+  if (mode === "blocked") {
+    assert.deepEqual(entries, [])
+    assert.equal(apiCalls, 0, "blocked sitemap must not fetch content")
+  }
+
+  const config = loadTypeScriptModule("next.config.ts", environment, {
+    "./src/lib/seo/search-indexing-policy": policy,
+  }).default
+  const redirects = await config.redirects()
+  assert.deepEqual(redirects.find(({ source }) => source === "/privacidade"), {
+    source: "/privacidade", destination: "/politica-de-privacidade", permanent: true,
+  })
+  assert.equal(redirects.some(({ source, destination }) => source.startsWith("/blog/") || destination.startsWith("/blog/cidade/")), false,
+    "removed programmatic pages must not have permanent redirects ending in 404")
+  const privacy = loadTypeScriptModule("src/app/(public-routes)/politica-de-privacidade/page.tsx", environment, {
+    "@/lib/seo/public-static-metadata": staticMetadata,
+    "@/components/site-content/site-content-page": { SiteContentPage: () => null },
+    "react/jsx-runtime": jsxRuntime,
+  })
+  assert.equal(privacy.metadata.alternates.canonical, "https://topsdojob.com/politica-de-privacidade")
+}
 
 console.log("SEARCH_INDEXING_POLICY_RESULT=OK")

@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import ts from 'typescript'
 
 const metadataSource = readFileSync('src/lib/seo/public-metadata.ts', 'utf8')
 const detailPageSource = readFileSync('src/app/(public-routes)/anuncios/[slug]/page.tsx', 'utf8')
@@ -188,6 +193,52 @@ assert.match(listingPageSource, /permanentRedirect\(buildPublicPageHref\(/)
 for (const pageSource of [listingPageSource, statePageSource, cityPageSource, neighborhoodPageSource]) {
   assert.match(pageSource, /parsePublicOrderSeed\(/)
   assert.doesNotMatch(pageSource, /buildPublicUrl\([^)]*ordemSeed/)
+}
+
+// Render the real description component. Related cards are a separate tested
+// boundary; no browser, backend or external map request is needed for SSR.
+const require = createRequire(import.meta.url)
+function compileDescription(source) {
+  const transpile = (value) => ts.transpileModule(value, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText
+  const encoding = { exports: {} }
+  new Function('module', 'exports', transpile(readFileSync('src/lib/text/encoding.ts', 'utf8')))(encoding, encoding.exports)
+  const component = { exports: {} }
+  new Function('require', 'module', 'exports', transpile(source))((name) => {
+    if (name === '@/lib/text/encoding') return encoding.exports
+    if (name === './anuncios-relacionados') return { AnunciosRelacionados: () => null }
+    return require(name)
+  }, component, component.exports)
+  return component.exports.default
+}
+const descriptionPath = 'src/app/(public-routes)/anuncios/[slug]/componentes/main-content.tsx'
+const Description = compileDescription(readFileSync(descriptionPath, 'utf8'))
+const renderDescription = (Component, anuncio) => renderToStaticMarkup(React.createElement(Component, { anuncio, relacionados: [] }))
+const description = 'Descrição sintética informada pela pessoa anunciante.'
+const sameDescription = { descricaoAnunciante: description, descricaoAnuncio: description, horario: 'MANHA', servicos: ['MASSAGEM_TANTRICA'], locaisAtendimento: ['A_COMBINAR'] }
+const rendered = renderDescription(Description, sameDescription)
+assert.equal(rendered.split(description).length - 1, 1, 'The same description must appear only once in visible SSR content.')
+assert.doesNotMatch(rendered, /Sobre o anunciante/)
+assert.match(rendered, /Descrição do anúncio/)
+assert.match(rendered, /manha/)
+assert.match(rendered, /Massagem tântrica/)
+assert.match(rendered, /A combinar/)
+const distinct = renderDescription(Description, { descricaoAnunciante: 'Biografia informada.', descricaoAnuncio: description })
+assert.match(distinct, /Sobre o anunciante/)
+assert.equal(distinct.split('Biografia informada.').length - 1, 1)
+assert.equal(distinct.split(description).length - 1, 1)
+for (const data of [{ descricaoAnunciante: description }, { descricao: description }]) {
+  assert.equal(renderDescription(Description, data).split(description).length - 1, 1)
+}
+const empty = renderDescription(Description, { descricaoAnunciante: ' ', descricaoAnuncio: null })
+assert.match(empty, /Descrição não informada\./)
+assert.doesNotMatch(empty, /Profissional experiente|alto padrão|Sobre o anunciante/)
+assert.match(renderDescription(Description, { descricaoAnuncio: '<script>synthetic</script>' }), /&lt;script&gt;synthetic&lt;\/script&gt;/)
+if (process.env.TOPS_SEO_BASE_REF) {
+  const before = execFileSync('git', ['show', `${process.env.TOPS_SEO_BASE_REF}:frontend/${descriptionPath}`], { encoding: 'utf8' })
+  assert.equal(renderDescription(compileDescription(before), sameDescription).split(description).length - 1, 2, 'The reviewed base reproduces the duplicate with identical input.')
+  console.log('PUBLIC_DESCRIPTION_COMPARISON=PASS before=2 after=1')
 }
 
 console.log('public SEO critical checks passed')
