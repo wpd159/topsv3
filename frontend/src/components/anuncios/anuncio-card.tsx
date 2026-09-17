@@ -21,6 +21,7 @@ import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { useAuth } from "@/context/AuthContext"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { ApiContractError } from "@/lib/api-contract"
+import { registrarEventoGA4 } from "@/lib/analytics/ga4"
 import {
   novaChaveMetricaPublica,
   registrarCliqueWhatsappPublico,
@@ -235,13 +236,6 @@ export function AnuncioCard({
 
   const requestWhatsApp = async () => {
     if (previewMode) return
-    if (typeof window !== "undefined" && (window as any).gtag) {
-      ;(window as any).gtag("event", "click_whatsapp", {
-        event_category: "engagement",
-        event_label: slugRota,
-      })
-    }
-
     if (whatsappInFlight.current) return
     whatsappInFlight.current = true
     setWhatsappPending(true)
@@ -274,6 +268,11 @@ export function AnuncioCard({
 
   const handleWhatsAppClick = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
+    if (previewMode || whatsappInFlight.current || whatsappVerificationOpen) return
+    registrarEventoGA4("click_whatsapp", {
+      event_category: "engagement",
+      event_label: "card_anuncio",
+    })
     void requestWhatsApp()
   }
 

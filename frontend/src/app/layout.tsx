@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import "./globals.css"
 
 import { ConsentAwareAnalytics } from "@/components/analytics/consent-aware-analytics"
@@ -75,7 +76,7 @@ export default function RootLayout({
             </SiteContentProvider>
           </FavoritosProvider>
         </AuthProvider>
-        <ConsentAwareAnalytics />
+        <Suspense fallback={null}><ConsentAwareAnalytics /></Suspense>
       </body>
     </html>
   )
