@@ -125,6 +125,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/acompanhantes`, priority: 0.95 },
     { url: `${baseUrl}/faq`, priority: 0.6 },
     { url: `${baseUrl}/sobre`, priority: 0.5 },
+    { url: `${baseUrl}/contato`, priority: 0.5 },
     { url: `${baseUrl}/termos-de-uso`, priority: 0.4 },
     { url: `${baseUrl}/politica-de-privacidade`, priority: 0.4 },
     { url: `${baseUrl}/cookies`, priority: 0.4 },

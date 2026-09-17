@@ -32,6 +32,7 @@ const routes = [
   { name: 'neighborhood', pathname: '/acompanhantes/go/goiania/centro', size: 20, urlPageBase: 0 },
 ]
 const scenarioNames = [
+  'nojs-institutional-metadata-and-privacy-alias', 'nojs-retired-programmatic-blog-routes',
   ...routes.map(({ name }) => `nojs-${name}-complete`),
   'nojs-direct-seeds-filters-and-invalid', 'js-load-more-and-link-continuity',
   'js-seed-mismatch-retry', 'js-filter-changes-request-fresh-seeds',
@@ -354,6 +355,69 @@ try {
     syntheticGlobalAgeAcceptance: true, syntheticExplicitVerification: false, personalProfileUsed: false,
     syntheticLogoSha256: sha256(syntheticLogo),
     pageConventions: routes.map(({ pathname, urlPageBase }) => ({ pathname, urlPageBase, apiPageBase: 0 })),
+  })
+
+  await scenario('nojs-institutional-metadata-and-privacy-alias', false, async (page) => {
+    const observations = []
+    for (const route of [
+      {
+        pathname: '/contato', title: 'Contato e suporte | Tops do Job',
+        description: 'Consulte os canais de atendimento, privacidade e segurança do Tops do Job e saiba como falar com a equipe pelo suporte interno.',
+      },
+      {
+        pathname: '/politica-de-privacidade', title: 'Política de privacidade | Tops do Job',
+        description: 'Consulte como o Tops do Job trata dados pessoais e protege a privacidade.',
+      },
+    ]) {
+      const response = await page.goto(`${origin}${route.pathname}`, { waitUntil: 'load' })
+      assert.equal(response.status(), 200)
+      assert.equal(response.request().redirectedFrom(), null, 'The institutional destination must respond directly.')
+      assert.match(response.headers()['content-type'], /text\/html/)
+      assert.match(response.headers()['x-robots-tag'], /noindex/, 'Institutional metadata must preserve the blocked build policy.')
+      assert.equal(await page.title(), route.title)
+      assert.deepEqual(await page.locator('meta[name="description"]').evaluateAll((nodes) => nodes.map((node) => node.content)), [route.description])
+      const canonical = `${siteOrigin}${route.pathname}`
+      assert.deepEqual(await page.locator('link[rel="canonical"]').evaluateAll((nodes) => nodes.map((node) => node.href)), [canonical])
+      for (const [property, expected] of [['og:title', route.title], ['og:description', route.description], ['og:url', canonical]]) {
+        assert.deepEqual(await page.locator(`meta[property="${property}"]`).evaluateAll((nodes) => nodes.map((node) => node.content)), [expected])
+      }
+      const robots = await page.locator('meta[name="robots"]').evaluateAll((nodes) => nodes.map((node) => node.content).join(','))
+      assert.match(robots, /noindex/)
+      assert.match(robots, /nofollow/)
+      write(`nojs-institutional-${route.pathname.slice(1)}.html`, await response.body())
+      observations.push({ pathname: route.pathname, status: response.status(), title: route.title, description: route.description, canonical, robots })
+    }
+
+    const alias = await fetch(`${origin}/privacidade`, { redirect: 'manual' })
+    assert.equal(alias.status, 308, 'The privacy alias must be a permanent HTTP redirect.')
+    const location = alias.headers.get('location')
+    assert.ok(location)
+    const destination = new URL(location, origin)
+    assert.equal(destination.href, `${origin}/politica-de-privacidade`, 'The alias must target the existing institutional page, not the home page.')
+    await alias.arrayBuffer()
+    const response = await page.goto(destination.href, { waitUntil: 'load' })
+    assert.equal(response.status(), 200)
+    assert.equal(response.request().redirectedFrom(), null, 'The privacy alias must complete in exactly one redirect hop.')
+    assert.equal(response.headers().location, undefined)
+    assert.deepEqual(await page.locator('link[rel="canonical"]').evaluateAll((nodes) => nodes.map((node) => node.href)), [`${siteOrigin}/politica-de-privacidade`])
+    observations.push({ pathname: '/privacidade', status: alias.status, destination: destination.href, finalStatus: response.status(), redirectHops: 1 })
+    writeJson('nojs-institutional-metadata-and-privacy-alias.json', observations)
+  })
+
+  await scenario('nojs-retired-programmatic-blog-routes', false, async (page) => {
+    const observations = []
+    for (const theme of ['acompanhantes', 'garotas-de-programa', 'anuncios-adultos']) {
+      for (const pathname of [`/blog/${theme}/goiania`, `/blog/cidade/${theme}/goiania`]) {
+        const url = `${origin}${pathname}?uf=go`
+        const response = await page.goto(url, { waitUntil: 'load' })
+        assert.equal(response.status(), 404, 'Unsupported programmatic blog routes must remain unavailable.')
+        assert.equal(response.request().redirectedFrom(), null, 'Do not retain an unconditional redirect to another 404.')
+        assert.equal(response.headers().location, undefined)
+        assert.equal(page.url(), url)
+        observations.push({ pathname, query: '?uf=go', status: response.status(), redirectHops: 0 })
+      }
+    }
+    writeJson('nojs-retired-programmatic-blog-routes.json', observations)
   })
 
   for (const route of routes) {

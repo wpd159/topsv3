@@ -134,16 +134,23 @@ export default function MainContent({ anuncio, relacionados }: MainContentProps)
   const linkConteudoRaw: string | null = anuncio.linkConteudo ?? null
   const linkConteudo = linkConteudoRaw ? normalizarLink(linkConteudoRaw) : null
   const horario: string | null = anuncio.horario ?? null
+  const descricaoAnuncio = clean(anuncio.descricaoAnuncio) || clean(anuncio.descricao) || clean(anuncio.descricaoAnunciante)
+  const descricaoAnunciante = clean(anuncio.descricaoAnunciante)
+  const possuiSobreDistinto = descricaoAnunciante && descricaoAnunciante !== descricaoAnuncio
 
   return (
     <div className="space-y-8">
-      <div className="scroll-mt-24 rounded-xl border border-gray-200 bg-white p-5">
+      {possuiSobreDistinto ? <div className="scroll-mt-24 rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="mb-2 text-lg font-semibold text-gray-900">Sobre o anunciante</h2>
         <p className="leading-relaxed text-gray-700">
-          {corrigirTextoCorrompido(
-            anuncio.descricaoAnunciante ??
-              'Profissional experiente e dedicado(a), com foco em proporcionar um atendimento de qualidade, conforto e discrição.'
-          )}
+          {descricaoAnunciante}
+        </p>
+      </div> : null}
+
+      <div className="scroll-mt-24 space-y-4 rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="mb-2 text-lg font-semibold text-gray-900">Descrição do anúncio</h2>
+        <p className="whitespace-pre-line leading-relaxed text-gray-700">
+          {descricaoAnuncio || 'Descrição não informada.'}
         </p>
 
         {horario && (
@@ -152,17 +159,6 @@ export default function MainContent({ anuncio, relacionados }: MainContentProps)
             Atendimento: {corrigirTextoCorrompido(horario).replace(/_/g, ' ').toLowerCase()}
           </div>
         )}
-      </div>
-
-      <div className="scroll-mt-24 space-y-4 rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Descrição do anúncio</h2>
-        <p className="whitespace-pre-line leading-relaxed text-gray-700">
-          {corrigirTextoCorrompido(
-            anuncio.descricaoAnuncio ??
-              anuncio.descricao ??
-              'Anúncio criado para divulgar serviços de alto padrão, com atendimento personalizado e total discrição.'
-          )}
-        </p>
 
         <div className="pt-3">
           <h3 className="mb-2 text-sm font-semibold text-gray-900">Serviços</h3>

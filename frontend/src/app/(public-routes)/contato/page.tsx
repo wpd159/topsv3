@@ -1,55 +1,13 @@
-'use client'
+import { buildPublicStaticMetadata } from "@/lib/seo/public-static-metadata"
+import ContatoPageClient from "./contato-page-client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { LoginModal } from "@/components/modals/login-modal"
-import { useAuth } from "@/context/AuthContext"
+export const metadata = buildPublicStaticMetadata({
+  path: "/contato",
+  title: "Contato e suporte | Tops do Job",
+  description:
+    "Consulte os canais de atendimento, privacidade e segurança do Tops do Job e saiba como falar com a equipe pelo suporte interno.",
+})
 
 export default function ContatoPage() {
-  const { usuario } = useAuth()
-  const [loginOpen, setLoginOpen] = useState(false)
-
-  const abrirContato = () => {
-    if (usuario) {
-      window.dispatchEvent(new Event("open-suporte-ticket"))
-      return
-    }
-    setLoginOpen(true)
-  }
-
-  return (
-    <section className="mx-auto max-w-3xl px-6 py-10 text-center space-y-6">
-      <h1 className="text-2xl md:text-4xl font-extrabold text-gray-900 leading-tight">
-        Contato e suporte
-      </h1>
-
-      <div className="space-y-4 text-justify text-gray-600 leading-relaxed md:text-center">
-        <p>
-          Se precisar falar com a equipe da plataforma, você pode usar o canal de suporte interno
-          ou encaminhar sua mensagem para os contatos institucionais abaixo.
-        </p>
-        <p>
-          Atendimento geral: <strong className="text-gray-800">contato@topsdojob.com.br</strong>
-        </p>
-        <p>
-          Demandas jurídicas e privacidade:{" "}
-          <strong className="text-gray-800">juridico@topsdojob.com.br</strong>
-        </p>
-        <p>
-          Denúncias e segurança: <strong className="text-gray-800">denuncia@topsdojob.com.br</strong>
-        </p>
-      </div>
-
-      <div className="pt-2">
-        <Button
-          onClick={abrirContato}
-          className="bg-[#FC1EAD] px-6 py-6 font-semibold text-white hover:bg-[#e01a9a]"
-        >
-          FALAR COM O SUPORTE
-        </Button>
-      </div>
-
-      <LoginModal open={loginOpen} onOpenChange={setLoginOpen} />
-    </section>
-  )
+  return <ContatoPageClient />
 }

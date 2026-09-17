@@ -35,7 +35,7 @@ assert.match(cardSource, /<AnuncioCardVideo/)
 assert.match(cardSource, /carrosselDisponivel \|\| videoHabilitado/)
 assert.match(cardSource, /aria-label="Mídia anterior"/)
 assert.match(cardSource, /aria-label="Próxima mídia"/)
-assert.match(cardSource, /if \(media\?\.tipo !== "FOTO"\) return/)
+assert.doesNotMatch(cardSource, /new window\.Image\(\)/, "Unselected carousel media must not bypass the rendered image's lazy loading.")
 
 assert.match(cardVideoSource, /let activeCardVideo: HTMLVideoElement \| null = null/)
 assert.match(cardVideoSource, /activeCardVideo\.pause\(\)/)

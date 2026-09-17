@@ -223,25 +223,6 @@ export function AnuncioCard({
     if (index > midiasSeguras.length - 1) setIndex(0)
   }, [midiasSeguras.length, index])
 
-  useEffect(() => {
-    if ((!carrosselDisponivel && !videoHabilitado)
-      || midiasSeguras.length <= 1
-      || typeof window === "undefined") return
-
-    const candidates = [
-      midiasSeguras[(index + 1) % midiasSeguras.length],
-      midiasSeguras[(index - 1 + midiasSeguras.length) % midiasSeguras.length],
-    ]
-
-    candidates.forEach((media) => {
-      if (media?.tipo !== "FOTO") return
-      const fonte = media ? fontePublicaSegura(media) : null
-      if (!fonte || fonte === capaVideoAtual?.url) return
-      const img = new window.Image()
-      img.src = fonte
-    })
-  }, [capaVideoAtual?.url, carrosselDisponivel, index, midiasSeguras, videoHabilitado])
-
   const next = () => {
     if (!midiasSeguras.length) return
     setIndex((i) => (i + 1) % midiasSeguras.length)
