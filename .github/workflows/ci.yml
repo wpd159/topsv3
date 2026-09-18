@@ -187,6 +187,8 @@ jobs:
           node scripts/test-indexnow-v3.mjs
           node scripts/test-ga4-production.mjs
           node scripts/test-public-metrics.mjs
+          node scripts/test-site-content-ssr.mjs
+          node scripts/test-tickets-suporte-v3.mjs
           npm run test:search-indexing
           node scripts/test-search-indexing-artifact-selftest.mjs
           npm run test:seo-ai

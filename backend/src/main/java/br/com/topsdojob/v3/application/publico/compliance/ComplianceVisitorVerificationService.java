@@ -422,7 +422,7 @@ public class ComplianceVisitorVerificationService {
         challenge.getRiscoScore(),
         challenge.getRiscoDecisao().name(),
         StatusChallengeVisitante.DOCUMENT_PENDING.name(),
-        "Envie um documento sintetico valido para analise manual.");
+        "Envie o documento solicitado para análise.");
   }
 
   private EscopoConteudoVisitante escopo(String value) {
