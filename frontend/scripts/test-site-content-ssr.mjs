@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import ts from 'typescript'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 const paths = {
   library: new URL('../src/lib/site-content.ts', import.meta.url),
@@ -106,4 +110,65 @@ for (const hardcode of removedHardcodes) {
   )
 }
 
-console.log('OK_SITE_CONTENT_SSR')
+// Render the affected copy with real React and the existing body renderer.
+// Only providers/UI wrappers are synthetic; no browser, network or real account.
+const require = createRequire(import.meta.url)
+function compileComponent(text, mocks = {}) {
+  const { outputText } = ts.transpileModule(text, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  })
+  const module = { exports: {} }
+  new Function('require', 'module', 'exports', outputText)(
+    (id) => Object.hasOwn(mocks, id) ? mocks[id] : require(id), module, module.exports,
+  )
+  return module.exports
+}
+const contactSource = await readFile(new URL('../src/app/(public-routes)/contato/contato-page-client.tsx', import.meta.url), 'utf8')
+for (const usuario of [null, { id: 'fixture-editorial' }]) {
+  const Contact = compileComponent(contactSource, {
+    '@/context/AuthContext': { useAuth: () => ({ usuario }) },
+    '@/components/ui/button': { Button: (props) => React.createElement('button', props) },
+    '@/components/modals/login-modal': { LoginModal: () => null },
+  }).default
+  const html = renderToStaticMarkup(React.createElement(Contact))
+  assert.equal((html.match(/contato@topsdojob\.com\.br/g) ?? []).length, 1)
+  assert.match(html, /Atendimento, privacidade, questões jurídicas, denúncias e segurança:/)
+  assert.match(html, /entre na sua conta/)
+  assert.match(html, /Meus tickets/)
+  assert.match(html, /FALAR COM O SUPORTE/)
+  assert.doesNotMatch(html, /(?:juridico|denuncia|conntato)@/)
+}
+assert.match(contactSource, /if \(usuario\)[\s\S]+open-suporte-ticket[\s\S]+setLoginOpen\(true\)/)
+
+const prepared = JSON.parse(await readFile(new URL('../../docs/v3/conteudo-institucional-revisado.json', import.meta.url), 'utf8'))
+const { SafeSiteContentBody } = compileComponent(source.renderer, {
+  'next/link': { default: (props) => React.createElement('a', props) },
+})
+assert.equal(new Set(prepared.map((entry) => entry.contentKey)).size, 9)
+for (const entry of prepared) {
+  assert.ok(entry.titulo && entry.corpo && entry.expectedContentHash)
+  assert.match(entry.expectedContentHash, /^[a-f0-9]{64}$/)
+  assert.doesNotMatch(entry.corpo, /(?:juridico|denuncia|conntato)@topsdojob\.com\.br/i)
+  const html = renderToStaticMarkup(React.createElement(SafeSiteContentBody, {
+    content: entry.corpo, institutionalLinks: entry.contentKey === 'quem-somos',
+  }))
+  assert.match(html, /data-site-content-state="published"/)
+  assert.doesNotMatch(html, /<script|<iframe|href="javascript:/i)
+  for (const [, href] of html.matchAll(/href="([^"]+)"/g)) {
+    assert.ok(href.startsWith('/') || /^https?:\/\//.test(href), `link seguro: ${href}`)
+  }
+  // Existing mailto Markdown is not clickable in this renderer; preserve its
+  // restriction while ensuring the prepared destination uses the sole mailbox.
+  for (const [, address] of entry.corpo.matchAll(/mailto:([^\s)]+)/g)) {
+    assert.equal(address, 'contato@topsdojob.com.br')
+  }
+}
+const warning = prepared.find((entry) => entry.contentKey === 'texto-whatsapp').corpo
+assert.match(warning, /informe o endereço do anúncio, se disponível/)
+assert.doesNotMatch(warning, /informe seu endereço/)
+assert.ok(prepared.find((entry) => entry.contentKey === 'verificacao').corpo.includes('não comprova a titularidade'))
+assert.ok(prepared.find((entry) => entry.contentKey === 'privacidade-conteudo-restrito').corpo.includes('imediata e irreversível'))
+const escaped = renderToStaticMarkup(React.createElement(SafeSiteContentBody, { content: '<script>fixture</script> [x](javascript:alert)' }))
+assert.doesNotMatch(escaped, /<script|href="javascript:/i)
+
+console.log(`OK_SITE_CONTENT_SSR prepared=${prepared.length} contactContexts=2`)

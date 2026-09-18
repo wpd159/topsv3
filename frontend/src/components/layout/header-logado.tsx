@@ -177,9 +177,9 @@ export default function HeaderLogado() {
                   )}
                 </li>
 
-                {/* Meus Suportes */}
+                {/* Meus tickets */}
                 <li onClick={() => router.push("/meus-tickets")} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer">
-                  <TicketIcon className="w-5 h-5 text-gray-500" /> Meus Suportes
+                  <TicketIcon className="w-5 h-5 text-gray-500" /> Meus tickets
                   {typeof novosSuportes === "number" && novosSuportes > 0 ? (
                     <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FC1EAD] px-1 text-[10px] font-bold text-white">
                       {novosSuportes > 99 ? "99+" : novosSuportes}
@@ -323,7 +323,7 @@ export default function HeaderLogado() {
                 </Button>
 
                 <Button variant="ghost" className="justify-start text-gray-700" onClick={() => go("/meus-tickets")}>
-                  <TicketIcon className="w-5 h-5 mr-2" /> Meus Suportes
+                  <TicketIcon className="w-5 h-5 mr-2" /> Meus tickets
                   {typeof novosSuportes === "number" && novosSuportes > 0 ? (
                     <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FC1EAD] px-1 text-[10px] font-bold text-white">
                       {novosSuportes > 99 ? "99+" : novosSuportes}

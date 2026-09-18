@@ -25,18 +25,13 @@ export default function ContatoPageClient() {
 
       <div className="space-y-4 text-justify text-gray-600 leading-relaxed md:text-center">
         <p>
-          Se precisar falar com a equipe da plataforma, você pode usar o canal de suporte interno
-          ou encaminhar sua mensagem para os contatos institucionais abaixo.
+          Para falar com a equipe pelo suporte interno, entre na sua conta. Depois, use o botão
+          de suporte ou acesse Meus tickets para abrir e acompanhar um chamado. Você também
+          pode encaminhar sua mensagem ao contato institucional abaixo.
         </p>
         <p>
-          Atendimento geral: <strong className="text-gray-800">contato@topsdojob.com.br</strong>
-        </p>
-        <p>
-          Demandas jurídicas e privacidade:{" "}
-          <strong className="text-gray-800">juridico@topsdojob.com.br</strong>
-        </p>
-        <p>
-          Denúncias e segurança: <strong className="text-gray-800">denuncia@topsdojob.com.br</strong>
+          Atendimento, privacidade, questões jurídicas, denúncias e segurança:{" "}
+          <strong className="text-gray-800">contato@topsdojob.com.br</strong>
         </p>
       </div>
 

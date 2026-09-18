@@ -200,7 +200,7 @@ export default function MeusTicketsPage() {
       setDados(await listarTickets('TODOS', 0))
       setCarregando(false)
       window.dispatchEvent(new Event('suporte-ticket-changed'))
-      const mensagem = `Ticket ${criado.ticket.protocolo} aberto com sucesso. Acompanhe a resposta em Meus Suportes.`
+      const mensagem = `Ticket ${criado.ticket.protocolo} aberto com sucesso. Acompanhe a resposta em Meus tickets.`
       setConfirmacao(mensagem)
       toast.success(mensagem)
     } catch (cause) {
