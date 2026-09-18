@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { runInNewContext } from 'node:vm'
+import ts from 'typescript'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryRoot = path.resolve(frontendRoot, '..')
@@ -154,5 +156,83 @@ assert.ok(frontend('src/lib/meus-anuncios-api.ts').includes("bodyRequestId || re
 assert.ok(openapi.includes(['/api/public/minha-conta/seguranca/senha', ':'].join('')))
 assert.ok(openapi.includes('/api/public/minha-conta/seguranca/exclusao:'))
 assert.ok(openapi.includes('/api/public/minha-conta/anuncios/{slug}/midias/lote:'))
+
+// Execute the actual JSX and modal handler using the existing AST/VM test pattern.
+// Only component/transport boundaries are synthetic; no browser or remote call.
+function executeFunction(text, name, scope) {
+  const file = ts.createSourceFile('fixture.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  assert.equal(file.parseDiagnostics.length, 0)
+  const matches = []
+  const visit = (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) matches.push(node)
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  assert.equal(matches.length, 1, `Declaracao real de ${name}`)
+  const node = matches[0]
+  const expression = ts.factory.createFunctionExpression(
+    node.modifiers?.filter((item) => item.kind === ts.SyntaxKind.AsyncKeyword),
+    node.asteriskToken, undefined, node.typeParameters, node.parameters, node.type, node.body,
+  )
+  const printed = ts.createPrinter().printNode(ts.EmitHint.Expression, expression, file)
+  const { outputText } = ts.transpileModule(`(${printed})`, { compilerOptions: {
+    target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React,
+    jsxFactory: 'element', jsxFragmentFactory: 'Fragment',
+  } })
+  return runInNewContext(outputText, scope, { timeout: 1000 })
+}
+
+const preview = frontend('src/features/anuncio-wizard/components/wizard-preview.tsx')
+assert.ok(wizard.includes('const hasExistingKyc = Boolean(kycStatus?.prontoParaEnviarAnuncio)'))
+const kycService = repository('backend/src/main/java/br/com/topsdojob/v3/application/publico/kyc/KycPublicoService.java')
+assert.ok(kycService.includes('List.of("PENDENTE", "EM_ANALISE", "APROVADO").contains(status)'))
+const componentNames = ['Fragment', 'ChevronRight', 'Crown', 'FileText', 'ImageIcon', 'ShieldCheck',
+  'Sparkles', 'X', 'AnuncioCard', 'ImagemProprietario', 'Dialog', 'DialogClose', 'DialogContent',
+  'DialogDescription', 'DialogHeader', 'DialogTitle', 'PreviewTag']
+const renderPreview = executeFunction(preview, 'WizardPreview', {
+  ...Object.fromEntries(componentNames.map((name) => [name, name])),
+  element: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
+  cn: (...values) => values.filter(Boolean).join(' '),
+})
+for (const [status, ready] of [
+  ['NAO_INICIADO', false], ['PENDENTE', true], ['EM_ANALISE', true], ['APROVADO', true],
+  ['REJEITADO', false], ['AJUSTE_SOLICITADO', false], [null, false],
+]) {
+  const rendered = JSON.stringify(renderPreview({
+    showMobile: true, showDesktop: true, renderDialog: true, open: true,
+    previewMedia: [], hasExistingKyc: ready, premiumChoice: 'gratis', hasVirtual: false,
+  }))
+  assert.ok(rendered.includes(ready ? 'Documentação enviada' : 'Documentação a concluir'), String(status))
+  assert.ok(rendered.includes(ready
+    ? 'A publicação do anúncio depende da moderação.'
+    : 'Conclua a etapa de documentação antes de enviar o anúncio.'))
+  assert.doesNotMatch(rendered, /Conta (?:não )?verificada|Identidade confirmada|Documentação aprovada|pronta para publicar|concluiremos rapidamente/i)
+}
+
+const verification = repository('backend/src/main/java/br/com/topsdojob/v3/application/publico/compliance/ComplianceVisitorVerificationService.java')
+const pendingMessage = verification.match(/private VisitorAccessStatusDto statusDocumentoPendente\([\s\S]*?"([^"\n]+)"\);/)?.[1]
+assert.equal(pendingMessage, 'Envie o documento solicitado para análise.')
+const visitorModal = frontend('src/components/compliance/visitor-verification-modal.tsx')
+for (const accepted of [true, false]) {
+  const steps = [], messages = [], errors = []
+  let requests = 0
+  const denied = () => assert.fail('Documento pendente nao deve liberar acesso ou anunciar sucesso')
+  const verifyPending = executeFunction(visitorModal, 'verify', {
+    challenge: { challengeId: 'fixture-document', requiresExplicitAcknowledgement: false },
+    cpf: '0'.repeat(11), birthDate: '01/01/1990', birthDateConfirmation: '01/01/1990',
+    adultAccepted: accepted, restrictedAccepted: accepted, privacyAccepted: accepted, explicitAccepted: false,
+    operationRef: { current: 0 }, verifyKeyRef: { current: 'fixture-verify' },
+    obterGeracaoStatusVisitante: () => 1, setSubmitting: () => {}, setError: (value) => errors.push(value),
+    setStep: (value) => steps.push(value), setMessage: (value) => messages.push(value),
+    verifyVisitor: async () => { requests++; return { state: 'DOCUMENT_PENDING', verified: false, reasonPublic: pendingMessage } },
+    mapStatus: denied, notificarMudancaVerificacao: denied, toast: { success: denied },
+    onVerified: denied, onOpenChange: denied,
+  })
+  await verifyPending()
+  assert.equal(requests, accepted ? 1 : 0, 'Aceites continuam obrigatorios antes da chamada')
+  assert.deepEqual(steps, accepted ? ['document'] : [])
+  assert.deepEqual(messages, accepted ? [pendingMessage] : [])
+  assert.deepEqual(errors, accepted ? [null] : ['Confirme todos os aceites obrigatorios.'])
+}
 
 console.log('OK_WIZARD_E_MINHA_CONTA_SEGURANCA')

@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronRight, Crown, ImageIcon, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { ChevronRight, Crown, FileText, ImageIcon, Sparkles, X } from 'lucide-react'
 import { AnuncioCard } from '@/components/anuncios/anuncio-card'
 import { ImagemProprietario } from '@/components/anuncios/imagem-proprietario'
 import {
@@ -146,8 +146,8 @@ export function WizardPreview({
                   />
                 )}
                 <PreviewTag
-                  icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                  label={hasExistingKyc ? 'Conta verificada' : 'Conta não verificada'}
+                  icon={<FileText className="h-3.5 w-3.5" />}
+                  label={hasExistingKyc ? 'Documentação enviada' : 'Documentação a concluir'}
                   tone="light"
                 />
               </div>
@@ -236,8 +236,8 @@ export function WizardPreview({
                   <div className="rounded-[26px] border border-zinc-200 bg-zinc-950 px-5 py-4 text-white shadow-sm">
                     <p className="text-sm font-semibold">
                       {hasExistingKyc
-                        ? 'Sua conta já está pronta para publicar quando você quiser.'
-                        : 'Quando chegar ao final, concluiremos rapidamente a verificação da conta.'}
+                        ? 'Documentação enviada. A publicação do anúncio depende da moderação.'
+                        : 'Conclua a etapa de documentação antes de enviar o anúncio.'}
                     </p>
                   </div>
                 </div>

@@ -121,7 +121,17 @@ class ComplianceVisitorVerificationServiceTest {
 
     assertThat(result.httpStatus()).isEqualTo(HttpStatus.ACCEPTED);
     assertThat(result.status().state()).isEqualTo("DOCUMENT_PENDING");
+    assertThat(result.status().reasonPublic()).isEqualTo("Envie o documento solicitado para análise.");
+    assertThat(result.status().verified()).isFalse();
+    assertThat(result.generalCookie()).isNull();
+    assertThat(result.explicitCookie()).isNull();
     assertThat(challenge.getStatus()).isEqualTo(StatusChallengeVisitante.DOCUMENT_PENDING);
+
+    var repeat = fixture.service.verificar(
+        validRequest("verify-document"),
+        new MockHttpServletRequest());
+    assertThat(repeat.httpStatus()).isEqualTo(HttpStatus.ACCEPTED);
+    assertThat(repeat.status()).isEqualTo(result.status());
     verify(fixture.accessService, never()).emitir(any(), any(), any());
   }
 
