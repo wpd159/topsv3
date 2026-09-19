@@ -1,5 +1,7 @@
 "use client"
 
+import { readCookieConsent } from '@/lib/cookie-consent'
+
 type EventoGA4 = Record<string, string | number | boolean | null | undefined>
 export const GA_MEASUREMENT_ID = "G-E0CNBH6WPM"
 export const GA_CONSENT_EVENT = "tops:cookie-consent-updated"
@@ -38,12 +40,7 @@ export function analyticsPermitido() {
   if (typeof window === "undefined" || typeof document === "undefined") return false
   if (process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "true") return false
   if (window.location.origin !== PUBLIC_ORIGIN || !pathPublicoGA4(window.location.pathname)) return false
-  try {
-    const cookie = document.cookie.match(/(?:^|;\s*)cookie_consent=([^;]*)/)
-    return Boolean(cookie && JSON.parse(decodeURIComponent(cookie[1]))?.analytics === true)
-  } catch {
-    return false
-  }
+  return readCookieConsent()?.analytics === true
 }
 
 export function contextoPaginaGA4() {

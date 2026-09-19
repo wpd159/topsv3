@@ -25,7 +25,8 @@ const analytics = readRepoFile(
   'frontend/src/components/analytics/consent-aware-analytics.tsx'
 )
 const helper = readRepoFile('frontend/src/lib/analytics/ga4.ts')
-const integration = `${helper}\n${analytics}`
+const consentSource = readRepoFile('frontend/src/lib/cookie-consent.ts')
+const integration = `${helper}\n${analytics}\n${consentSource}`
 const nextConfig = readRepoFile('frontend/next.config.ts')
 const productionWorkflow = readRepoFile('.github/workflows/deploy-production.yml')
 const ciWorkflow = readRepoFile('.github/workflows/ci.yml')
@@ -130,7 +131,7 @@ function runtimeModule(name, source, imports, platform) {
 function componentHooks() {
   const slots = []
   const pending = []
-  let index = 0, dirty = false, component
+  let index = 0, dirty = false, component, tree
   const changed = (before, after) => !before || !after || before.length !== after.length || after.some((item, i) => !Object.is(item, before[i]))
   const react = {
     useRef(initial) { return slots[index++] ??= { current: initial } },
@@ -161,7 +162,7 @@ function componentHooks() {
   function render(commit = true) {
     index = 0
     dirty = false
-    assert.equal(component(), null)
+    tree = component()
     if (commit) pending.splice(0).forEach((effect) => effect())
   }
   function settle() {
@@ -180,12 +181,13 @@ function componentHooks() {
       settle()
     },
     settle,
+    get tree() { return tree },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
   }
 }
 
-const approvedCookie = `cookie_consent=${encodeURIComponent(JSON.stringify({ analytics: true }))}`
-const deniedCookie = `cookie_consent=${encodeURIComponent(JSON.stringify({ analytics: false }))}`
+const approvedCookie = `cookie_consent=${encodeURIComponent(JSON.stringify({ necessary: true, functional: false, analytics: true, marketing: false }))}`
+const deniedCookie = `cookie_consent=${encodeURIComponent(JSON.stringify({ necessary: true, functional: false, analytics: false, marketing: false }))}`
 // Placeholder aprovado pelo scanner; continua sendo canário proibido no payload.
 const sensitiveQuery = new URLSearchParams({
   email: 'pessoa@example.test', token: 'CHANGE_ME', utm_source: 'segredo',
@@ -211,6 +213,7 @@ function scenario({ url = 'https://topsdojob.com/', cookie = approvedCookie, env
       listeners.get(type).add(callback)
     },
     removeEventListener(type, callback) { listeners.get(type)?.delete(callback) },
+    dispatchEvent(event) { [...(listeners.get(event.type) ?? [])].forEach((callback) => callback(event)); return true },
     setInterval(...args) { timerCalls.push(args); return timerCalls.length },
     clearInterval() {},
     setTimeout(...args) { timerCalls.push(args); return timerCalls.length },
@@ -233,8 +236,10 @@ function scenario({ url = 'https://topsdojob.com/', cookie = approvedCookie, env
     clearInterval: window.clearInterval,
     setTimeout: window.setTimeout,
     clearTimeout: window.clearTimeout,
+    CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail } },
   }
-  const ga4 = runtimeModule('ga4.ts', helper, {}, platform)
+  const consent = runtimeModule('cookie-consent.ts', consentSource, {}, platform)
+  const ga4 = runtimeModule('ga4.ts', helper, { '@/lib/cookie-consent': consent }, platform)
   const { ConsentAwareAnalytics } = runtimeModule('consent-aware-analytics.tsx', analytics, {
     react: hooks.react,
     'next/navigation': {
@@ -259,7 +264,7 @@ function scenario({ url = 'https://topsdojob.com/', cookie = approvedCookie, env
     if (args[0] === 'event') send(args[1], args[2])
   }
   const test = {
-    ga4, window, document, scripts, commands, hits, hooks,
+    ga4, window, document, scripts, commands, hits, hooks, platform,
     disabled,
     mount() { hooks.mount(ConsentAwareAnalytics) },
     navigate(next, render = true) { window.location = new URL(next, window.location); if (render) hooks.render() },
@@ -417,7 +422,7 @@ for (const route of [
 const blockedScenarios = [
   ...['/admin', '/admin/login', '/admin/usuarios/cliente-sintetico', '/painel', '/minha-conta', '/favoritos', '/chat', '/meus-anuncios', '/meus-tickets', '/creditos', '/anunciar/wizard', '/checkout/creditos/plano', '/registrar', '/login', '/api/test', '/health/readiness', '/__fixtures/anuncios', '/rota-desconhecida'].map((route) => ({ url: `https://topsdojob.com${route}` })),
   ...['http://topsdojob.com/', 'https://www.topsdojob.com/', 'http://localhost:3000/', 'http://127.0.0.1:3000/', 'https://fixture.example.test/', 'https://topsdojob.com.example.test/'].map((url) => ({ url })),
-  ...['', deniedCookie, 'cookie_consent=not-json', 'cookie_consent=%E0%A4%A', 'cookie_consent=null', 'cookie_consent=%7B%7D', 'cookie_consent=%7B%22analytics%22%3A%22true%22%7D'].map((cookie) => ({ cookie })),
+  ...['', deniedCookie, 'cookie_consent=not-json', 'cookie_consent=%E0%A4%A', 'cookie_consent=null', 'cookie_consent=%7B%7D', 'cookie_consent=%7B%22analytics%22%3A%22true%22%7D', 'cookie_consent=%7B%22analytics%22%3Atrue%7D'].map((cookie) => ({ cookie })),
   ...[undefined, '', 'false', 'TRUE'].map((value) => ({ env: { NEXT_PUBLIC_ANALYTICS_ENABLED: value } })),
   ...['development', 'test', undefined].map((value) => ({ env: { NODE_ENV: value } })),
 ]
@@ -559,6 +564,171 @@ for (const notification of ['focus', 'tops:cookie-consent-updated']) {
   assert.equal(test.ga4.analyticsPermitido(), false)
   assert.doesNotThrow(() => test.ga4.registrarEventoGA4('click_whatsapp'))
   test.finish()
+}
+
+// Reuse the same hooks and intercepted transport for the actual preference and
+// age-gate callbacks. This is not a DOM/layout or real Google SDK assertion.
+const ageSource = readRepoFile('frontend/src/components/modals/age-gate-modal.tsx')
+const preferencesSource = readRepoFile('frontend/src/app/(public-routes)/cookies/cookie-preferences.tsx')
+const element = (type, props) => ({ type, props: props ?? {} })
+const jsx = { jsx: element, jsxs: element, Fragment: 'Fragment' }
+function nodes(tree) {
+  if (Array.isArray(tree)) return tree.flatMap(nodes)
+  if (tree === null || tree === undefined || typeof tree === 'boolean') return []
+  return typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [tree]
+}
+const nodeText = (tree) => nodes(tree).filter((item) => typeof item === 'string' || typeof item === 'number').join(' ')
+const findNode = (tree, predicate, label) => {
+  const result = nodes(tree).find((item) => typeof item === 'object' && predicate(item))
+  assert.ok(result, `Controle ausente: ${label}`)
+  return result
+}
+const consentCookie = (consent) => `cookie_consent=${encodeURIComponent(JSON.stringify(consent))}`
+const refused = { necessary: true, functional: false, analytics: false, marketing: false, ts: 17 }
+async function consentUi({ age = true, cookie = '', rejectAge = false, preferences = false } = {}) {
+  const test = scenario({ cookie })
+  test.mount()
+  const hooks = componentHooks()
+  const consent = runtimeModule('cookie-consent.ts', consentSource, {}, test.platform)
+  let ageCalls = 0, rejected = rejectAge
+  const imports = {
+    react: hooks.react, 'react/jsx-runtime': jsx,
+    'next/navigation': { usePathname: () => test.window.location.pathname, useRouter: () => ({ back() {} }) },
+    '@heroicons/react/24/outline': new Proxy({}, { get: (_, key) => String(key) }),
+    '@/components/ui/dialog': Object.fromEntries(['Dialog', 'DialogContent', 'DialogDescription', 'DialogHeader', 'DialogTitle'].map((name) => [name, name])),
+    '@/components/ui/button': { Button: 'Button' },
+    '@/components/ui/badge': { Badge: 'Badge' },
+    '@/components/ui/card': Object.fromEntries(['Card', 'CardContent', 'CardHeader', 'CardTitle'].map((name) => [name, name])),
+    '@/components/ui/separator': { Separator: 'Separator' },
+    '@/components/site/cookie-options': { CookieOptions: 'CookieOptions' },
+    '@/lib/cookie-consent': consent,
+    '@/components/site-content/site-content-provider': { useSiteContent: () => ({ titulo: 'Maioridade sintética', corpo: 'Termos sintéticos.' }) },
+    '@/components/site-content/safe-site-content-body': { SafeInstitutionalText: 'SafeInstitutionalText' },
+    '@/lib/compliance/visitor-access': {
+      obterStatusVisitante: async () => ({ globalAccepted: age }),
+      confirmarAceiteGlobal: async (pathname) => {
+        ageCalls += 1
+        assert.equal(pathname, test.window.location.pathname)
+        if (rejected) throw Error('Falha sintética de confirmação')
+        age = true
+        return { globalAccepted: true }
+      },
+    },
+  }
+  const ui = preferences
+    ? runtimeModule('cookie-preferences.tsx', preferencesSource, imports, test.platform).CookiePreferences
+    : runtimeModule('age-gate-modal.tsx', ageSource, imports, test.platform).AgeGateModal
+  hooks.mount(() => ui({}))
+  const settle = async () => {
+    for (let turn = 0; turn < 4; turn++) { await Promise.resolve(); hooks.settle(); test.hooks.settle() }
+  }
+  await settle()
+  return {
+    test, hooks, consent, settle,
+    get ageCalls() { return ageCalls },
+    allowAge() { rejected = false },
+    open() { return findNode(hooks.tree, (node) => node.type === 'Dialog', 'Dialog').props.open },
+    async click(label) {
+      const button = findNode(hooks.tree, (node) => node.type === 'Button' && nodeText(node).trim() === label, label)
+      assert.ok(!button.props.disabled, `Controle não deve estar desabilitado: ${label}`)
+      button.props.onClick()
+      await settle()
+    },
+    async customize(values) {
+      const options = findNode(hooks.tree, (node) => node.type === 'CookieOptions', 'CookieOptions')
+      options.props.onChange({ ...options.props.consent, ...values })
+      await settle()
+    },
+    finish() { hooks.unmount(); test.finish() },
+  }
+}
+
+for (const cookie of ['', 'cookie_consent=%E0%A4%A', 'cookie_consent=null', 'cookie_consent=%7B%7D', consentCookie({ ...refused, analytics: 'true' })]) {
+  const ui = await consentUi({ age: true, cookie })
+  assert.equal(ui.open(), true, 'Ausência ou preferência inválida requer escolha mesmo com maioridade confirmada.')
+  assert.equal(ui.consent.readCookieConsent(), null)
+  assert.equal(ui.test.scripts.length, 0)
+  await ui.click('Entrar somente com os necessários')
+  assert.equal(ui.open(), false)
+  assert.equal(ui.ageCalls, 0)
+  assert.equal(ui.consent.readCookieConsent().analytics, false)
+  assert.equal(ui.test.scripts.length, 0)
+  ui.finish()
+}
+{
+  const ui = await consentUi({ age: true, cookie: consentCookie(refused) })
+  assert.equal(ui.open(), false, 'Recusa válida é respeitada, sem novo pedido de consentimento.')
+  assert.equal(ui.test.scripts.length, 0)
+  ui.finish()
+}
+{
+  const ui = await consentUi({ age: false, cookie: consentCookie(refused) })
+  assert.equal(ui.open(), true)
+  await ui.click('Aceitar')
+  assert.equal(ui.ageCalls, 1)
+  assert.deepEqual(ui.consent.readCookieConsent(), refused, 'Aceitar maioridade não modifica escolhas de cookies anteriores.')
+  assert.equal(ui.test.scripts.length, 0)
+  ui.finish()
+}
+{
+  const ui = await consentUi({ age: false, rejectAge: true })
+  await ui.click('Personalizar cookies')
+  assert.equal(ui.ageCalls, 0)
+  assert.equal(ui.consent.readCookieConsent(), null)
+  const initial = findNode(ui.hooks.tree, (node) => node.type === 'CookieOptions', 'CookieOptions').props.consent
+  assert.deepEqual(initial, ui.consent.defaultConsent, 'Opções não essenciais começam desativadas.')
+  await ui.customize({ analytics: true })
+  assert.equal(ui.consent.readCookieConsent(), null, 'Alternar uma opção não salva nem libera GA4.')
+  await ui.click('Salvar preferências e entrar')
+  assert.equal(ui.ageCalls, 1)
+  assert.equal(ui.open(), true)
+  assert.equal(ui.consent.readCookieConsent(), null)
+  assert.equal(ui.test.scripts.length, 0)
+  assert.match(nodeText(ui.hooks.tree), /Nao foi possivel confirmar o aceite/)
+  ui.allowAge()
+  await ui.click('Salvar preferências e entrar')
+  assert.equal(ui.ageCalls, 2)
+  assert.equal(ui.open(), false)
+  assert.equal(ui.consent.readCookieConsent().analytics, true)
+  assert.equal(ui.consent.readCookieConsent().marketing, false)
+  assert.equal(ui.test.scripts.length, 1)
+  ui.test.loadSdk()
+  assert.equal(ui.test.events().length, 1, 'A decisão confirmada gera uma única visualização no transporte simulado.')
+  ui.test.dispatch('focus')
+  assert.equal(ui.test.events().length, 1)
+  ui.test.navigate('/admin')
+  ui.test.ga4.registrarEventoGA4('page_view')
+  assert.equal(ui.test.events().length, 1, 'Consentimento não libera medição privada.')
+  ui.finish()
+}
+for (const age of [false, true]) {
+  const ui = await consentUi({ age })
+  await ui.click(age ? 'Aceitar todos os cookies' : 'Aceitar todos os cookies e entrar')
+  assert.equal(ui.ageCalls, age ? 0 : 1)
+  const saved = ui.consent.readCookieConsent()
+  assert.equal(saved.necessary && saved.functional && saved.analytics && saved.marketing, true)
+  assert.equal(ui.test.scripts.length, 1)
+  ui.test.loadSdk()
+  assert.equal(ui.test.events().length, 1)
+  ui.finish()
+}
+{
+  const ui = await consentUi({ preferences: true, cookie: consentCookie({ ...refused, analytics: true }) })
+  ui.test.loadSdk()
+  assert.equal(ui.test.events().length, 1)
+  await ui.customize({ analytics: false })
+  assert.equal(ui.consent.readCookieConsent().analytics, true, 'Editar preferências não persiste antes de salvar.')
+  await ui.click('Salvar preferencias')
+  assert.equal(ui.consent.readCookieConsent().analytics, false)
+  assert.equal(ui.test.disabled(), true)
+  ui.test.ga4.registrarEventoGA4('click_whatsapp')
+  assert.equal(ui.test.events('click_whatsapp').length, 0)
+  ui.consent.persistCookieConsent({ ...refused, analytics: true })
+  await ui.settle()
+  assert.equal(findNode(ui.hooks.tree, (node) => node.type === 'CookieOptions', 'CookieOptions').props.consent.analytics, true, 'O editor acompanha a notificação do mecanismo compartilhado.')
+  assert.equal(ui.test.events().length, 2)
+  assert.equal(ui.test.scripts.length, 1)
+  ui.finish()
 }
 
 console.log(`GA4 runtime: ${scenarios} cenarios aprovados; modulos reais, hooks e transporte simulados, nenhuma chamada externa.`)

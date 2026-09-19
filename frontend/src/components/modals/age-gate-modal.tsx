@@ -17,6 +17,15 @@ import {
 } from '@heroicons/react/24/outline'
 import { useSiteContent } from '@/components/site-content/site-content-provider'
 import { SafeInstitutionalText } from '@/components/site-content/safe-site-content-body'
+import { CookieOptions } from '@/components/site/cookie-options'
+import {
+  CONSENT_EVENT,
+  allCookiesConsent,
+  defaultConsent,
+  persistCookieConsent,
+  readCookieConsent,
+  type ConsentState,
+} from '@/lib/cookie-consent'
 import {
   confirmarAceiteGlobal,
   obterStatusVisitante,
@@ -35,37 +44,65 @@ export function AgeGateModal({
 }: AgeGateModalProps) {
   const pathname = usePathname()
   const legalNotice = useSiteContent('popup-login')
-  const [open, setOpen] = useState(false)
+  const [ageAccepted, setAgeAccepted] = useState<boolean | null>(null)
+  const [storedConsent, setStoredConsent] = useState<ConsentState | null>(null)
+  const [choice, setChoice] = useState<ConsentState>(defaultConsent)
+  const [personalizing, setPersonalizing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const excludedPath = pathname === '/termos-de-uso' || pathname === '/registrar'
+  const needsCookies = storedConsent === null
+  const open = !excludedPath && ageAccepted !== null && (!ageAccepted || needsCookies)
 
   useEffect(() => {
-    if (pathname === '/termos-de-uso' || pathname === '/registrar') {
-      setOpen(false)
+    const syncConsent = () => setStoredConsent(readCookieConsent())
+    syncConsent()
+    window.addEventListener(CONSENT_EVENT, syncConsent)
+    return () => window.removeEventListener(CONSENT_EVENT, syncConsent)
+  }, [])
+
+  useEffect(() => {
+    setStoredConsent(readCookieConsent())
+    setPersonalizing(false)
+    setChoice(defaultConsent)
+    setError(null)
+    setAgeAccepted(null)
+    if (excludedPath) {
       return
     }
 
     let active = true
     void obterStatusVisitante(true)
       .then((status) => {
-        if (active) setOpen(!status.globalAccepted)
+        if (active) setAgeAccepted(status.globalAccepted === true)
       })
       .catch(() => {
-        if (active) setOpen(true)
+        if (active) setAgeAccepted(false)
       })
     return () => {
       active = false
     }
-  }, [pathname])
+  }, [pathname, excludedPath])
 
-  async function accept() {
+  async function accept(cookieChoice?: ConsentState) {
+    if (submitting) return
     setSubmitting(true)
     setError(null)
+    let confirmingAge = !ageAccepted
     try {
-      await confirmarAceiteGlobal(pathname || '/')
-      setOpen(false)
+      if (confirmingAge) {
+        await confirmarAceiteGlobal(pathname || '/')
+        setAgeAccepted(true)
+        confirmingAge = false
+      }
+      // A confirmação etária falha antes de qualquer escrita de cookies.
+      // Uma preferência válida preexistente (inclusive recusa) é preservada.
+      const current = readCookieConsent()
+      setStoredConsent(cookieChoice && !current ? persistCookieConsent(cookieChoice) : current)
     } catch {
-      setError(AGE_GATE_CONFIRMATION_ERROR)
+      setError(confirmingAge
+        ? AGE_GATE_CONFIRMATION_ERROR
+        : 'Nao foi possivel salvar as preferencias. Tente novamente.')
     } finally {
       setSubmitting(false)
     }
@@ -85,25 +122,44 @@ export function AgeGateModal({
               <ExclamationTriangleIcon className="h-7 w-7 text-[#FC1EAD]" />
             </div>
             <DialogTitle className="mt-2 shrink-0 pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(3.5rem,env(safe-area-inset-right))] text-xl font-bold sm:mt-0 sm:px-0">
-              {legalNotice.titulo}
+              {ageAccepted ? 'Suas preferências de cookies' : legalNotice.titulo}
             </DialogTitle>
             <DialogDescription asChild>
               <div
                 className="mt-2 min-h-0 flex-1 overflow-y-auto whitespace-pre-line pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-justify text-gray-600 sm:mt-0 sm:flex-none sm:overflow-visible sm:px-0"
                 data-age-gate-body
               >
-                <SafeInstitutionalText content={legalNotice.corpo} />
+                {!ageAccepted ? (
+                  <>
+                    <SafeInstitutionalText content={legalNotice.corpo} />
+                    <p className="mt-3 text-center text-sm">
+                      Ao escolher uma opção para entrar, declaro que sou maior de 18 anos e li os{' '}
+                      <a href={termsHref} className="text-[#FC1EAD] underline underline-offset-2">
+                        Termos de Uso
+                      </a>.
+                    </p>
+                  </>
+                ) : null}
+                {needsCookies ? (
+                  <div className="mt-4 space-y-4 border-t pt-4 text-left">
+                    <p className="text-sm">
+                      Cookies opcionais dependem da sua escolha. Você pode entrar somente com os
+                      necessários e alterar ou revogar sua escolha depois em{' '}
+                      <a href="/cookies" className="text-[#FC1EAD] underline underline-offset-2">
+                        Preferências de cookies
+                      </a>.
+                    </p>
+                    {personalizing ? (
+                      <div id="age-gate-cookie-options">
+                        <CookieOptions consent={choice} onChange={setChoice} disabled={submitting} />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </DialogDescription>
           </DialogHeader>
 
-          <p className="mt-3 shrink-0 pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-center text-sm text-gray-600 sm:px-0">
-            Ao clicar em <b>Aceitar</b>, declaro que sou maior de 18 anos e li os{' '}
-            <a href={termsHref} className="text-[#FC1EAD] underline underline-offset-2">
-              Termos de Uso
-            </a>
-            .
-          </p>
           {error ? (
             <p
               role="alert"
@@ -117,6 +173,45 @@ export function AgeGateModal({
             className="mt-4 grid shrink-0 grid-cols-2 gap-3 border-t bg-background pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:mt-6 sm:border-0 sm:bg-transparent sm:p-0"
             data-age-gate-footer
           >
+            {needsCookies ? (
+              <>
+                <Button
+                  onClick={() => void accept(allCookiesConsent)}
+                  disabled={submitting}
+                  className="col-span-2 h-auto min-h-11 whitespace-normal bg-[#FC1EAD] hover:bg-[#e01a9a]"
+                >
+                  {ageAccepted ? 'Aceitar todos os cookies' : 'Aceitar todos os cookies e entrar'}
+                </Button>
+                <Button
+                  onClick={() => void accept(defaultConsent)}
+                  disabled={submitting}
+                  variant="outline"
+                  className="col-span-2 h-auto min-h-11 whitespace-normal"
+                >
+                  Entrar somente com os necessários
+                </Button>
+                {personalizing ? (
+                  <Button
+                    onClick={() => void accept(choice)}
+                    disabled={submitting}
+                    variant="outline"
+                    className="col-span-2 h-auto min-h-11 whitespace-normal"
+                  >
+                    {ageAccepted ? 'Salvar preferências' : 'Salvar preferências e entrar'}
+                  </Button>
+                ) : null}
+                <Button
+                  onClick={() => setPersonalizing(!personalizing)}
+                  disabled={submitting}
+                  aria-expanded={personalizing}
+                  aria-controls="age-gate-cookie-options"
+                  variant="outline"
+                  className="h-auto min-h-11 whitespace-normal"
+                >
+                  Personalizar cookies
+                </Button>
+              </>
+            ) : null}
             <Button
               onClick={() => {
                 window.location.href = denyRedirect
@@ -127,14 +222,16 @@ export function AgeGateModal({
               <XCircleIcon className="mr-2 h-5 w-5" />
               Sair
             </Button>
-            <Button
-              onClick={() => void accept()}
-              disabled={submitting}
-              className="h-11 bg-[#FC1EAD] hover:bg-[#e01a9a]"
-            >
-              <CheckCircleIcon className="mr-2 h-5 w-5" />
-              {submitting ? 'Aceitando...' : 'Aceitar'}
-            </Button>
+            {!needsCookies ? (
+              <Button
+                onClick={() => void accept()}
+                disabled={submitting}
+                className="h-11 bg-[#FC1EAD] hover:bg-[#e01a9a]"
+              >
+                <CheckCircleIcon className="mr-2 h-5 w-5" />
+                {submitting ? 'Aceitando...' : 'Aceitar'}
+              </Button>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

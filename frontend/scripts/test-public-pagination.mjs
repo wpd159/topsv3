@@ -37,6 +37,7 @@ const scenarioNames = [
   'nojs-direct-seeds-filters-and-invalid', 'js-load-more-and-link-continuity',
   'js-seed-mismatch-retry', 'js-filter-changes-request-fresh-seeds',
   'js-locality-next-updates-url-and-metadata', 'metadata-transition-contract',
+  'js-cookie-consent-desktop', 'js-cookie-consent-mobile',
 ]
 const args = process.argv.slice(2)
 assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--scenario' && scenarioNames.includes(args[1])), 'Use --scenario with one exact scenario name, or no arguments for the complete suite.')
@@ -49,6 +50,8 @@ const syntheticLogo = await require('sharp')({ create: { width: 80, height: 24, 
 let freshSeeds = 0
 let browser, application, frontendServer, apiServer, origin, failure, activeContext
 let corruptNextBrowserSeed = false
+let consentScenario = null
+const refusedConsent = { necessary: true, functional: false, analytics: false, marketing: false, ts: 1 }
 
 const location = {
   uf: 'GO', estado: 'Goiás', cidade: 'Goiânia', cidadeSlug: 'goiania',
@@ -95,7 +98,10 @@ const contentKeys = [
   'texto-whatsapp', 'termos-conteudo-restrito', 'privacidade-conteudo-restrito', 'aviso-legal-conteudo-restrito',
 ]
 const contents = contentKeys.map((contentKey) => ({
-  contentKey, titulo: 'Informações da demonstração', corpo: 'Conteúdo sintético para validação local.',
+  contentKey, titulo: 'Informações da demonstração',
+  corpo: contentKey === 'popup-login'
+    ? Array.from({ length: 7 }, (_, index) => `Parágrafo ${index + 1} de aviso exclusivamente sintético: esta demonstração exercita a leitura de um texto longo, a rolagem e os controles de escolha. Nenhum dado real ou decisão produtiva é utilizado neste teste.`).join('\n\n')
+    : 'Conteúdo sintético para validação local.',
   contentVersion: 1, contentHash: 'synthetic-content', updatedAt: '2026-09-14T12:00:00Z',
 }))
 
@@ -103,6 +109,13 @@ function apiReply(url, method, boundary) {
   const entry = { boundary, method, path: url.pathname, query: url.search }
   requests.push(entry)
   const response = (status, body) => ({ status, body })
+  if (consentScenario && boundary === 'browser' && method === 'POST'
+    && url.pathname === '/api/public/compliance/age-gate/accept') {
+    consentScenario.acceptCalls += 1
+    if (consentScenario.rejectAgeAcceptance) return response(503, { message: 'Falha sintética de aceite' })
+    consentScenario.globalAccepted = true
+    return response(200, { accepted: true, state: 'GLOBAL_ACEITO' })
+  }
   if (method !== 'GET') {
     unexpected.push(entry)
     return response(405, { message: 'Unexpected synthetic API mutation' })
@@ -144,7 +157,8 @@ function apiReply(url, method, boundary) {
   if (url.pathname === '/api/public/conteudos-site') return response(200, contents)
   if (url.pathname === '/api/public/auth/me') return response(200, null)
   if (url.pathname === '/api/public/compliance/visitor/status') return response(200, {
-    globalAccepted: true, verified: false, explicitVerified: false, state: 'GLOBAL_ACEITO',
+    globalAccepted: consentScenario?.globalAccepted ?? true, verified: false, explicitVerified: false,
+    state: consentScenario && !consentScenario.globalAccepted ? 'GLOBAL_NAO_ACEITO' : 'GLOBAL_ACEITO',
   })
   if (url.pathname === '/api/public/compliance/age-gate/status') return response(200, { accepted: true, state: 'GLOBAL_ACEITO' })
   if (['/api/public/stories/ativos', '/api/public/avisos', '/api/public/categorias-home'].includes(url.pathname)) return response(200, [])
@@ -172,6 +186,10 @@ async function closeServer(server) {
 async function openContext(javaScriptEnabled, viewport = { width: 1280, height: 900 }) {
   const context = await browser.newContext({ javaScriptEnabled, serviceWorkers: 'block', viewport })
   activeContext = context
+  // Existing pagination scenarios keep their settled preferences. Consent cases
+  // start with a genuinely new browser and exercise the choice independently.
+  if (!consentScenario) await context.addCookies([{ name: 'cookie_consent', value: encodeURIComponent(JSON.stringify(refusedConsent)), url: origin }])
+  if (consentScenario) await context.addCookies([{ name: 'XSRF-TOKEN', value: 'SYNTHETIC_CSRF', url: origin }])
   const publicApi = new URL(publicApiBase, origin)
   await context.route('**/*', async (route) => {
     const request = route.request(), url = new URL(request.url())
@@ -183,6 +201,10 @@ async function openContext(javaScriptEnabled, viewport = { width: 1280, height: 
       return
     }
     if ((url.origin === publicApi.origin || url.origin === origin) && url.pathname.startsWith('/api/public/')) {
+      if (consentScenario && request.method() === 'POST' && url.pathname === '/api/public/compliance/age-gate/accept') {
+        assert.equal(request.headers()['x-xsrf-token'], 'SYNTHETIC_CSRF')
+        assert.ok(['/anuncios', '/sobre'].includes(request.postDataJSON().originPath), 'The real callback preserves the route in its synthetic age request.')
+      }
       const reply = apiReply(url, request.method(), 'browser')
       await route.fulfill({ status: reply.status, contentType: 'application/json', body: JSON.stringify(reply.body), headers: { 'cache-control': 'no-store' } })
       return
@@ -352,10 +374,153 @@ try {
     routesManifestSha256: sha256(fs.readFileSync(path.join(frontend, '.next/routes-manifest.json'))),
     inventorySha256: sha256(JSON.stringify(inventory)), inventory: 83, topo: 33, free: 50,
     indexingMode, siteOrigin, realNextSSR: true, realBackend: false, protectedMedia: false,
-    syntheticGlobalAgeAcceptance: true, syntheticExplicitVerification: false, personalProfileUsed: false,
+    syntheticGlobalAgeAcceptance: true, syntheticAgeConfirmation: true, syntheticExplicitVerification: false, personalProfileUsed: false,
     syntheticLogoSha256: sha256(syntheticLogo),
     pageConventions: routes.map(({ pathname, urlPageBase }) => ({ pathname, urlPageBase, apiPageBase: 0 })),
   })
+
+  for (const [name, viewport] of [
+    ['js-cookie-consent-desktop', { width: 1280, height: 900 }],
+    ['js-cookie-consent-mobile', { width: 390, height: 844 }],
+  ]) {
+    if (selectedScenario && selectedScenario !== name) continue
+    consentScenario = { globalAccepted: false, rejectAgeAcceptance: true, acceptCalls: 0 }
+    await scenario(name, true, async (page) => {
+      const modal = page.getByRole('dialog')
+      const readConsent = () => page.evaluate(() => {
+        const match = document.cookie.match(/(?:^|;\s*)cookie_consent=([^;]*)/)
+        return match ? JSON.parse(decodeURIComponent(match[1])) : null
+      })
+      const assertChoices = async (expected) => {
+        await waitFor(async () => {
+          const actual = await readConsent()
+          return actual && Object.entries(expected).every(([key, value]) => actual[key] === value)
+        }, 'explicit cookie choices persisted')
+        const actual = await readConsent()
+        assert.equal(actual.necessary, true)
+        assert.equal(typeof actual.ts, 'number')
+      }
+      const assertNoAnalytics = async () => {
+        assert.equal(await page.locator('#google-analytics-loader').count(), 0, 'The blocked fixture never loads the real GA4 SDK.')
+        assert.equal(requests.some((entry) => /google-analytics|googletagmanager/.test(entry.origin ?? '')), false)
+      }
+      await page.goto(`${origin}/anuncios`)
+      assert.deepEqual(await page.locator('meta[name="rating"]').evaluateAll((tags) => tags.map((tag) => tag.content)), ['RTA-5042-1996-1400-1577-RTA'], 'The catalog renders one technical RTA declaration.')
+      await modal.getByRole('button', { name: 'Entrar somente com os necessários', exact: true }).waitFor()
+      assert.equal(await readConsent(), null, 'Showing age and cookie choices does not create consent.')
+      await modal.getByRole('button', { name: 'Personalizar cookies', exact: true }).click()
+      assert.equal(await readConsent(), null, 'Opening customization does not imply consent or age acceptance.')
+      assert.equal(consentScenario.acceptCalls, 0)
+      for (const label of ['Funcionais', 'Analytics', 'Marketing']) {
+        assert.equal(await modal.getByRole('switch', { name: label, exact: true }).getAttribute('aria-checked'), 'false')
+      }
+      if (viewport.width < 640) {
+        const layout = await modal.evaluate((dialog) => {
+          const body = dialog.querySelector('[data-age-gate-body]')
+          const footer = dialog.querySelector('[data-age-gate-footer]')
+          const box = (element) => {
+            const { x, y, width, height } = element.getBoundingClientRect()
+            return { x, y, width, height }
+          }
+          const before = body.scrollTop
+          body.scrollTop = body.scrollHeight
+          const after = body.scrollTop
+          body.scrollTop = before
+          return {
+            body: { ...box(body), clientHeight: body.clientHeight, scrollHeight: body.scrollHeight, overflowY: getComputedStyle(body).overflowY, scrollable: after > before },
+            dialog: { ...box(dialog), clientWidth: dialog.clientWidth, scrollWidth: dialog.scrollWidth },
+            footer: box(footer),
+            buttons: [...footer.querySelectorAll('button')].map((button) => ({ text: button.textContent.trim(), ...box(button) })),
+          }
+        })
+        assert.equal(layout.body.overflowY, 'auto')
+        assert.ok(layout.body.clientHeight > 0 && layout.body.scrollHeight > layout.body.clientHeight && layout.body.scrollable, 'Long synthetic text plus expanded preferences scroll inside the mobile body.')
+        assert.ok(layout.dialog.scrollWidth <= layout.dialog.clientWidth + 1, 'Expanded preferences cannot create horizontal dialog overflow.')
+        for (const button of layout.buttons) {
+          assert.ok(button.width > 0 && button.height > 0 && button.x >= 0 && button.y >= 0 && button.x + button.width <= viewport.width + 1 && button.y + button.height <= viewport.height + 1, `Mobile footer choice remains visible: ${button.text}`)
+        }
+        writeJson(`${name}-expanded-layout.json`, layout)
+        await page.screenshot({ path: path.join(evidence, `${name}-first-visit-expanded.png`) })
+      }
+      await modal.getByRole('switch', { name: 'Analytics', exact: true }).click()
+      await modal.getByRole('button', { name: 'Salvar preferências e entrar', exact: true }).click()
+      await modal.getByRole('alert').waitFor()
+      assert.equal(consentScenario.acceptCalls, 1, 'One failed click makes one age confirmation request.')
+      assert.equal(await readConsent(), null, 'A failed age confirmation cannot persist analytics consent.')
+      consentScenario.rejectAgeAcceptance = false
+      await modal.getByRole('button', { name: 'Salvar preferências e entrar', exact: true }).click()
+      await modal.waitFor({ state: 'hidden' })
+      assert.equal(consentScenario.acceptCalls, 2, 'A second deliberate click makes exactly one new confirmation.')
+      await assertChoices({ functional: false, analytics: true, marketing: false })
+      await page.reload()
+      await page.getByRole('heading', { name: /anúncios|anuncios/i }).first().waitFor()
+      assert.equal(await modal.count(), 0, 'Valid preferences and confirmed age survive reload.')
+      await assertNoAnalytics()
+
+      // Revoke through the existing policy screen, then return through the same
+      // preference mechanism. No SDK or real property is contacted by this UI proof.
+      await page.goto(`${origin}/cookies`)
+      const preference = page.getByRole('switch', { name: 'Analytics', exact: true })
+      await waitFor(async () => await preference.getAttribute('aria-checked') === 'true', 'saved analytics selection on cookies page')
+      await preference.click()
+      await page.getByRole('button', { name: 'Salvar preferencias', exact: true }).click()
+      await assertChoices({ functional: false, analytics: false, marketing: false })
+      await page.goto(`${origin}/sobre`)
+      await page.getByRole('heading', { level: 1 }).waitFor()
+      assert.equal(await page.locator('meta[name="rating"]').count(), 0, 'The institutional page does not acquire a catalog RTA rating.')
+      assert.equal(await modal.count(), 0, 'Explicit refusal is a valid saved preference, not a reason to ask repeatedly.')
+
+      // Already accepted age + no preference: cookies alone must not POST age.
+      await page.context().clearCookies({ name: 'cookie_consent' })
+      const callsBefore = consentScenario.acceptCalls
+      await page.reload()
+      await modal.getByRole('heading', { name: 'Suas preferências de cookies', exact: true }).waitFor()
+      await modal.getByRole('button', { name: 'Aceitar todos os cookies', exact: true }).click()
+      await modal.waitFor({ state: 'hidden' })
+      await assertChoices({ functional: true, analytics: true, marketing: true })
+      assert.equal(consentScenario.acceptCalls, callsBefore, 'Cookie-only acceptance does not repeat age confirmation.')
+
+      // A malformed cookie is not consent. Necessary-only remains a genuine choice.
+      await page.context().addCookies([{ name: 'cookie_consent', value: '%E0%A4%A', url: origin }])
+      await page.reload()
+      await modal.getByRole('button', { name: 'Entrar somente com os necessários', exact: true }).waitFor()
+      const bounds = await modal.boundingBox()
+      assert.ok(bounds && bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width + 1 && bounds.y + bounds.height <= viewport.height + 1, 'Cookie dialog must fit the desktop/mobile viewport.')
+      await page.screenshot({ path: path.join(evidence, `${name}-choices.png`) })
+      await modal.getByRole('button', { name: 'Entrar somente com os necessários', exact: true }).click()
+      await modal.waitFor({ state: 'hidden' })
+      await assertChoices({ functional: false, analytics: false, marketing: false })
+
+      // Existing refusal must not be overwritten merely by accepting age again.
+      consentScenario.globalAccepted = false
+      await page.reload()
+      await modal.getByRole('button', { name: 'Aceitar', exact: true }).waitFor()
+      const beforeAgeOnly = await readConsent()
+      await modal.getByRole('button', { name: 'Aceitar', exact: true }).click()
+      await modal.waitFor({ state: 'hidden' })
+      assert.deepEqual(await readConsent(), beforeAgeOnly)
+      assert.equal(consentScenario.acceptCalls, callsBefore + 1)
+      await assertNoAnalytics()
+      const rta = page.locator('footer img[src="/rta-label.gif"]')
+      await rta.scrollIntoViewIfNeeded()
+      await waitFor(() => rta.evaluate((image) => image.complete && image.naturalWidth > 0), 'local official RTA badge loaded')
+      const badge = await rta.evaluate((image) => ({
+        src: image.getAttribute('src'), currentSrc: image.currentSrc,
+        width: image.width, height: image.height, naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight,
+        href: image.closest('a').href, target: image.closest('a').target, rel: image.closest('a').rel,
+      }))
+      assert.equal(badge.src, '/rta-label.gif')
+      assert.equal(badge.currentSrc, `${origin}/rta-label.gif`, 'The footer loads the badge locally, not from a remote tracker.')
+      assert.deepEqual([badge.width, badge.height, badge.naturalWidth, badge.naturalHeight], [88, 31, 88, 31])
+      assert.equal(badge.href, 'https://www.rtalabel.org/')
+      assert.equal(badge.target, '_blank')
+      assert.match(badge.rel, /noopener/)
+      assert.match(badge.rel, /noreferrer/)
+      writeJson(`${name}-rta.json`, badge)
+      await page.screenshot({ path: path.join(evidence, `${name}-footer-rta.png`) })
+    }, viewport)
+    consentScenario = null
+  }
 
   await scenario('nojs-institutional-metadata-and-privacy-alias', false, async (page) => {
     const observations = []
