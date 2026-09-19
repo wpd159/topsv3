@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 
 export const metadata: Metadata = {
   other: {
-    rating: "adult",
+    rating: "RTA-5042-1996-1400-1577-RTA",
   },
 }
 

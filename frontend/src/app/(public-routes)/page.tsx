@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     locale: "pt_BR",
   },
   other: {
-    rating: "adult",
+    rating: "RTA-5042-1996-1400-1577-RTA",
   },
 }
 

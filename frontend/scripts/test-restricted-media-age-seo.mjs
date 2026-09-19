@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import ts from "typescript"
@@ -237,13 +238,39 @@ assert.doesNotMatch(stories, /filter:\s*blur|blur\(/i)
 assert.doesNotMatch(storyViewer, /filter:\s*blur|blur\(/i)
 
 assert.doesNotMatch(
-  publicLayout,
-  /rating:\s*['"]adult['"]/,
+  `${source("src/app/layout.tsx")}\n${publicLayout}`,
+  /rating\s*:/i,
   "institutional public routes must not inherit the adult rating",
 )
 for (const adultRouteSource of [homePage, acompanhantesLayout, anunciosLayout]) {
-  const ratingMatches = adultRouteSource.match(/rating:\s*['"]adult['"]/g) ?? []
-  assert.equal(ratingMatches.length, 1, "adult route tree must declare adult rating exactly once")
+  const ratingMatches = [...adultRouteSource.matchAll(/rating:\s*['"]([^'"]+)['"]/g)]
+  assert.equal(ratingMatches.length, 1, "adult route tree must declare one non-conflicting rating")
+  assert.equal(ratingMatches[0][1], "RTA-5042-1996-1400-1577-RTA")
 }
+
+// Preserve the official free label, its local delivery (no hotlink), and accessible link.
+const footer = ts.createSourceFile("footer.tsx", source("src/components/layout/footer.tsx"),
+  ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+const footerTree = executable(declaredFunction(footer, "Footer"), {
+  element, usePathname: () => "/", useRouter: () => ({}), useAuth: () => ({ usuario: null }),
+  useSiteContent: () => ({ corpo: "Texto institucional sintético" }), useState: () => [false, () => {}],
+  getPublicLogoUrl: () => "/logo.webp", LINKS_SEO: [], Link: "Link", Button: "Button",
+  LoginModal: "LoginModal",
+})()
+const rtaLink = only(elements(footerTree, "a").filter(({ props }) => props.href === "https://www.rtalabel.org/"),
+  "Expected one link to the official free RTA label")
+assert.equal(rtaLink.props.rel, "noopener noreferrer")
+const rtaImage = only(elements(rtaLink, "img"), "Expected the official local RTA image")
+assert.equal(rtaImage.props.src, "/rta-label.gif")
+assert.equal(rtaImage.props.alt, "RTA — conteúdo restrito a adultos (abre em nova aba)")
+assert.equal(rtaImage.props.width, 88)
+assert.equal(rtaImage.props.height, 31)
+const rtaBytes = readFileSync(new URL("../public/rta-label.gif", import.meta.url))
+assert.equal(rtaBytes.subarray(0, 6).toString("ascii"), "GIF89a")
+assert.equal(rtaBytes.readUInt16LE(6), 88)
+assert.equal(rtaBytes.readUInt16LE(8), 31)
+assert.equal(createHash("sha256").update(rtaBytes).digest("hex"),
+  "70e91cbe57f4d9cba43b2b5f982d3143bbab019daeba65cd6869ce386c82020a",
+  "The official artwork must remain unchanged; do not substitute a certification/Verified seal")
 
 console.log("RESTRICTED_MEDIA_AGE_SEO_RESULT=OK")
