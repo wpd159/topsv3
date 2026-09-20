@@ -438,10 +438,10 @@ assert.doesNotMatch(
   /Googlebot|Google-Extended|OAI-SearchBot|GPTBot|ChatGPT-User|Applebot|bingbot/i,
 )
 
-assert.doesNotMatch(publicLayoutSource, /rating:\s*["']adult["']/)
+assert.doesNotMatch(publicLayoutSource, /rating\s*:/i)
 for (const adultSource of [homeSource, acompanhantesLayoutSource, anunciosLayoutSource]) {
   assert.equal(
-    (adultSource.match(/rating:\s*["']adult["']/g) ?? []).length,
+    (adultSource.match(/rating:\s*["']RTA-5042-1996-1400-1577-RTA["']/g) ?? []).length,
     1,
     "each adult route tree must declare the rating once",
   )

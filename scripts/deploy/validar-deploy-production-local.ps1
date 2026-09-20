@@ -44,6 +44,7 @@ $ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
 $analyticsPolicy = Read-RepoFile "frontend/src/lib/analytics/ga4.ts"
+$cookieConsent = Read-RepoFile "frontend/src/lib/cookie-consent.ts"
 $deploymentContract = $workflow, $previewBackfill -join "`n"
 $checks = [Collections.Generic.List[object]]::new()
 
@@ -658,7 +659,15 @@ Add-Check "layout monta uma unica integracao consent-aware" (
 )
 Add-Check "componente GA4 respeita ambiente e consentimento" (
   ($analyticsPolicy.Contains("NEXT_PUBLIC_ANALYTICS_ENABLED")) -and
-  ($analyticsPolicy.Contains("cookie_consent")) -and
+  ($analyticsPolicy -match 'import\s+\{\s*readCookieConsent\s*\}\s+from\s+[''"]@/lib/cookie-consent[''"]') -and
+  ($analyticsPolicy -match 'return\s+readCookieConsent\(\)\?\.analytics\s*===\s*true') -and
+  ($cookieConsent.Contains("const CONSENT_COOKIE = 'cookie_consent'")) -and
+  ($cookieConsent -match 'export function readCookieConsent\(\): ConsentState \| null') -and
+  ($cookieConsent.Contains('value.necessary !== true')) -and
+  ($cookieConsent.Contains("typeof value.functional !== 'boolean'")) -and
+  ($cookieConsent.Contains("typeof value.analytics !== 'boolean'")) -and
+  ($cookieConsent.Contains("typeof value.marketing !== 'boolean'")) -and
+  ($cookieConsent -match '(?s)catch\s*\{\s*return null') -and
   ($analyticsPolicy.Contains("tops:cookie-consent-updated")) -and
   ([regex]::Matches($analyticsComponent, 'googletagmanager\.com/gtag/js').Count -eq 1) -and
   ([regex]::Matches($analyticsComponent, "gtag\('config'").Count -eq 1) -and

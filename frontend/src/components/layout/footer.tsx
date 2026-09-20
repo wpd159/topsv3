@@ -228,6 +228,20 @@ export default function Footer() {
       <div className="border-t px-6 py-4 text-xs text-gray-700">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 sm:flex-row">
           <p>Copyright © {new Date().getFullYear()} Tops do Job. Todos os direitos reservados.</p>
+          <a
+            href="https://www.rtalabel.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-pink-600"
+          >
+            <img
+              src="/rta-label.gif"
+              alt="RTA — conteúdo restrito a adultos (abre em nova aba)"
+              width={88}
+              height={31}
+              loading="lazy"
+            />
+          </a>
           <a href="#topo" className="font-medium text-gray-500 transition hover:text-pink-600">
             Voltar ao início
           </a>
