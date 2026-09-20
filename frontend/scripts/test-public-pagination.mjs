@@ -384,7 +384,7 @@ try {
     ['js-cookie-consent-mobile', { width: 390, height: 844 }],
   ]) {
     if (selectedScenario && selectedScenario !== name) continue
-    consentScenario = { globalAccepted: false, rejectAgeAcceptance: true, acceptCalls: 0 }
+    consentScenario = { globalAccepted: true, rejectAgeAcceptance: true, acceptCalls: 0 }
     await scenario(name, true, async (page) => {
       const modal = page.getByRole('dialog')
       const readConsent = () => page.evaluate(() => {
@@ -404,6 +404,32 @@ try {
         assert.equal(await page.locator('#google-analytics-loader').count(), 0, 'The blocked fixture never loads the real GA4 SDK.')
         assert.equal(requests.some((entry) => /google-analytics|googletagmanager/.test(entry.origin ?? '')), false)
       }
+      const policyReadable = async (navigate) => {
+        const status = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/public/compliance/visitor/status')
+        await navigate()
+        await (await status).finished()
+        // Trial click uses the real hit target/stability checks without saving.
+        // The former cookie-only dialog intercepts this target and fails here.
+        await page.getByRole('button', { name: 'Salvar preferencias', exact: true }).click({ trial: true })
+        assert.equal(new URL(page.url()).pathname, '/cookies')
+        assert.equal(await modal.count(), 0, 'The policy and existing preferences must not be covered by the cookie-only prompt.')
+        assert.equal(await page.getByRole('heading', { level: 1 }).count(), 1)
+        assert.equal(await readConsent(), null, 'Reading the policy does not persist consent or an implicit refusal.')
+        assert.equal(consentScenario.acceptCalls, 0, 'Policy access does not reconfirm an already accepted age.')
+        await assertNoAnalytics()
+      }
+      await policyReadable(() => page.goto(`${origin}/cookies`))
+      await page.screenshot({ path: path.join(evidence, `${name}-policy-without-consent.png`) })
+      await page.goto(`${origin}/sobre`)
+      await modal.getByRole('heading', { name: 'Suas preferências de cookies', exact: true }).waitFor()
+      await policyReadable(() => modal.getByRole('link', { name: 'Preferências de cookies', exact: true }).click())
+      // This is not a new age-gate exemption: without prior age acceptance the
+      // same policy URL still requires the original global confirmation.
+      consentScenario.globalAccepted = false
+      await page.reload()
+      await modal.getByRole('button', { name: 'Aceitar todos os cookies e entrar', exact: true }).waitFor()
+      assert.equal(await readConsent(), null)
+      assert.equal(consentScenario.acceptCalls, 0)
       await page.goto(`${origin}/anuncios`)
       assert.deepEqual(await page.locator('meta[name="rating"]').evaluateAll((tags) => tags.map((tag) => tag.content)), ['RTA-5042-1996-1400-1577-RTA'], 'The catalog renders one technical RTA declaration.')
       await modal.getByRole('button', { name: 'Entrar somente com os necessários', exact: true }).waitFor()
@@ -501,6 +527,30 @@ try {
       assert.deepEqual(await readConsent(), beforeAgeOnly)
       assert.equal(consentScenario.acceptCalls, callsBefore + 1)
       await assertNoAnalytics()
+
+      // Both entry choices are complete with one deliberate click. A reload
+      // must preserve the exact saved choice, including explicit refusal.
+      for (const all of [false, true]) {
+        await page.context().clearCookies({ name: 'cookie_consent' })
+        consentScenario.globalAccepted = false
+        await page.reload()
+        const label = all ? 'Aceitar todos os cookies e entrar' : 'Entrar somente com os necessários'
+        await modal.getByRole('button', { name: label, exact: true }).waitFor()
+        const beforeEntry = consentScenario.acceptCalls
+        await modal.getByRole('button', { name: label, exact: true }).click()
+        await modal.waitFor({ state: 'hidden' })
+        assert.equal(consentScenario.acceptCalls, beforeEntry + 1, 'One click confirms age and finishes entry, without a second dialog.')
+        await assertChoices({ functional: all, analytics: all, marketing: all })
+        const savedChoice = await readConsent()
+        const status = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/public/compliance/visitor/status')
+        await page.reload()
+        await (await status).finished()
+        await page.getByRole('heading', { level: 1 }).waitFor()
+        assert.equal(await modal.count(), 0)
+        assert.deepEqual(await readConsent(), savedChoice, 'Reload must not replace or refresh the explicit stored decision.')
+        assert.equal(consentScenario.acceptCalls, beforeEntry + 1)
+        await assertNoAnalytics()
+      }
       const rta = page.locator('footer img[src="/rta-label.gif"]')
       await rta.scrollIntoViewIfNeeded()
       await waitFor(() => rta.evaluate((image) => image.complete && image.naturalWidth > 0), 'local official RTA badge loaded')

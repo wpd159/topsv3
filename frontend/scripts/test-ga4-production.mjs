@@ -585,8 +585,8 @@ const findNode = (tree, predicate, label) => {
 }
 const consentCookie = (consent) => `cookie_consent=${encodeURIComponent(JSON.stringify(consent))}`
 const refused = { necessary: true, functional: false, analytics: false, marketing: false, ts: 17 }
-async function consentUi({ age = true, cookie = '', rejectAge = false, preferences = false } = {}) {
-  const test = scenario({ cookie })
+async function consentUi({ age = true, cookie = '', rejectAge = false, preferences = false, url } = {}) {
+  const test = scenario({ cookie, url })
   test.mount()
   const hooks = componentHooks()
   const consent = runtimeModule('cookie-consent.ts', consentSource, {}, test.platform)
@@ -628,6 +628,12 @@ async function consentUi({ age = true, cookie = '', rejectAge = false, preferenc
     get ageCalls() { return ageCalls },
     allowAge() { rejected = false },
     open() { return findNode(hooks.tree, (node) => node.type === 'Dialog', 'Dialog').props.open },
+    async followLink(label) {
+      const link = findNode(hooks.tree, (node) => node.type === 'a' && nodeText(node).trim() === label, label)
+      test.navigate(link.props.href)
+      hooks.render()
+      await settle()
+    },
     async click(label) {
       const button = findNode(hooks.tree, (node) => node.type === 'Button' && nodeText(node).trim() === label, label)
       assert.ok(!button.props.disabled, `Controle não deve estar desabilitado: ${label}`)
@@ -641,6 +647,37 @@ async function consentUi({ age = true, cookie = '', rejectAge = false, preferenc
     },
     finish() { hooks.unmount(); test.finish() },
   }
+}
+
+// Reading the policy is not a consent choice. Only the cookie-only prompt is
+// exempted there; age confirmation and the private-path analytics guard remain.
+{
+  const ui = await consentUi({ age: true, url: 'https://topsdojob.com/cookies' })
+  assert.equal(ui.open(), false, 'Maioridade confirmada sem consentimento deve permitir ler /cookies sem modal sobre a política.')
+  assert.equal(ui.ageCalls, 0)
+  assert.equal(ui.test.document.cookie, '', 'Consultar a política não deve gravar nem mesmo uma recusa implícita.')
+  assert.equal(ui.test.scripts.length, 0)
+  assert.equal(ui.test.hits.length, 0)
+  ui.finish()
+}
+{
+  const ui = await consentUi({ age: true })
+  assert.equal(ui.open(), true)
+  await ui.followLink('Preferências de cookies')
+  assert.equal(ui.test.window.location.pathname, '/cookies')
+  assert.equal(ui.open(), false, 'O link do modal permite consultar a política sem primeiro aceitar cookies.')
+  assert.equal(ui.ageCalls, 0)
+  assert.equal(ui.test.document.cookie, '')
+  assert.equal(ui.test.scripts.length, 0)
+  assert.equal(ui.test.hits.length, 0)
+  ui.finish()
+}
+for (const [route, age] of [['/cookies', false], ['/admin', false], ['/admin', true], ['/minha-conta', false], ['/minha-conta', true]]) {
+  const ui = await consentUi({ age, url: `https://topsdojob.com${route}` })
+  assert.equal(ui.open(), true, `A consulta de cookies não cria exceção etária nem amplia a dispensa para rotas privadas: ${route}, age=${age}`)
+  assert.equal(ui.test.document.cookie, '')
+  assert.equal(ui.test.scripts.length, 0)
+  ui.finish()
 }
 
 for (const cookie of ['', 'cookie_consent=%E0%A4%A', 'cookie_consent=null', 'cookie_consent=%7B%7D', consentCookie({ ...refused, analytics: 'true' })]) {
@@ -702,14 +739,39 @@ for (const cookie of ['', 'cookie_consent=%E0%A4%A', 'cookie_consent=null', 'coo
   ui.finish()
 }
 for (const age of [false, true]) {
-  const ui = await consentUi({ age })
-  await ui.click(age ? 'Aceitar todos os cookies' : 'Aceitar todos os cookies e entrar')
-  assert.equal(ui.ageCalls, age ? 0 : 1)
-  const saved = ui.consent.readCookieConsent()
-  assert.equal(saved.necessary && saved.functional && saved.analytics && saved.marketing, true)
-  assert.equal(ui.test.scripts.length, 1)
-  ui.test.loadSdk()
-  assert.equal(ui.test.events().length, 1)
+  for (const all of [false, true]) {
+    const ui = await consentUi({ age })
+    await ui.click(all
+      ? (age ? 'Aceitar todos os cookies' : 'Aceitar todos os cookies e entrar')
+      : 'Entrar somente com os necessários')
+    assert.equal(ui.open(), false, 'Uma escolha conclui a entrada sem uma segunda confirmação.')
+    assert.equal(ui.ageCalls, age ? 0 : 1)
+    const saved = ui.consent.readCookieConsent()
+    assert.equal(saved.necessary, true)
+    for (const key of ['functional', 'analytics', 'marketing']) assert.equal(saved[key], all)
+    assert.equal(ui.test.scripts.length, all ? 1 : 0)
+    if (all) {
+      ui.test.loadSdk()
+      assert.equal(ui.test.events().length, 1)
+    }
+    ui.finish()
+    const reloaded = await consentUi({ age: true, cookie: consentCookie(saved) })
+    assert.equal(reloaded.open(), false, 'A escolha explícita e a maioridade confirmada sobrevivem a uma nova montagem.')
+    assert.equal(reloaded.ageCalls, 0)
+    assert.deepEqual(reloaded.consent.readCookieConsent(), saved)
+    assert.equal(reloaded.test.scripts.length, all ? 1 : 0)
+    reloaded.finish()
+  }
+}
+for (const route of ['/', '/cookies']) {
+  const ui = await consentUi({ age: false, url: `https://topsdojob.com${route}` })
+  Object.defineProperty(ui.test.document, 'cookie', { get: () => '', set() {} })
+  await ui.click('Aceitar todos os cookies e entrar')
+  assert.equal(ui.ageCalls, 1)
+  assert.equal(ui.open(), true, `Falha ao persistir a escolha mantém o erro visível no modal: ${route}`)
+  assert.equal(ui.consent.readCookieConsent(), null)
+  assert.match(nodeText(ui.hooks.tree), /Nao foi possivel salvar as preferencias/)
+  assert.equal(ui.test.scripts.length, 0, 'Falha de persistência não pode liberar analytics mesmo após confirmar maioridade.')
   ui.finish()
 }
 {

@@ -52,7 +52,9 @@ export function AgeGateModal({
   const [error, setError] = useState<string | null>(null)
   const excludedPath = pathname === '/termos-de-uso' || pathname === '/registrar'
   const needsCookies = storedConsent === null
-  const open = !excludedPath && ageAccepted !== null && (!ageAccepted || needsCookies)
+  // A política pode ser consultada sem escolher cookies; a confirmação etária permanece exigida.
+  const open = !excludedPath && ageAccepted !== null
+    && (!ageAccepted || (needsCookies && (pathname !== '/cookies' || error !== null)))
 
   useEffect(() => {
     const syncConsent = () => setStoredConsent(readCookieConsent())
