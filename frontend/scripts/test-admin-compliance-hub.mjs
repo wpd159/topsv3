@@ -263,17 +263,25 @@ try {
       result.popupChecks = []
       for (const options of [{ modifiers: ['ControlOrMeta'] }, { modifiers: ['Shift'] }, { button: 'middle' }]) {
         const link = returning ? page.getByRole('link', { name: 'Voltar ao hub', exact: true }) : openLink(page, destination)
-        const [popup] = await Promise.all([context.waitForEvent('page'), link.click(options)])
         const check = { options, result: 'FAIL' }
         result.popupChecks.push(check)
+        let popup
         try {
+          check.before = await page.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), visibility: document.visibilityState, focused: document.hasFocus() }))
+          const [opened, clicked] = await Promise.allSettled([context.waitForEvent('page'), link.click(options)])
+          if (opened.status === 'fulfilled') popup = opened.value
+          else check.pageError = opened.reason.stack || String(opened.reason)
+          if (clicked.status === 'rejected') check.clickError = clicked.reason.stack || String(clicked.reason)
+          // Preserve a click failure even when the page-event deadline wins first.
+          if (clicked.status === 'rejected') throw clicked.reason
+          if (opened.status === 'rejected') throw opened.reason
           await assertView(popup, destination)
           await assertView(page, sourceArea)
           check.result = 'PASS'
         } finally {
-          check.popup = await popup.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), readyState: document.readyState, visibility: document.visibilityState })).catch(() => null)
-          check.origin = await page.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), readyState: document.readyState, visibility: document.visibilityState })).catch(() => null)
-          if (check.result === 'FAIL') await popup.screenshot({ path: path.join(evidence, result.name + '-popup.png'), fullPage: true }).catch(() => {})
+          check.popup = popup ? await popup.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), readyState: document.readyState, visibility: document.visibilityState, focused: document.hasFocus() })).catch(() => null) : null
+          check.origin = await page.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), readyState: document.readyState, visibility: document.visibilityState, focused: document.hasFocus() })).catch(() => null)
+          if (check.result === 'FAIL' && popup) await popup.screenshot({ path: path.join(evidence, result.name + '-popup.png'), fullPage: true }).catch(() => {})
         }
         await popup.close()
       }
