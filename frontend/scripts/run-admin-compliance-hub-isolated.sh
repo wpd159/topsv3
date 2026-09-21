@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # F02 alone needs same-origin fixtures without browser request interception.
-# Build, Next, HTTP fixtures and the unchanged headless shell share no egress.
+# Build, Next, HTTP fixtures and pinned Chromium headless share no egress.
 if [[ "${1:-}" == --inside ]]; then
   test "$(id -u)" -ne 0
   test "$(node --version)" = v22.13.1
@@ -148,5 +148,5 @@ docker run --rm --init --pull never --name "$container" --label "tops.f02.owner=
   --mount "type=bind,source=$evidence,target=/evidence" \
   --env PATH=/opt/f02-node:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   --env "TOPS_F02_PLAYWRIGHT_PACKAGE=$(basename "$playwright_module")" \
-  --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+  --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright --env DEBUG=pw:browser \
   "$image_id" bash /source/scripts/run-admin-compliance-hub-isolated.sh --inside
