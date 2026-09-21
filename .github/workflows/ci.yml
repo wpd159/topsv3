@@ -59,6 +59,7 @@ jobs:
           ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
           ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
           WIZARD_PROGRESS_POSTGRES17_ENABLED: "true"
+          COMPLIANCE_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Preserve backend and cold JVM evidence
@@ -96,6 +97,9 @@ jobs:
           npm install --prefix "$browser_tools" --ignore-scripts --no-fund --no-audit --save-exact playwright@1.62.1
           npm audit --prefix "$browser_tools" --audit-level=high
           node "$browser_tools/node_modules/playwright/cli.js" install --with-deps chromium
+          # F02 serves its fixtures before Next, with build/server/browser in the
+          # same network-none container; no production namespace or Docker socket.
+          timeout --signal=TERM --kill-after=15s 180s docker pull mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
           mkdir -p "$RUNNER_TEMP/reconciliation-browser-evidence"
           printf 'TOPS_PLAYWRIGHT_MODULE=%s/node_modules/playwright\n' "$browser_tools" >> "$GITHUB_ENV"
           printf 'TOPS_UI_EVIDENCE_ROOT=%s/reconciliation-browser-evidence\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
@@ -198,6 +202,9 @@ jobs:
           npm run build
           node scripts/test-search-indexing-artifact.mjs blocked
           npm run test:public-pagination
+          bash scripts/run-admin-compliance-hub-isolated.sh
+          node scripts/test-visitor-document-resume.mjs
+          node scripts/test-age-gate-mobile-layout.mjs --browser
 
       - name: Preserve browser regression evidence
         if: always()

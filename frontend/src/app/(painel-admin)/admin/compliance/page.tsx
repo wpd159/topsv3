@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import {
   ArrowLeft,
   ArrowRight,
@@ -95,10 +94,10 @@ export default function AdminCompliancePage() {
       <section className="space-y-6">
         <div className="space-y-3">
           <Button asChild variant="outline">
-            <Link href="/admin/compliance" onClick={() => setArea(null)}>
+            <a href="/admin/compliance">
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Voltar ao hub
-            </Link>
+            </a>
           </Button>
           <div>
             <p className="text-sm font-medium text-pink-600">Compliance</p>
@@ -145,10 +144,10 @@ export default function AdminCompliancePage() {
                     </div>
                   </div>
                   <Button asChild className="mt-5 w-full sm:w-auto">
-                    <Link href={item.href}>
+                    <a href={item.href}>
                       Abrir
                       <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                    </Link>
+                    </a>
                   </Button>
                 </article>
               )

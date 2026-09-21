@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.admin.compliance.dto.AdminComplianceDocum
 import br.com.topsdojob.v3.application.admin.compliance.dto.AdminComplianceDocumentoDecisaoResponseDto;
 import br.com.topsdojob.v3.application.admin.compliance.dto.AdminComplianceDocumentoDto;
 import br.com.topsdojob.v3.application.admin.compliance.dto.AdminComplianceRiscoDto;
+import br.com.topsdojob.v3.application.admin.compliance.AdminComplianceDocumentoAuditService.Etapa;
 import br.com.topsdojob.v3.application.publico.compliance.ComplianceAgeGateProperties;
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.StatusDocumentoVisitante;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
@@ -50,6 +51,7 @@ public class AdminComplianceVisitorService {
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final R2StorageProperties storageProperties;
   private final ComplianceAgeGateProperties ageGateProperties;
+  private final AdminComplianceDocumentoAuditService documentoAuditService;
 
   public AdminComplianceVisitorService(
       ComplianceVisitorDocumentoRepository documentoRepository,
@@ -58,7 +60,8 @@ public class AdminComplianceVisitorService {
       AuditoriaEventoRepository auditoriaRepository,
       ObjectProvider<ObjectStorage> storageProvider,
       R2StorageProperties storageProperties,
-      ComplianceAgeGateProperties ageGateProperties) {
+      ComplianceAgeGateProperties ageGateProperties,
+      AdminComplianceDocumentoAuditService documentoAuditService) {
     this.documentoRepository = documentoRepository;
     this.challengeRepository = challengeRepository;
     this.riskRepository = riskRepository;
@@ -66,6 +69,7 @@ public class AdminComplianceVisitorService {
     this.storageProvider = storageProvider;
     this.storageProperties = storageProperties;
     this.ageGateProperties = ageGateProperties;
+    this.documentoAuditService = documentoAuditService;
   }
 
   @Transactional(readOnly = true)
@@ -79,14 +83,27 @@ public class AdminComplianceVisitorService {
   }
 
   @Transactional(readOnly = true)
-  public DocumentoPrivado carregarDocumento(UUID id) {
+  public DocumentoPrivado carregarDocumento(UUID id, AdminUserPrincipal actor, String requestId) {
+    if (requestId == null || requestId.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "requestId obrigatorio");
+    }
+    UUID atorId = actor == null ? null : actor.usuarioId();
+    documentoAuditService.registrar(id, atorId, requestId, Etapa.TENTATIVA);
+    if (actor == null) {
+      documentoAuditService.registrar(id, null, requestId, Etapa.NEGADO);
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa necessaria");
+    }
     ComplianceVisitorDocumentoEntity documento = documentoRepository.findById(id)
         .filter(this::documentoCanonico)
-        .orElseThrow(() -> new ResponseStatusException(
-            HttpStatus.NOT_FOUND,
-            "documento de visitante nao encontrado"));
+        .orElseThrow(() -> {
+          documentoAuditService.registrar(id, atorId, requestId, Etapa.NEGADO);
+          return new ResponseStatusException(HttpStatus.NOT_FOUND,
+              "documento de visitante nao encontrado");
+        });
+    documentoAuditService.registrar(id, atorId, requestId, Etapa.AUTORIZADO);
     ObjectStorage storage = storageProvider.getIfAvailable();
     if (storage == null) {
+      documentoAuditService.registrar(id, atorId, requestId, Etapa.FALHA);
       throw new ResponseStatusException(
           HttpStatus.SERVICE_UNAVAILABLE,
           "documento de visitante indisponivel");
@@ -95,13 +112,16 @@ public class AdminComplianceVisitorService {
     try {
       object = storage.get(StorageArea.PRIVATE_DOCUMENT, documento.getChaveObjeto());
     } catch (RuntimeException exception) {
+      documentoAuditService.registrar(id, atorId, requestId, Etapa.FALHA);
       throw new ResponseStatusException(
           HttpStatus.NOT_FOUND,
           "documento de visitante nao encontrado");
     }
-    return new DocumentoPrivado(
+    DocumentoPrivado result = new DocumentoPrivado(
         object.content(),
         normalizeMime(object.contentType(), documento.getMimeType()));
+    documentoAuditService.registrar(id, atorId, requestId, Etapa.BYTES_PREPARADOS);
+    return result;
   }
 
   @Transactional

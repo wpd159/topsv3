@@ -53,6 +53,7 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
           <div className="flex flex-col gap-2">
             {section.items.map((item) => {
               const baseHref = item.href.split('#')[0]
+              const NavigationLink = baseHref === '/admin/compliance' ? 'a' : Link
               const isActive = activeHref === item.href
               const notificationCount: number | null =
                 item.notificationKey
@@ -63,7 +64,7 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
               const hasCounter = Boolean(item.notificationKey) || baseHref === '/admin/anuncios'
 
               return (
-                <Link
+                <NavigationLink
                   key={item.label}
                   href={item.href}
                   onClick={onItemClick}
@@ -91,7 +92,7 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
                       !
                     </span>
                   )}
-                </Link>
+                </NavigationLink>
               )
             })}
           </div>

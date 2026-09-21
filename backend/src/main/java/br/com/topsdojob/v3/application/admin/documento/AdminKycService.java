@@ -148,9 +148,14 @@ public class AdminKycService {
       UUID documentoId,
       AdminUserPrincipal ator,
       String requestId) {
+    // Resolver somente o envio antes do lock evita uma entidade gerenciada com
+    // estado anterior a uma decisao concorrente.
+    UUID envioId = documentoRepository.findEnvioIdAtivoByDocumentoId(documentoId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "documento nao encontrado"));
+    List<DocumentoUsuarioEntity> documentos = documentosDoEnvioParaAtualizacao(envioId);
     DocumentoArquivo acesso = documentoArquivo(documentoId);
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-    documentosDoEnvio(acesso.documento().getEnvioId()).forEach(item -> item.marcarEmAnalise(agora));
+    documentos.forEach(item -> item.marcarEmAnalise(agora));
     acessoRepository.save(DocumentoUsuarioAcessoEntity.registrarPermitido(
         UUID.randomUUID(),
         acesso.documento().getId(),
@@ -203,7 +208,7 @@ public class AdminKycService {
         && (motivo == null || motivo.length() < 3)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "motivo deve ter ao menos 3 caracteres");
     }
-    List<DocumentoUsuarioEntity> documentos = documentosDoEnvio(envioId);
+    List<DocumentoUsuarioEntity> documentos = documentosDoEnvioParaAtualizacao(envioId);
     validarContaDisponivel(documentos.get(0).getUsuarioId());
     if (documentos.stream().anyMatch(item -> item.getStatus() != StatusDocumentoUsuario.PENDENTE
         && item.getStatus() != StatusDocumentoUsuario.EM_ANALISE)) {
@@ -484,6 +489,14 @@ public class AdminKycService {
   private List<DocumentoUsuarioEntity> documentosDoEnvio(UUID envioId) {
     List<DocumentoUsuarioEntity> documentos = documentoRepository
         .findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(envioId);
+    if (documentos.isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "envio documental nao encontrado");
+    }
+    return documentos;
+  }
+
+  private List<DocumentoUsuarioEntity> documentosDoEnvioParaAtualizacao(UUID envioId) {
+    List<DocumentoUsuarioEntity> documentos = documentoRepository.findAtivosDoEnvioForUpdate(envioId);
     if (documentos.isEmpty()) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "envio documental nao encontrado");
     }

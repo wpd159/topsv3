@@ -61,7 +61,7 @@ public class ComplianceVisitorAccessService {
 
   @Transactional(readOnly = true)
   public StatusResult status(HttpServletRequest request) {
-    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     ComplianceVisitorSessionService.SessionContext session =
         sessionService.obterOuCriar(request);
     boolean globalAccepted = globalService.aceito(request);
@@ -87,7 +87,8 @@ public class ComplianceVisitorAccessService {
         globalAccepted,
         general.orElse(null),
         explicit.orElse(null),
-        latest);
+        latest,
+        agora);
     return new StatusResult(status, session.cookie());
   }
 
@@ -125,14 +126,14 @@ public class ComplianceVisitorAccessService {
         .isPresent();
   }
 
-  @Transactional
+  @Transactional(noRollbackFor = ResponseStatusException.class)
   public IssuedTokens emitir(
       ComplianceVisitorChallengeEntity challenge,
       ComplianceVisitorSessionService.SessionContext session,
       OffsetDateTime agora) {
     OffsetDateTime emitidoEm = agora.withOffsetSameInstant(ZoneOffset.UTC).withNano(0);
     List<ComplianceVisitorTokenEntity> existentes = tokenRepository
-        .findByChallengeIdAndStatus(challenge.getId(), StatusTokenVisitante.ACTIVE);
+        .findByChallengeId(challenge.getId());
     if (!existentes.isEmpty()) {
       return reconstruir(challenge, session, existentes, emitidoEm);
     }
@@ -167,7 +168,7 @@ public class ComplianceVisitorAccessService {
           properties.explicitTokenTtl());
     }
     return new IssuedTokens(
-        statusDto(true, general, explicit, challenge),
+        statusDto(true, general, explicit, challenge, emitidoEm),
         session.cookie(),
         generalCookie,
         explicitCookie);
@@ -289,7 +290,7 @@ public class ComplianceVisitorAccessService {
           "acesso explicito expirado; inicie uma nova verificacao");
     }
     return new IssuedTokens(
-        statusDto(true, general, explicit, challenge),
+        statusDto(true, general, explicit, challenge, agora),
         session.cookie(),
         signedCookieService.cookie(
             ComplianceSignedCookieService.ACCESS_COOKIE,
@@ -328,7 +329,8 @@ public class ComplianceVisitorAccessService {
       boolean globalAccepted,
       ComplianceVisitorTokenEntity general,
       ComplianceVisitorTokenEntity explicit,
-      ComplianceVisitorChallengeEntity latest) {
+      ComplianceVisitorChallengeEntity latest,
+      OffsetDateTime agora) {
     String state;
     if (latest == null) {
       state = globalAccepted
@@ -336,6 +338,10 @@ public class ComplianceVisitorAccessService {
           : EstadoPublicoAgeGate.GLOBAL_NAO_ACEITO.name();
     } else if (latest.getStatus() == StatusChallengeVisitante.VERIFIED
         && general == null) {
+      state = EstadoPublicoAgeGate.EXPIRED.name();
+    } else if (latest.expiradaEm(agora)
+        && (latest.getStatus() == StatusChallengeVisitante.ACTIVE
+            || latest.getStatus().name().startsWith("DOCUMENT_"))) {
       state = EstadoPublicoAgeGate.EXPIRED.name();
     } else {
       state = estado(latest.getStatus()).name();
@@ -351,10 +357,12 @@ public class ComplianceVisitorAccessService {
         state,
         latest == null ? null : latest.getRiscoScore(),
         latest == null ? null : latest.getRiscoDecisao().name(),
-        latest == null || !latest.getStatus().name().startsWith("DOCUMENT_")
+        latest == null || !state.startsWith("DOCUMENT_")
             ? null
             : latest.getStatus().name(),
-        latest == null ? null : motivoPublico(latest));
+        state.equals(EstadoPublicoAgeGate.EXPIRED.name())
+            ? "A verificacao expirou. Inicie novamente."
+            : latest == null ? null : motivoPublico(latest));
   }
 
   private String motivoPublico(ComplianceVisitorChallengeEntity challenge) {

@@ -1,9 +1,13 @@
 package br.com.topsdojob.v3.application.publico.compliance;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +34,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseCookie;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 class ComplianceVisitorAccessServiceTest {
@@ -533,6 +540,60 @@ class ComplianceVisitorAccessServiceTest {
         documentoRepository,
         properties,
         session);
+  }
+
+  @Test
+  void statusUsaJanelaEfetivaAposAprovacaoAntesNoLimiteEDepoisSemRenovar() {
+    for (boolean prazoMaior : new boolean[] {false, true}) {
+      Fixture fixture = fixture();
+      OffsetDateTime decision = OffsetDateTime.parse("2026-09-20T12:00:00.123456Z");
+      var challenge = challenge(fixture.session.sessionHash(), EscopoConteudoVisitante.STORY, false);
+      challenge.marcarDocumentoPendente("4".repeat(64), decision.minusDays(2));
+      OffsetDateTime previous = prazoMaior ? decision.plusDays(2) : decision.minusDays(1);
+      ReflectionTestUtils.setField(challenge, "expiraEm", previous);
+      challenge.marcarDocumentoAprovado(decision, decision.plusMinutes(15));
+      OffsetDateTime effective = prazoMaior ? previous : decision.plusMinutes(15);
+      assertThat(challenge.getExpiraEm()).isEqualTo(effective);
+      when(fixture.globalService.aceito(any())).thenReturn(true);
+      when(fixture.sessionService.obterOuCriar(any())).thenReturn(fixture.session);
+      when(fixture.challengeRepository.findTopBySessionHashOrderByAtualizadoEmDescCriadoEmDescIdDesc(any()))
+          .thenReturn(Optional.of(challenge));
+      for (OffsetDateTime current : List.of(effective.minusNanos(1), effective, effective.plusNanos(1))) {
+        try (var clock = mockStatic(OffsetDateTime.class, CALLS_REAL_METHODS)) {
+          clock.when(() -> OffsetDateTime.now(ZoneOffset.UTC)).thenReturn(current);
+          var status = fixture.service.status(new MockHttpServletRequest()).status();
+          assertThat(status.verified()).isFalse();
+          assertThat(status.state()).isEqualTo(current.isBefore(effective) ? "DOCUMENT_APPROVED" : "EXPIRED");
+          if (!current.isBefore(effective)) {
+            assertThat(status.reasonPublic()).contains("expirou").doesNotContain("aprovado", "Repita");
+            assertThat(status.documentStatus()).isNull();
+          }
+          assertThat(challenge.getExpiraEm()).isEqualTo(effective);
+        }
+      }
+    }
+  }
+
+  @Test
+  void historicoRevogadoExpiradoOuIncompativelNuncaGeraNovosTokens() {
+    for (String state : List.of("REVOKED", "EXPIRED", "TIMEOUT", "OTHER_AGENT", "OTHER_SESSION", "MISSING_EXPLICIT")) {
+      Fixture fixture = fixture();
+      var challenge = challenge(fixture.session.sessionHash(), EscopoConteudoVisitante.CONTEUDO_EXPLICITO, true);
+      OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
+      var storedAccess = ComplianceVisitorTokenEntity.emitir(UUID.randomUUID(), "7".repeat(64),
+          state.equals("OTHER_SESSION") ? "8".repeat(64) : fixture.session.sessionHash(),
+          state.equals("OTHER_AGENT") ? "9".repeat(64) : fixture.session.userAgentHash(),
+          challenge.getId(), EscopoTokenVisitante.GENERAL, NivelAcessoVisitante.STRONG,
+          EscopoConteudoVisitante.CONTEUDO_EXPLICITO, 0, DecisaoRiscoVisitante.ALLOW_LEVEL_1,
+          now.minusHours(1), state.equals("TIMEOUT") ? now : now.plusHours(1));
+      if (state.equals("REVOKED")) storedAccess.revogar("SINTETICO", now);
+      if (state.equals("EXPIRED")) storedAccess.expirar(now);
+      when(fixture.tokenRepository.findByChallengeId(challenge.getId())).thenReturn(List.of(storedAccess));
+      assertThatThrownBy(() -> fixture.service.emitir(challenge, fixture.session, now))
+          .isInstanceOfSatisfying(ResponseStatusException.class,
+              exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.GONE));
+      verify(fixture.tokenRepository, never()).save(any());
+    }
   }
 
   private ComplianceVisitorChallengeEntity challenge(

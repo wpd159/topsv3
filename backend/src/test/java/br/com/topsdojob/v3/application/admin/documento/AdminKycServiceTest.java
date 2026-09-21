@@ -99,6 +99,8 @@ class AdminKycServiceTest {
     when(documentoRepository.findById(documento.getId())).thenReturn(Optional.of(documento));
     when(documentoRepository.findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(envioId))
         .thenReturn(List.of(documento));
+    when(documentoRepository.findEnvioIdAtivoByDocumentoId(documento.getId())).thenReturn(Optional.of(envioId));
+    when(documentoRepository.findAtivosDoEnvioForUpdate(envioId)).thenReturn(List.of(documento));
     when(documentoRepository.findByStatusInAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmAsc(any()))
         .thenReturn(List.of(documento));
     when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));

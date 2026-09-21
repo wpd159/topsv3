@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,6 +43,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class ComplianceVisitorDocumentServiceTest {
 
@@ -143,6 +145,39 @@ class ComplianceVisitorDocumentServiceTest {
         eq("application/pdf"));
   }
 
+  @Test
+  void novaChaveNaoDuplicaDocumentoAindaPendenteMasReenvioRejeitadoContinuaDisponivel() {
+    var fixture = fixture(validado(PDF));
+    fixture.service.submeter(fixture.challenge.getId(), "first-key", arquivo(PDF), new MockHttpServletRequest());
+    when(fixture.documentoRepository.findBySessionHashAndIdempotenciaHash(any(), any())).thenReturn(Optional.empty());
+    when(fixture.documentoRepository.findTopByChallengeIdOrderByCriadoEmDesc(any()))
+        .thenAnswer(invocation -> Optional.of(fixture.persisted.get()));
+    assertThatThrownBy(() -> fixture.service.submeter(fixture.challenge.getId(), "new-key", arquivo(PDF), new MockHttpServletRequest()))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    verify(fixture.documentoRepository, times(1)).save(any());
+    var now = OffsetDateTime.now(ZoneOffset.UTC);
+    fixture.persisted.get().decidir(StatusDocumentoVisitante.REJECTED, UUID.randomUUID(), "Ilegivel", now);
+    fixture.challenge.marcarDocumentoRejeitado("Ilegivel", now);
+    assertThat(fixture.service.submeter(fixture.challenge.getId(), "new-key", arquivo(PDF), new MockHttpServletRequest())
+        .response().state()).isEqualTo("DOCUMENT_PENDING");
+    verify(fixture.documentoRepository, times(2)).save(any());
+  }
+
+  @Test
+  void bloqueioAtualEExpiracaoRecusamUploadAntesDeGravarObjeto() {
+    for (boolean blocked : new boolean[] {false, true}) {
+      var fixture = fixture(validado(PDF));
+      if (blocked) when(fixture.riskService.bloqueadaEm(any(), any())).thenReturn(true);
+      else ReflectionTestUtils.setField(fixture.challenge, "expiraEm", OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(1));
+      assertThatThrownBy(() -> fixture.service.submeter(fixture.challenge.getId(), "new-key", arquivo(PDF), new MockHttpServletRequest()))
+          .isInstanceOfSatisfying(ResponseStatusException.class,
+              exception -> assertThat(exception.getStatusCode()).isEqualTo(blocked ? HttpStatus.TOO_MANY_REQUESTS : HttpStatus.GONE));
+      verify(fixture.documentoRepository, never()).save(any());
+      verify(fixture.storage, never()).putIfAbsent(any(), any(), any(), any());
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private Fixture fixture(DocumentoValidado validado) {
     ComplianceVisitorChallengeRepository challengeRepository =
@@ -153,6 +188,7 @@ class ComplianceVisitorDocumentServiceTest {
         mock(ComplianceVisitorSessionService.class);
     ComplianceVisitorAuditService auditService =
         mock(ComplianceVisitorAuditService.class);
+    ComplianceVisitorRiskService riskService = mock(ComplianceVisitorRiskService.class);
     DocumentoUploadValidator validator = mock(DocumentoUploadValidator.class);
     ObjectProvider<ObjectStorage> provider = mock(ObjectProvider.class);
     ObjectStorage storage = mock(ObjectStorage.class);
@@ -194,6 +230,7 @@ class ComplianceVisitorDocumentServiceTest {
         challengeRepository,
         documentoRepository,
         sessionService,
+        riskService,
         auditService,
         validator,
         new MetricaPublicaHashService(
@@ -207,6 +244,7 @@ class ComplianceVisitorDocumentServiceTest {
         documentoRepository,
         validator,
         storage,
+        riskService,
         persisted);
   }
 
@@ -269,6 +307,7 @@ class ComplianceVisitorDocumentServiceTest {
       ComplianceVisitorDocumentoRepository documentoRepository,
       DocumentoUploadValidator validator,
       ObjectStorage storage,
+      ComplianceVisitorRiskService riskService,
       AtomicReference<ComplianceVisitorDocumentoEntity> persisted) {
   }
 }

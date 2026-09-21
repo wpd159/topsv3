@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -23,8 +25,11 @@ import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.DecisaoRisco
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.NivelAcessoVisitante;
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.StatusChallengeVisitante;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.StatusDocumentoVisitante;
 import br.com.topsdojob.v3.persistence.entity.compliance.ComplianceVisitorChallengeEntity;
+import br.com.topsdojob.v3.persistence.entity.compliance.ComplianceVisitorDocumentoEntity;
 import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorChallengeRepository;
+import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorDocumentoRepository;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -38,6 +43,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 class ComplianceVisitorVerificationServiceTest {
@@ -279,9 +285,96 @@ class ComplianceVisitorVerificationServiceTest {
     verify(fixture.repository, times(1)).save(any());
   }
 
+  @Test
+  void retomaDocumentacaoDaSessaoNoContextoSemSalvarOutroChallengeOuEmitirAcesso() {
+    for (String state : List.of("PENDING", "APPROVED", "REJECTED")) {
+      var challenge = activeChallenge();
+      OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+      challenge.marcarDocumentoPendente("4".repeat(64), now);
+      if (state.equals("APPROVED")) challenge.marcarDocumentoAprovado(now, now.plusDays(2));
+      if (state.equals("REJECTED")) challenge.marcarDocumentoRejeitado("DOCUMENTO_REJEITADO", now);
+      var fixture = fixture(challenge);
+      when(fixture.repository.findNoMesmoContexto(any(), any(), any(), any(), any(), any(), any(), any()))
+          .thenReturn(List.of(challenge));
+      var result = fixture.service.iniciar(challengeRequest(challenge, "new-browser-key"), new MockHttpServletRequest());
+      assertThat(result.response().challengeId()).isEqualTo(challenge.getId());
+      assertThat(result.response().state()).isEqualTo("DOCUMENT_" + state);
+      verify(fixture.repository, never()).save(any());
+      verify(fixture.accessService, never()).emitir(any(), any(), any());
+    }
+  }
+
+  @Test
+  void expiracaoDocumentalRecusaConfirmacaoMesmoIdempotenteEPermiteNovoChallenge() {
+    OffsetDateTime expiry = OffsetDateTime.parse("2026-09-20T12:00:00.123456Z");
+    for (boolean approved : new boolean[] {false, true}) {
+      var challenge = activeChallenge();
+      var fixture = fixture(challenge);
+      challenge.marcarDocumentoPendente(fixture.hashService.hash("compliance-idempotencia",
+          fixture.session.sessionHash() + "|verify-pending"), expiry.minusDays(2));
+      if (approved) challenge.marcarDocumentoAprovado(expiry.minusMinutes(15), expiry);
+      ReflectionTestUtils.setField(challenge, "expiraEm", expiry);
+      when(fixture.repository.findNoMesmoContexto(any(), any(), any(), any(), any(), any(), any(), any()))
+          .thenReturn(List.of(challenge));
+      try (var clock = mockStatic(OffsetDateTime.class, CALLS_REAL_METHODS)) {
+        clock.when(() -> OffsetDateTime.now(ZoneOffset.UTC)).thenReturn(expiry);
+        assertThatThrownBy(() -> fixture.service.verificar(validRequest("verify-pending"), new MockHttpServletRequest()))
+            .isInstanceOfSatisfying(ResponseStatusException.class,
+                exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.GONE));
+        var next = fixture.service.iniciar(challengeRequest(challenge, "new-key"), new MockHttpServletRequest());
+        assertThat(next.response().challengeId()).isNotEqualTo(challenge.getId());
+        assertThat(next.response().state()).isEqualTo("CHALLENGE_ACTIVE");
+        verify(fixture.accessService, never()).emitir(any(), any(), any());
+      }
+    }
+  }
+
+  @Test
+  void bloqueioAtualRecusaRetomadaInclusiveRepeticaoDaChaveExistente() {
+    var challenge = activeChallenge();
+    challenge.marcarDocumentoPendente("4".repeat(64), OffsetDateTime.now(ZoneOffset.UTC));
+    var fixture = fixture(challenge);
+    when(fixture.repository.findBySessionHashAndIdempotenciaHash(any(), any())).thenReturn(Optional.of(challenge));
+    when(fixture.riskService.bloqueadaEm(any(), any())).thenReturn(true);
+    assertThatThrownBy(() -> fixture.service.iniciar(challengeRequest(challenge, "existing-key"), new MockHttpServletRequest()))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+    verify(fixture.repository, never()).save(any());
+    verify(fixture.accessService, never()).emitir(any(), any(), any());
+  }
+
+  private VisitorChallengeRequestDto challengeRequest(ComplianceVisitorChallengeEntity challenge, String key) {
+    return new VisitorChallengeRequestDto("REINFORCED", "MIDIA_RESTRITA", challenge.getAnuncioId(),
+        challenge.getAnuncioMidiaId(), null, "/anuncios/teste", key);
+  }
+
+  @Test
+  void retomadaPreservaSomenteMotivoPublicoDaRejeicaoDocumental() {
+    var challenge = activeChallenge();
+    OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+    challenge.marcarDocumentoPendente("4".repeat(64), now);
+    challenge.marcarDocumentoRejeitado("MOTIVO_INTERNO", now);
+    var fixture = fixture(challenge);
+    var documento = ComplianceVisitorDocumentoEntity.criarPendente(UUID.randomUUID(), challenge.getSessionHash(),
+        challenge.getId(), challenge.getAnuncioId(), "bucket-privado", "chave-privada", "application/pdf", 100,
+        "5".repeat(64), "6".repeat(64), now);
+    documento.decidir(StatusDocumentoVisitante.REJECTED, UUID.randomUUID(), "Imagem ilegivel; envie novamente.", now);
+    when(fixture.repository.findNoMesmoContexto(any(), any(), any(), any(), any(), any(), any(), any()))
+        .thenReturn(List.of(challenge));
+    when(fixture.documentoRepository.findTopByChallengeIdOrderByCriadoEmDesc(challenge.getId()))
+        .thenReturn(Optional.of(documento));
+    var result = fixture.service.iniciar(challengeRequest(challenge, "resume-rejected"), new MockHttpServletRequest()).response();
+    assertThat(result.state()).isEqualTo("DOCUMENT_REJECTED");
+    assertThat(result.documentStatus()).isEqualTo("REJECTED");
+    assertThat(result.reasonPublic()).isEqualTo("Imagem ilegivel; envie novamente.");
+    assertThat(result.toString()).doesNotContain("MOTIVO_INTERNO", "bucket-privado", "chave-privada");
+    verify(fixture.accessService, never()).emitir(any(), any(), any());
+  }
+
   private Fixture fixture(ComplianceVisitorChallengeEntity challenge) {
     ComplianceVisitorChallengeRepository repository =
         mock(ComplianceVisitorChallengeRepository.class);
+    ComplianceVisitorDocumentoRepository documentoRepository = mock(ComplianceVisitorDocumentoRepository.class);
     ComplianceVisitorSessionService sessionService =
         mock(ComplianceVisitorSessionService.class);
     ComplianceGlobalAgeGateService globalService =
@@ -358,6 +451,7 @@ class ComplianceVisitorVerificationServiceTest {
     ComplianceVisitorVerificationService service =
         new ComplianceVisitorVerificationService(
             repository,
+            documentoRepository,
             sessionService,
             globalService,
             contextService,
@@ -370,6 +464,7 @@ class ComplianceVisitorVerificationServiceTest {
     return new Fixture(
         service,
         repository,
+        documentoRepository,
         contextService,
         riskService,
         accessService,
@@ -457,6 +552,7 @@ class ComplianceVisitorVerificationServiceTest {
   private record Fixture(
       ComplianceVisitorVerificationService service,
       ComplianceVisitorChallengeRepository repository,
+      ComplianceVisitorDocumentoRepository documentoRepository,
       ComplianceChallengeContextService contextService,
       ComplianceVisitorRiskService riskService,
       ComplianceVisitorAccessService accessService,

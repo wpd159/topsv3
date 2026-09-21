@@ -4,8 +4,11 @@ import br.com.topsdojob.v3.persistence.entity.documento.DocumentoUsuarioEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,6 +29,20 @@ public interface DocumentoUsuarioRepository extends JpaRepository<DocumentoUsuar
 
     List<DocumentoUsuarioEntity> findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(
             UUID envioId);
+
+    @Query("""
+            select d.envioId from DocumentoUsuarioEntity d
+            where d.id = :documentoId and d.removidoEm is null and d.expurgadoEm is null
+            """)
+    Optional<UUID> findEnvioIdAtivoByDocumentoId(@Param("documentoId") UUID documentoId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select d from DocumentoUsuarioEntity d
+            where d.envioId = :envioId and d.removidoEm is null and d.expurgadoEm is null
+            order by d.parte, d.id
+            """)
+    List<DocumentoUsuarioEntity> findAtivosDoEnvioForUpdate(@Param("envioId") UUID envioId);
 
     List<DocumentoUsuarioEntity> findByStatusInAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmAsc(
             Collection<StatusDocumentoUsuario> statuses);

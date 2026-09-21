@@ -61,7 +61,7 @@ assert.match(verification, /12 \* 1024 \* 1024/)
 assert.match(verification, /max-h-\[92vh\]/)
 assert.match(verification, /overflow-y-auto/)
 assert.match(verification, /obterStatusVisitante\(true\)/)
-assert.match(verification, /recarregarStatusVisitante\(\)/)
+assert.match(verification, /const current = await loadChallenge\(\)/)
 assert.doesNotMatch(verification, /getVisitorStatus/)
 assert.doesNotMatch(verification, /getGlobalAgeGateStatus/)
 

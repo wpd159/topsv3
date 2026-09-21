@@ -47,6 +47,13 @@ public class ComplianceVisitorRiskService {
     this.properties = properties;
   }
 
+  @Transactional(readOnly = true)
+  public boolean bloqueadaEm(String sessionHash, OffsetDateTime agora) {
+    return profileRepository.findBySessionHash(sessionHash)
+        .map(profile -> profile.bloqueioTemporarioAtivo(agora) || profile.bloqueioDefinitivoAtivo(agora))
+        .orElse(false);
+  }
+
   @Transactional
   public RiscoResultado avaliar(
       String sessionHash,

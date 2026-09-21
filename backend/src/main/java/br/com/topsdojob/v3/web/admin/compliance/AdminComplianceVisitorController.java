@@ -44,8 +44,11 @@ public class AdminComplianceVisitorController {
   }
 
   @GetMapping("/documentos/{id}/arquivo")
-  public ResponseEntity<byte[]> arquivo(@PathVariable UUID id) {
-    var result = service.carregarDocumento(id);
+  public ResponseEntity<byte[]> arquivo(
+      @PathVariable UUID id,
+      @AuthenticationPrincipal AdminUserPrincipal actor,
+      HttpServletRequest request) {
+    var result = service.carregarDocumento(id, actor, RequestIdContext.current(request));
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .header(HttpHeaders.PRAGMA, "no-cache")

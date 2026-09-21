@@ -16,6 +16,7 @@ import br.com.topsdojob.v3.domain.metrica.MetricaTipos.MetodoVerificacaoEtaria;
 import br.com.topsdojob.v3.domain.metrica.MetricaTipos.ResultadoVerificacaoEtaria;
 import br.com.topsdojob.v3.persistence.entity.compliance.ComplianceVisitorChallengeEntity;
 import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorChallengeRepository;
+import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorDocumentoRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -26,6 +27,7 @@ import java.time.format.ResolverStyle;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,7 @@ public class ComplianceVisitorVerificationService {
           .withResolverStyle(ResolverStyle.STRICT);
 
   private final ComplianceVisitorChallengeRepository challengeRepository;
+  private final ComplianceVisitorDocumentoRepository documentoRepository;
   private final ComplianceVisitorSessionService sessionService;
   private final ComplianceGlobalAgeGateService globalService;
   private final ComplianceChallengeContextService contextService;
@@ -51,6 +54,7 @@ public class ComplianceVisitorVerificationService {
 
   public ComplianceVisitorVerificationService(
       ComplianceVisitorChallengeRepository challengeRepository,
+      ComplianceVisitorDocumentoRepository documentoRepository,
       ComplianceVisitorSessionService sessionService,
       ComplianceGlobalAgeGateService globalService,
       ComplianceChallengeContextService contextService,
@@ -61,6 +65,7 @@ public class ComplianceVisitorVerificationService {
       MetricaPublicaHashService hashService,
       CpfVisitanteValidator cpfValidator) {
     this.challengeRepository = challengeRepository;
+    this.documentoRepository = documentoRepository;
     this.sessionService = sessionService;
     this.globalService = globalService;
     this.contextService = contextService;
@@ -95,12 +100,27 @@ public class ComplianceVisitorVerificationService {
           HttpStatus.BAD_REQUEST,
           "identificador de idempotencia obrigatorio");
     }
+    if (riskService.bloqueadaEm(session.sessionHash(), agora)) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "verificacao temporariamente bloqueada");
+    }
     var existente = challengeRepository.findBySessionHashAndIdempotenciaHash(
         session.sessionHash(),
         idempotenciaHash);
     if (existente.isPresent()) {
       validarMesmoContexto(existente.get(), solicitado, escopo, contexto);
-      return new ChallengeResult(toResponse(existente.get()), session.cookie());
+      return new ChallengeResult(toResponse(existente.get(), agora), session.cookie());
+    }
+    var recente = challengeRepository.findNoMesmoContexto(
+        session.sessionHash(), solicitado, escopo, contexto.anuncioId(), contexto.midiaId(),
+        contexto.storyReferencia(), contexto.rotaSanitizada(), PageRequest.of(0, 1));
+    if (!recente.isEmpty()) {
+      var anterior = recente.get(0);
+      if (!anterior.expiradaEm(agora)
+          && (anterior.getStatus() == StatusChallengeVisitante.DOCUMENT_PENDING
+              || anterior.getStatus() == StatusChallengeVisitante.DOCUMENT_APPROVED
+              || anterior.getStatus() == StatusChallengeVisitante.DOCUMENT_REJECTED)) {
+        return new ChallengeResult(toResponse(anterior, agora), session.cookie());
+      }
     }
     long tentativas = challengeRepository.countBySessionHashAndCriadoEmAfter(
         session.sessionHash(),
@@ -167,7 +187,7 @@ public class ComplianceVisitorVerificationService {
         risco.motivo(),
         null,
         httpRequest);
-    return new ChallengeResult(toResponse(challenge), session.cookie());
+    return new ChallengeResult(toResponse(challenge, agora), session.cookie());
   }
 
   @Transactional(noRollbackFor = ResponseStatusException.class)
@@ -206,16 +226,16 @@ public class ComplianceVisitorVerificationService {
       IssuedTokens tokens = accessService.emitir(challenge, session, agora);
       return VerifyResult.verificado(tokens);
     }
+    if (challenge.expiradaEm(agora)) {
+      challenge.expirar(agora);
+      auditarFalha(challenge, session, "CHALLENGE_EXPIRADO", httpRequest);
+      throw new ResponseStatusException(HttpStatus.GONE, "challenge expirado");
+    }
     if (challenge.getStatus() == StatusChallengeVisitante.DOCUMENT_PENDING
         && verificacaoHash.equals(challenge.getVerificacaoIdempotenciaHash())) {
       return VerifyResult.documentoPendente(
           statusDocumentoPendente(challenge),
           session.cookie());
-    }
-    if (challenge.expiradaEm(agora)) {
-      challenge.expirar(agora);
-      auditarFalha(challenge, session, "CHALLENGE_EXPIRADO", httpRequest);
-      throw new ResponseStatusException(HttpStatus.GONE, "challenge expirado");
     }
     boolean documentoAprovado =
         challenge.getStatus() == StatusChallengeVisitante.DOCUMENT_APPROVED;
@@ -385,7 +405,8 @@ public class ComplianceVisitorVerificationService {
   }
 
   private VisitorChallengeResponseDto toResponse(
-      ComplianceVisitorChallengeEntity challenge) {
+      ComplianceVisitorChallengeEntity challenge,
+      OffsetDateTime agora) {
     EstadoPublicoAgeGate state = switch (challenge.getStatus()) {
       case ACTIVE -> EstadoPublicoAgeGate.CHALLENGE_ACTIVE;
       case VERIFIED -> EstadoPublicoAgeGate.VERIFIED;
@@ -396,6 +417,23 @@ public class ComplianceVisitorVerificationService {
       case DOCUMENT_APPROVED -> EstadoPublicoAgeGate.DOCUMENT_APPROVED;
       case DOCUMENT_REJECTED -> EstadoPublicoAgeGate.DOCUMENT_REJECTED;
     };
+    if (challenge.expiradaEm(agora)
+        && (challenge.getStatus() == StatusChallengeVisitante.ACTIVE
+            || challenge.getStatus().name().startsWith("DOCUMENT_"))) {
+      state = EstadoPublicoAgeGate.EXPIRED;
+    }
+    var documento = state.name().startsWith("DOCUMENT_")
+        ? documentoRepository.findTopByChallengeIdOrderByCriadoEmDesc(challenge.getId()).orElse(null)
+        : null;
+    String reason = state == EstadoPublicoAgeGate.EXPIRED
+        ? "A verificacao expirou. Inicie novamente."
+        : reasonPublic(challenge.getMotivoSanitizado());
+    if (state == EstadoPublicoAgeGate.DOCUMENT_REJECTED) {
+      reason = documento != null && documento.getMotivoPublicoSanitizado() != null
+              && !documento.getMotivoPublicoSanitizado().isBlank()
+          ? documento.getMotivoPublicoSanitizado()
+          : "Documento rejeitado. Envie um novo arquivo valido.";
+    }
     return new VisitorChallengeResponseDto(
         challenge.getId(),
         state.name(),
@@ -405,7 +443,8 @@ public class ComplianceVisitorVerificationService {
         challenge.isExigeAceiteExplicito(),
         challenge.isExigeDocumento(),
         challenge.getMaxTentativas(),
-        reasonPublic(challenge.getMotivoSanitizado()));
+        reason,
+        documento == null ? null : documento.getStatus().name());
   }
 
   private VisitorAccessStatusDto statusDocumentoPendente(
