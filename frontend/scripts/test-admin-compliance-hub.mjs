@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
@@ -149,7 +149,7 @@ const fixtures = new Map([
   ['/api/admin/sugestoes/indicadores', { novas: 0 }],
   ...areaCases.map(({ endpoint }) => [endpoint, []]),
 ])
-let application, server, browser, activeContext, origin, failure, denial = null, negative = false
+let application, server, browser, activeContext, origin, failure, outboundProbe, denial = null, negative = false
 const bounded = (promise, label, milliseconds = 10000) => {
   let timer
   return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Timeout: ' + label)), milliseconds) })]).finally(() => clearTimeout(timer))
@@ -188,7 +188,7 @@ async function scenario(name, action, isNegative = false) {
     context.on(event, (request) => {
       if (event === 'request' && new URL(request.url()).origin !== origin) {
         const external = { scenario: name, method: request.method(), origin: new URL(request.url()).origin, path: new URL(request.url()).pathname }
-        if (name === 'external-popup-network-denied' && request.url() === 'http://198.51.100.1/f02-outbound') trace('expected-external-attempt', external)
+        if (name === 'browser-egress-denied-in-isolated-namespace' && request.url() === outboundProbe) trace('expected-external-attempt', { ...external, url: request.url() })
         else unexpected.push(external)
       }
       if (relevantRequest(request)) trace(event, { ...requestDetails(request), ...(event === 'requestfailed' ? { failure: request.failure() } : {}) })
@@ -269,9 +269,9 @@ try {
   application = require('next')({ dev, dir: frontendRoot, hostname: '127.0.0.1', port: server.address().port })
   await bounded(application.prepare(), 'prepare Next', 60000)
   handler = application.getRequestHandler()
-  assert.ok(!process.env.TOPS_UI_BROWSER_CHANNEL, 'Keep the approved default headless shell.')
-  browser = await chromium.launch({ headless: true })
-  writeJson('runtime.json', { node: process.version, platform: process.platform, arch: process.arch, next: require('next/package.json').version, playwright: playwrightVersion, browser: browser.version(), executor: 'default-headless-shell', uid: process.getuid(), gid: process.getgid(), networkInterfaces: os.networkInterfaces(), dev, buildId: build.buildId, apiBase: build.apiBase, logo: build.logo, realNextRouting: true, realComponents: true, syntheticHttpOnly: true, personalProfileUsed: false })
+  assert.ok(!process.env.TOPS_UI_BROWSER_CHANNEL, 'Keep the pinned Chromium channel.')
+  browser = await chromium.launch({ channel: 'chromium', headless: true })
+  writeJson('runtime.json', { node: process.version, platform: process.platform, arch: process.arch, next: require('next/package.json').version, playwright: playwrightVersion, browser: browser.version(), executor: 'chromium', channel: 'chromium', headless: true, uid: process.getuid(), gid: process.getgid(), networkInterfaces: os.networkInterfaces(), dev, buildId: build.buildId, apiBase: build.apiBase, logo: build.logo, realNextRouting: true, realComponents: true, syntheticHttpOnly: true, personalProfileUsed: false })
 
   await scenario('hub-opens-each-area', async (page) => {
     await page.goto(urlFor(), { timeout: 60000 })
@@ -415,36 +415,101 @@ try {
     assert.deepEqual(result.blocked.map(({ reason }) => reason), ['path', 'method', 'path'])
     await assertView(page)
   }, true)
-  await scenario('external-popup-network-denied', async (page, context, result) => {
+  await scenario('browser-egress-denied-in-isolated-namespace', async (page, context, result) => {
     await page.goto(urlFor())
     await assertView(page)
-    // TEST-NET-2 is deliberately unreachable in Docker's network=none namespace.
-    // This extra link is only a negative control; all six positives use real UI.
-    await page.evaluate(() => {
-      const link = document.createElement('a')
-      link.href = 'http://198.51.100.1/f02-outbound'
-      link.textContent = 'F02 outbound negative control'
-      document.querySelector('h1').before(link)
-    })
-    result.blocked = []
+    // This proves browser egress denial in the namespace, NOT observation of a
+    // popup's first external navigation. The six functional scenarios retain
+    // every real gesture. Only these probes navigate an already identified Page.
+    result.scope = 'Browser egress denial; not first external popup navigation.'
+    result.runId = randomUUID()
+    result.probes = []
     for (const options of [{ modifiers: ['ControlOrMeta'] }, { modifiers: ['Shift'] }, { button: 'middle' }]) {
       observation = { scenario: result.name, gesture: options.button || options.modifiers[0] }
-      const [opened, failed, clicked] = await Promise.allSettled([
-        context.waitForEvent('page'),
-        context.waitForEvent('requestfailed', { predicate: (request) => request.url() === 'http://198.51.100.1/f02-outbound' }),
-        page.getByRole('link', { name: 'F02 outbound negative control', exact: true }).click(options),
+      const probeId = `run=${result.runId}&gesture=${encodeURIComponent(observation.gesture)}`
+      const check = { options, result: 'FAIL', promises: {}, externalResponses: [] }
+      result.probes.push(check)
+      const observe = (name, promise) => promise.then(value => {
+        check.promises[name] = { status: 'fulfilled', at: Date.now() }
+        return value
+      }, error => {
+        check.promises[name] = { status: 'rejected', at: Date.now(), name: error.name, message: error.message, stack: error.stack }
+        throw error
+      })
+      const [opened, clicked] = await Promise.allSettled([
+        observe('open', context.waitForEvent('page')),
+        observe('click', openLink(page, areaCases[2]).click(options)),
       ])
-      if (clicked.status === 'rejected') result.clickError = clicked.reason.message
-      if (opened.status === 'rejected') result.pageError = opened.reason.message
       assert.equal(clicked.status, 'fulfilled')
       assert.equal(opened.status, 'fulfilled')
-      assert.equal(failed.status, 'fulfilled', 'External request must actually fail; no missing observation may pass.')
-      assert.match(failed.value.failure().errorText, /ERR_(ADDRESS_UNREACHABLE|NETWORK_UNREACHABLE|INTERNET_DISCONNECTED)/)
-      result.blocked.push({ options, failure: failed.value.failure() })
-      await opened.value.close()
+      const popup = opened.value
+      assert.equal(popup.context(), context)
+      assert.equal(context.browser(), browser)
+      await assertView(popup, areaCases[2])
+      await assertView(page)
+      check.page = pageId(popup)
+      check.originPage = pageId(page)
+
+      const localUrl = `${origin}/api/admin/auth/me?${probeId}`
+      const matches = (url) => (request) => request.url() === url
+      const [localRequest, localResponse, localFinished, localNavigation] = await Promise.allSettled([
+        observe('localRequest', context.waitForEvent('request', { predicate: matches(localUrl) })),
+        observe('localResponse', context.waitForEvent('response', { predicate: response => response.url() === localUrl })),
+        observe('localFinished', context.waitForEvent('requestfinished', { predicate: matches(localUrl) })),
+        observe('localNavigation', popup.goto(localUrl, { timeout: 5000 })),
+      ])
+      for (const outcome of [localRequest, localResponse, localFinished, localNavigation]) assert.equal(outcome.status, 'fulfilled', 'Local positive control must complete before the external probe.')
+      assert.equal(localRequest.value.frame().page(), popup)
+      assert.equal(localRequest.value, localResponse.value.request())
+      assert.equal(localRequest.value, localFinished.value)
+      assert.equal(localNavigation.value, localResponse.value)
+      assert.equal(localResponse.value.status(), 200)
+      assert.equal((await localResponse.value.json()).usuarioId, 'synthetic-admin')
+      check.local = { url: localUrl, ...requestDetails(localRequest.value), status: localResponse.value.status(), bodyVerified: true }
+
+      outboundProbe = `http://198.51.100.1/f02-outbound?${probeId}`
+      check.url = outboundProbe
+      const externalResponse = (response) => {
+        if (response.url() === check.url) check.externalResponses.push({ url: response.url(), status: response.status(), ...requestDetails(response.request()) })
+      }
+      context.on('response', externalResponse)
+      try {
+        check.startedAt = Date.now()
+        const [requested, failed, navigated] = await Promise.allSettled([
+          observe('externalRequest', context.waitForEvent('request', { predicate: matches(check.url), timeout: 5000 })),
+          observe('externalFailed', context.waitForEvent('requestfailed', { predicate: matches(check.url), timeout: 5000 })),
+          observe('externalNavigation', popup.goto(check.url, { timeout: 5000 })),
+        ])
+        check.observedAt = Date.now()
+        check.pageClosedAtObservation = popup.isClosed()
+        if (requested.status === 'fulfilled') check.request = { url: requested.value.url(), ...requestDetails(requested.value) }
+        if (failed.status === 'fulfilled') check.failure = { ...requestDetails(failed.value), ...failed.value.failure() }
+        assert.equal(requested.status, 'fulfilled', 'The browser must actually request the unique external URL.')
+        assert.equal(failed.status, 'fulfilled', 'A missing or rejected observer is not proof of network denial.')
+        assert.equal(failed.value, requested.value, 'Failure must belong to the exact observed Request.')
+        assert.equal(requested.value.frame(), popup.mainFrame())
+        assert.equal(requested.value.frame().page(), popup)
+        assert.equal(requested.value.isNavigationRequest(), true)
+        assert.equal(requested.value.method(), 'GET')
+        const networkError = /^net::ERR_(ADDRESS_UNREACHABLE|NETWORK_UNREACHABLE|INTERNET_DISCONNECTED)$/
+        assert.match(check.failure.errorText, networkError)
+        assert.equal(navigated.status, 'rejected', 'External navigation must not succeed.')
+        assert.ok(navigated.reason.message.includes(check.failure.errorText), 'Navigation must reject for the observed network failure, not a generic error.')
+        assert.deepEqual(check.externalResponses, [], 'No external HTTP response is allowed.')
+        assert.equal(await requested.value.response(), null)
+        assert.ok(check.observedAt - check.startedAt <= 5000, 'The network proof must finish within the existing deadline.')
+        assert.equal(check.pageClosedAtObservation, false, 'Closing the Page must not cause the observed failure.')
+        await assertView(page)
+        check.result = 'PASS'
+      } finally {
+        context.off('response', externalResponse)
+        outboundProbe = undefined
+      }
+      await popup.close()
       await assertView(page)
     }
-    assert.equal(result.blocked.length, 3)
+    assert.equal(result.probes.length, 3)
+    assert.ok(result.probes.every(({ result }) => result === 'PASS'))
   }, true)
   assert.equal(results.filter(({ result }) => result === 'FAIL').length, 0, 'A transport counterproof failed; inspect evidence.')
   assert.deepEqual(unexpected, [], 'Positive cases must never use a refused resource.')
