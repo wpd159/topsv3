@@ -268,7 +268,7 @@ try {
         assert.ok(['advertisement-a', 'advertisement-b'].includes(body.anuncioId)); assert.ok(['restricted-a', 'restricted-b'].includes(body.midiaId))
         assert.ok(body.idempotencyKey); assert.equal(request.headers()['x-xsrf-token'], 'EXEMPLO_NAO_REAL')
         if (state.challengeMode === 'ERROR') { await json(route, 503, { message: 'Erro sintético de verificação' }); return }
-        await json(route, 200, { challengeId: 'synthetic-challenge', state: state.challengeMode === 'BLOCKED' ? 'BLOCKED' : 'CREATED', effectiveLevel: 'REINFORCED', scope: 'MIDIA_RESTRITA', expiresAt: new Date(Date.now() + 60000).toISOString(), requiresExplicitAcknowledgement: false, documentRequired: false, maxAttempts: 3, reasonPublic: 'Verificação sintética negada' }); return
+        await json(route, 200, { challengeId: 'synthetic-challenge', state: state.challengeMode === 'BLOCKED' ? 'BLOCKED' : 'CHALLENGE_ACTIVE', effectiveLevel: 'REINFORCED', scope: 'MIDIA_RESTRITA', expiresAt: new Date(Date.now() + 60000).toISOString(), requiresExplicitAcknowledgement: false, documentRequired: false, maxAttempts: 3, reasonPublic: 'Verificação sintética negada' }); return
       }
       if (entry.method === 'POST' && url.pathname === '/api/public/compliance/visitor/verify' && state.enableVerify) {
         const body = request.postDataJSON(); entry.body = body
