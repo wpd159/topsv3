@@ -127,6 +127,24 @@ class ComplianceVisitorRiskServiceTest {
     return fixture(properties, null);
   }
 
+  @Test
+  void consultaBloqueiosTemporarioEDefinitivoSemRenovarPrazoOuContadores() {
+    OffsetDateTime now = OffsetDateTime.parse("2026-09-20T12:00:00Z");
+    for (boolean hard : new boolean[] {false, true}) {
+      var profile = ComplianceVisitorRiskProfileEntity.criar("7".repeat(64), now.minusMinutes(5));
+      profile.registrarAvaliacao(200, hard ? DecisaoRiscoVisitante.HARD_BLOCK : DecisaoRiscoVisitante.TEMP_BLOCK,
+          EscopoConteudoVisitante.STORY, "SINTETICO", "/stories", null,
+          hard ? null : now.plusMinutes(5), hard ? now.plusMinutes(5) : null, now);
+      var fixture = fixture(new ComplianceAgeGateProperties(), profile);
+      int count = profile.getAcessosRestritos();
+      assertThat(fixture.service.bloqueadaEm(profile.getSessionHash(), now)).isTrue();
+      assertThat(fixture.service.bloqueadaEm(profile.getSessionHash(), now.plusMinutes(5))).isFalse();
+      assertThat(profile.getAcessosRestritos()).isEqualTo(count);
+      assertThat(hard ? profile.getBloqueadoDefinitivamenteAte() : profile.getBloqueadoTemporariamenteAte())
+          .isEqualTo(now.plusMinutes(5));
+    }
+  }
+
   private Fixture fixture(
       ComplianceAgeGateProperties properties,
       ComplianceVisitorRiskProfileEntity existingProfile) {
@@ -139,6 +157,8 @@ class ComplianceVisitorRiskServiceTest {
     EventoVerificacaoEtariaRepository eventRepository =
         mock(EventoVerificacaoEtariaRepository.class);
     when(profileRepository.findBySessionHashForUpdate(any()))
+        .thenReturn(Optional.ofNullable(existingProfile));
+    when(profileRepository.findBySessionHash(any()))
         .thenReturn(Optional.ofNullable(existingProfile));
     when(profileRepository.save(any(ComplianceVisitorRiskProfileEntity.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));

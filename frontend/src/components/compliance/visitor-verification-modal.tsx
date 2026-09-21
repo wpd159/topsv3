@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -25,7 +26,6 @@ import {
   notificarMudancaVerificacao,
   obterGeracaoStatusVisitante,
   obterStatusVisitante,
-  recarregarStatusVisitante,
   statusSatisfazEscopo,
   type StatusVisitante,
 } from "@/lib/compliance/visitor-access"
@@ -120,6 +120,39 @@ export function VisitorVerificationModal({
   const callbacksRef = useRef({ onOpenChange, onVerified })
   callbacksRef.current = { onOpenChange, onVerified }
 
+  const loadChallenge = useCallback(() => {
+    const storyContext = scope === "STORY"
+    const challengeKey = challengeKeyRef.current ?? newIdempotencyKey("visitor-challenge")
+    challengeKeyRef.current = challengeKey
+    return createVisitorChallenge({
+      level,
+      scope,
+      anuncioId: storyContext ? undefined : String(context?.anuncioId),
+      midiaId: storyContext ? undefined : context?.midiaId || undefined,
+      storyId: storyContext ? context?.storyId : undefined,
+      route: context?.route || "/",
+      idempotencyKey: challengeKey,
+    })
+  }, [context?.anuncioId, context?.midiaId, context?.route, context?.storyId, level, scope])
+
+  const showChallenge = useCallback((current: VisitorChallenge, preserveIdentity = false) => {
+    setChallenge(current)
+    if (current.state === "DOCUMENT_PENDING" || current.state === "DOCUMENT_REJECTED") {
+      setStep("document")
+      setMessage(current.documentStatus === "PENDING"
+        ? "Documento recebido. Aguarde a analise."
+        : current.reasonPublic || "Envie um documento para analise manual.")
+    } else if (current.state === "DOCUMENT_APPROVED") {
+      setStep(preserveIdentity ? "identity" : "birth")
+      setMessage("Documento aprovado. Confirme novamente os dados e aceites para emitir o acesso.")
+    } else if (current.state === "CHALLENGE_ACTIVE") {
+      setStep("birth")
+    } else {
+      setStep("blocked")
+      setError(current.reasonPublic || "Verificacao indisponivel. Feche e inicie novamente.")
+    }
+  }, [])
+
   // Invalidate at commit: a transition can defer passive cleanup until after
   // a response resolves, even though this flow is already closed or replaced.
   useLayoutEffect(() => () => {
@@ -181,26 +214,9 @@ export function VisitorVerificationModal({
       if (!storyContext && !context?.anuncioId) {
         throw new Error("O contexto protegido do anuncio nao esta disponivel.")
       }
-      const challengeKey = challengeKeyRef.current
-        ?? newIdempotencyKey("visitor-challenge")
-      challengeKeyRef.current = challengeKey
-      const created = await createVisitorChallenge({
-        level,
-        scope,
-        anuncioId: storyContext ? undefined : String(context?.anuncioId),
-        midiaId: storyContext ? undefined : context?.midiaId || undefined,
-        storyId: storyContext ? context?.storyId : undefined,
-        route: context?.route || "/",
-        idempotencyKey: challengeKey,
-      })
+      const created = await loadChallenge()
       if (!isCurrent()) return
-      setChallenge(created)
-      if (created.state === "BLOCKED") {
-        setStep("blocked")
-        setError(created.reasonPublic || "Verificacao temporariamente indisponivel.")
-      } else {
-        setStep("birth")
-      }
+      showChallenge(created)
     })().catch((nextError) => {
       if (!isCurrent()) return
       setStep("blocked")
@@ -218,8 +234,10 @@ export function VisitorVerificationModal({
     context?.route,
     context?.storyId,
     level,
+    loadChallenge,
     open,
     scope,
+    showChallenge,
   ])
 
   function advanceBirth() {
@@ -306,6 +324,10 @@ export function VisitorVerificationModal({
     }
     setSubmitting(true)
     setError(null)
+    const operation = ++operationRef.current
+    const generation = obterGeracaoStatusVisitante()
+    const isCurrent = () => operationRef.current === operation
+      && generation === obterGeracaoStatusVisitante()
     try {
       const documentKey = documentKeyRef.current
         ?? newIdempotencyKey("visitor-document")
@@ -315,39 +337,41 @@ export function VisitorVerificationModal({
         documentFile,
         documentKey,
       )
+      if (!isCurrent()) return
+      setChallenge({ ...challenge, documentStatus: result.status, state: result.state })
       setMessage(result.reasonPublic || "Documento recebido para analise.")
       setDocumentFile(null)
     } catch (nextError) {
+      if (!isCurrent()) return
       setError(nextError instanceof Error
         ? nextError.message
         : "Nao foi possivel enviar o documento.")
     } finally {
-      setSubmitting(false)
+      if (operationRef.current === operation) setSubmitting(false)
     }
   }
 
   async function refreshDocumentStatus() {
     setSubmitting(true)
     setError(null)
+    const operation = ++operationRef.current
+    const generation = obterGeracaoStatusVisitante()
+    const isCurrent = () => operationRef.current === operation
+      && generation === obterGeracaoStatusVisitante()
     try {
-      const status = await recarregarStatusVisitante()
-      if (status.state === "DOCUMENT_APPROVED") {
-        setStep("identity")
-        setMessage("Documento aprovado. Confirme novamente para emitir o acesso.")
-        return
-      }
-      if (status.state === "DOCUMENT_REJECTED") {
+      const current = await loadChallenge()
+      if (!isCurrent()) return
+      if (current.state === "DOCUMENT_REJECTED") {
         documentKeyRef.current = null
-        setMessage(status.reasonPublic || "Documento rejeitado. Envie um novo arquivo.")
-        return
       }
-      setMessage("O documento ainda esta em analise.")
+      showChallenge(current, Boolean(birthDate && birthDateConfirmation))
     } catch (nextError) {
+      if (!isCurrent()) return
       setError(nextError instanceof Error
         ? nextError.message
         : "Nao foi possivel consultar a analise.")
     } finally {
-      setSubmitting(false)
+      if (operationRef.current === operation) setSubmitting(false)
     }
   }
 
@@ -483,6 +507,7 @@ export function VisitorVerificationModal({
 
           {step === "document" ? (
             <div className="space-y-4">
+              {challenge?.documentStatus !== "PENDING" ? <>
               <div className="space-y-2">
                 <Label htmlFor="visitor-document">Documento para analise</Label>
                 <Input
@@ -506,6 +531,7 @@ export function VisitorVerificationModal({
               >
                 {submitting ? "Enviando..." : "Enviar documento"}
               </Button>
+              </> : null}
               <Button
                 type="button"
                 variant="outline"

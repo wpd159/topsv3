@@ -17,6 +17,8 @@ public interface ComplianceVisitorTokenRepository
 
   Optional<ComplianceVisitorTokenEntity> findByTokenHash(String tokenHash);
 
+  List<ComplianceVisitorTokenEntity> findByChallengeId(UUID challengeId);
+
   List<ComplianceVisitorTokenEntity> findByChallengeIdAndStatus(
       UUID challengeId,
       StatusTokenVisitante status);

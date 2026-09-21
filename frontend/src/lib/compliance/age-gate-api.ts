@@ -31,6 +31,7 @@ export type VisitorChallenge = {
   documentRequired: boolean
   maxAttempts: number
   reasonPublic?: string | null
+  documentStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null
 }
 
 export type VisitorChallengeInput = {
@@ -59,7 +60,7 @@ export type VisitorDocumentStatus = {
   submissionId: string
   challengeId: string
   state: string
-  status: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
   createdAt: string
   reasonPublic: string
 }

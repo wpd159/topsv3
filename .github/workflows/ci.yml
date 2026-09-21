@@ -59,6 +59,7 @@ jobs:
           ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
           ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
           WIZARD_PROGRESS_POSTGRES17_ENABLED: "true"
+          COMPLIANCE_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Preserve backend and cold JVM evidence
@@ -198,6 +199,8 @@ jobs:
           npm run build
           node scripts/test-search-indexing-artifact.mjs blocked
           npm run test:public-pagination
+          node scripts/test-admin-compliance-hub.mjs
+          node scripts/test-visitor-document-resume.mjs
 
       - name: Preserve browser regression evidence
         if: always()

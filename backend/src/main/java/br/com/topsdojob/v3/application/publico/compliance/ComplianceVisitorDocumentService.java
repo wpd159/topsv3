@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.kyc.DocumentoUploadValidator.Docu
 import br.com.topsdojob.v3.application.publico.service.MetricaPublicaHashService;
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EstadoPublicoAgeGate;
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.StatusChallengeVisitante;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.StatusDocumentoVisitante;
 import br.com.topsdojob.v3.domain.metrica.MetricaTipos.MetodoVerificacaoEtaria;
 import br.com.topsdojob.v3.domain.metrica.MetricaTipos.ResultadoVerificacaoEtaria;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
@@ -43,6 +44,7 @@ public class ComplianceVisitorDocumentService {
   private final ComplianceVisitorChallengeRepository challengeRepository;
   private final ComplianceVisitorDocumentoRepository documentoRepository;
   private final ComplianceVisitorSessionService sessionService;
+  private final ComplianceVisitorRiskService riskService;
   private final ComplianceVisitorAuditService auditService;
   private final DocumentoUploadValidator validator;
   private final MetricaPublicaHashService hashService;
@@ -53,6 +55,7 @@ public class ComplianceVisitorDocumentService {
       ComplianceVisitorChallengeRepository challengeRepository,
       ComplianceVisitorDocumentoRepository documentoRepository,
       ComplianceVisitorSessionService sessionService,
+      ComplianceVisitorRiskService riskService,
       ComplianceVisitorAuditService auditService,
       DocumentoUploadValidator validator,
       MetricaPublicaHashService hashService,
@@ -61,6 +64,7 @@ public class ComplianceVisitorDocumentService {
     this.challengeRepository = challengeRepository;
     this.documentoRepository = documentoRepository;
     this.sessionService = sessionService;
+    this.riskService = riskService;
     this.auditService = auditService;
     this.validator = validator;
     this.hashService = hashService;
@@ -81,6 +85,21 @@ public class ComplianceVisitorDocumentService {
         sessionService.obterOuCriar(request);
     String idempotenciaHash = idempotencia(session.sessionHash(), idempotencyKey);
     DocumentoValidado validado = validator.validar(arquivo);
+    ComplianceVisitorChallengeEntity challenge = challengeRepository
+        .findByIdForUpdate(challengeId)
+        .orElseThrow(() -> new ResponseStatusException(
+            HttpStatus.NOT_FOUND,
+            "challenge nao encontrado"));
+    if (!session.sessionHash().equals(challenge.getSessionHash())) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "challenge nao encontrado");
+    }
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    if (challenge.expiradaEm(agora)) {
+      throw new ResponseStatusException(HttpStatus.GONE, "challenge expirado");
+    }
+    if (riskService.bloqueadaEm(session.sessionHash(), agora)) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "verificacao temporariamente bloqueada");
+    }
     var existente = documentoRepository.findBySessionHashAndIdempotenciaHash(
         session.sessionHash(),
         idempotenciaHash);
@@ -95,22 +114,18 @@ public class ComplianceVisitorDocumentService {
       }
       return new SubmitResult(toResponse(existente.get()), session.cookie());
     }
-    ComplianceVisitorChallengeEntity challenge = challengeRepository
-        .findByIdForUpdate(challengeId)
-        .orElseThrow(() -> new ResponseStatusException(
-            HttpStatus.NOT_FOUND,
-            "challenge nao encontrado"));
-    if (!session.sessionHash().equals(challenge.getSessionHash())) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "challenge nao encontrado");
-    }
     if (challenge.getStatus() != StatusChallengeVisitante.DOCUMENT_PENDING
         && challenge.getStatus() != StatusChallengeVisitante.DOCUMENT_REJECTED) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
           "challenge nao aceita documento");
     }
+    if (documentoRepository.findTopByChallengeIdOrderByCriadoEmDesc(challengeId)
+        .filter(documento -> documento.getStatus() == StatusDocumentoVisitante.PENDING)
+        .isPresent()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "documento ja esta em analise");
+    }
     ObjectStorage storage = storage();
-    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     UUID documentoId = UUID.randomUUID();
     String key = storageProperties.getDocumentPrefix()
         + "compliance/visitor/"

@@ -12,5 +12,6 @@ public record VisitorChallengeResponseDto(
     boolean requiresExplicitAcknowledgement,
     boolean documentRequired,
     int maxAttempts,
-    String reasonPublic) {
+    String reasonPublic,
+    String documentStatus) {
 }
