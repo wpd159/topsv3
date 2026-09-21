@@ -201,6 +201,7 @@ jobs:
           npm run test:public-pagination
           node scripts/test-admin-compliance-hub.mjs
           node scripts/test-visitor-document-resume.mjs
+          node scripts/test-age-gate-mobile-layout.mjs --browser
 
       - name: Preserve browser regression evidence
         if: always()

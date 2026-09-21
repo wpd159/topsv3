@@ -113,7 +113,7 @@ export function AgeGateModal({
   return (
       <Dialog open={open} onOpenChange={() => {}}>
         <DialogContent
-          className="flex h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-0 sm:grid sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-md sm:overflow-y-auto sm:rounded-2xl sm:border sm:p-6 [&_[data-slot=dialog-close]]:right-[max(1rem,env(safe-area-inset-right))] [&_[data-slot=dialog-close]]:top-[max(1rem,env(safe-area-inset-top))] sm:[&_[data-slot=dialog-close]]:right-4 sm:[&_[data-slot=dialog-close]]:top-4"
+          className="flex h-auto max-h-[100dvh] w-full max-w-none flex-col overflow-x-hidden overflow-y-auto rounded-none border-0 p-0 sm:grid sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-md sm:overflow-y-auto sm:rounded-2xl sm:border sm:p-6 [&_[data-slot=dialog-close]]:right-[max(1rem,env(safe-area-inset-right))] [&_[data-slot=dialog-close]]:top-[max(1rem,env(safe-area-inset-top))] sm:[&_[data-slot=dialog-close]]:right-4 sm:[&_[data-slot=dialog-close]]:top-4"
           data-age-gate-layout
         >
           <DialogHeader className="contents space-y-2 text-center sm:flex">
@@ -128,7 +128,7 @@ export function AgeGateModal({
             </DialogTitle>
             <DialogDescription asChild>
               <div
-                className="mt-2 min-h-0 flex-1 overflow-y-auto whitespace-pre-line pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-justify text-gray-600 sm:mt-0 sm:flex-none sm:overflow-visible sm:px-0"
+                className="mt-2 min-h-24 flex-auto overflow-y-auto whitespace-pre-line pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-justify text-gray-600 sm:mt-0 sm:min-h-0 sm:flex-none sm:overflow-visible sm:px-0"
                 data-age-gate-body
               >
                 {!ageAccepted ? (

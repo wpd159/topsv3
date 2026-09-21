@@ -129,8 +129,9 @@ const bounded = (promise, label, milliseconds = 10000) => {
 const urlFor = (area) => `${origin}/admin/compliance${area?.hash || ''}`
 async function assertView(page, area, expectedUrl = urlFor(area)) {
   const title = area?.title || 'Compliance'
+  // Native popups may receive no animation frames while opened in the background.
   await page.waitForFunction(({ title, hash }) => document.querySelector('h1')?.textContent.trim() === title && location.hash === hash,
-    { title, hash: area?.hash || '' }, { timeout: 5000 })
+    { title, hash: area?.hash || '' }, { timeout: 5000, polling: 50 })
   assert.equal(page.url(), expectedUrl)
   assert.equal(await page.getByRole('heading', { level: 1, name: title, exact: true }).count(), 1)
   if (area) {
@@ -172,7 +173,7 @@ async function scenario(name, action) {
   })
   const page = await context.newPage()
   try {
-    await action(page, context)
+    await action(page, context, result)
     result.result = 'PASS'
   } catch (error) {
     result.error = error.stack
@@ -254,16 +255,26 @@ try {
     await assertView(page, null, urlFor() + '#')
   })
   for (const returning of [false, true]) {
-    await scenario(returning ? 'modified-return-preserves-origin' : 'modified-open-preserves-origin', async (page, context) => {
+    await scenario(returning ? 'modified-return-preserves-origin' : 'modified-open-preserves-origin', async (page, context, result) => {
       const sourceArea = returning ? areaCases[0] : null
       const destination = returning ? null : areaCases[2]
       await page.goto(urlFor(sourceArea))
       await assertView(page, sourceArea)
+      result.popupChecks = []
       for (const options of [{ modifiers: ['ControlOrMeta'] }, { modifiers: ['Shift'] }, { button: 'middle' }]) {
         const link = returning ? page.getByRole('link', { name: 'Voltar ao hub', exact: true }) : openLink(page, destination)
         const [popup] = await Promise.all([context.waitForEvent('page'), link.click(options)])
-        await assertView(popup, destination)
-        await assertView(page, sourceArea)
+        const check = { options, result: 'FAIL' }
+        result.popupChecks.push(check)
+        try {
+          await assertView(popup, destination)
+          await assertView(page, sourceArea)
+          check.result = 'PASS'
+        } finally {
+          check.popup = await popup.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), readyState: document.readyState, visibility: document.visibilityState })).catch(() => null)
+          check.origin = await page.evaluate(() => ({ url: location.href, hash: location.hash, title: document.querySelector('h1')?.textContent.trim(), readyState: document.readyState, visibility: document.visibilityState })).catch(() => null)
+          if (check.result === 'FAIL') await popup.screenshot({ path: path.join(evidence, result.name + '-popup.png'), fullPage: true }).catch(() => {})
+        }
         await popup.close()
       }
     })

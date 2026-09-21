@@ -32,6 +32,8 @@ Validações locais: 72 testes backend do conjunto e 25 testes focais de fechame
 
 O primeiro CI (`35547681894`, head `90e8fb80`) aprovou Maven, mas revelou uma fixture de imagem com estado `CREATED`, que nem a base nem o backend atual emitem. Corrigida somente para `CHALLENGE_ACTIVE`: os mesmos 17 cenários passaram localmente, sem tentativas protegidas anônimas e com cleanup aprovado. O contrato estático do modal foi ajustado para acompanhar a chamada contextual após a consulta de autorização; 45 checks aprovados. As falhas originais foram preservadas, sem remover assertions ou ampliar prazos. Esse CI inicial não aprova a candidata posterior; o resultado do SHA final será conferido separadamente no PR.
 
+O CI seguinte (`35548997760`, head `ccdb4bcf`) aprovou Maven, build e paginação, mas uma espera do popup do hub expirou. A captura original registra somente a aba de origem: não permite concluir o estado do popup Linux. Uma prova local controlada demonstrou que o observador baseado em `requestAnimationFrame` expira mesmo com URL/hash/título corretos quando os frames estão suspensos. A mesma prova e a rodada normal passaram 6/6 após usar polling de 50 ms, preservando o prazo de 5 segundos e todas as assertions. O harness passou também a registrar estado conjunto e captura do popup. Isso corrige um defeito comprovado do observador, sem apresentar como observada a condição original não capturada no CI. Referências do comportamento de polling: [Playwright](https://playwright.dev/docs/api/class-page#page-wait-for-function), [requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame).
+
 Os arquivos alterados se concentram em: hub/sidebar e seu harness (F02); modal, DTO/API, serviços de challenge/documento/status/risco e consultas de contexto/histórico (F03–F05); serviço/controlador de leitura e auditoria/advice restrito (F06); serviço/repositório KYC (F07); testes dessas fronteiras, este documento e chamadas do CI. Não há mudança de schema, dependências ou configuração produtiva.
 
 ### Limites das provas
@@ -89,4 +91,10 @@ O art. 24, §3º, do Decreto 12.880/2026 prevê eliminação imediata e irrevers
 
 ## Limite de aprovação
 
-F02–F07 aprovados em teste, quando comprovados, não encerram P1/P2 e não equivalem a conformidade integral. A revisão conjunta destas pendências permanece necessária antes de autorizar publicação. Blog, GA4, consentimento, SEO, filas, fotos, pagamentos e textos institucionais permanecem fora do delta.
+F02–F07 aprovados em teste, quando comprovados, não encerram P1/P2 e não equivalem a conformidade integral. A revisão conjunta destas pendências permanece necessária antes de autorizar publicação. Blog, GA4, lógica de consentimento, SEO, filas, fotos, pagamentos e textos institucionais permanecem fora do delta.
+
+## Complemento visual autorizado: modal de maioridade/cookies
+
+O proprietário autorizou acrescentar o ajuste visual mínimo ao mesmo lote antes do push seguinte. Dois `className` locais de `age-gate-modal.tsx` substituem a altura móvel fixa por altura automática limitada a `100dvh`; a área do corpo mantém um mínimo legível, e o próprio modal pode rolar em telas muito baixas. Os overrides `sm:` preservam o desktop. Nenhum handler, condição de abertura, escolha, mensagem, Dialog compartilhado ou mecanismo de consentimento foi alterado.
+
+O teste existente `test-age-gate-mobile-layout.mjs` foi atualizado e ganhou `--browser`, usando React/Radix e CSS Tailwind reais, transporte sintético bloqueado antes da navegação e emulação com toque. Cobre conteúdo curto, aviso conjunto, personalização, baixa altura, erro, foco, escolha preexistente/recusa e desktop. As capturas locais mostram cookies-only de 844 para 458 px numa tela de 390×844; na tela de 320×320 o corpo deixa de colapsar para zero e mantém 96 px roláveis. As duas capturas desktop conservaram os mesmos hashes. Não houve Android físico, coleta GA4 real ou alteração produtiva. A chamada utiliza o job frontend e Playwright já existentes; os demais gates não foram retirados.
