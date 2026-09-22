@@ -67,3 +67,8 @@ assert.doesNotMatch(combined, /localStorage|sessionStorage/)
 assert.doesNotMatch(combined, /href\s*=\s*["']javascript:/i)
 
 console.log('BLOG_V3_RESULT=OK')
+
+if (process.argv.includes('--browser')) {
+  const { verifyBlogEditor } = await import('./test-blog-editor.mjs')
+  await verifyBlogEditor()
+}

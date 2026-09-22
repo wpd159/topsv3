@@ -24,6 +24,16 @@ class BlogConteudoValidatorTest {
   }
 
   @Test
+  void preservaIntegralmenteCorpoLongoNoRascunhoENaPublicacao() {
+    String content = "<h2>Inicio do artigo sintetico</h2>\n"
+        + "<p>Texto editorial com <strong>enfase</strong> e acentuação preservada.</p>\n".repeat(1000)
+        + "<p>Marcador final do artigo sintetico.</p>";
+
+    assertThat(validator.validarRascunho(content)).isEqualTo(content);
+    assertThat(validator.validar(content)).isEqualTo(content);
+  }
+
+  @Test
   void rejeitaScriptHandlersProtocolosETextoOculto() {
     assertThatThrownBy(() -> validator.validar("<p onclick=\"x()\">conteudo editorial suficientemente longo</p>"))
         .isInstanceOf(ResponseStatusException.class);

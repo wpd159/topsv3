@@ -10,6 +10,26 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;")
 }
 
+function escapeHtmlText(text: string): string {
+  // Preserve character references as text, never decode them into HTML markup.
+  return escapeHtml(text).replace(/&amp;((?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*));/gi, "&$1;")
+}
+
+function decodeHtmlHref(href: string): string {
+  const named: Record<string, string> = {
+    amp: "&", AMP: "&", quot: '"', QUOT: '"', apos: "'",
+    lt: "<", LT: "<", gt: ">", GT: ">", colon: ":", sol: "/", bsol: "\\",
+    Tab: "\t", NewLine: "\n",
+  }
+  return href.replace(/&(#(?:[0-9]+|[xX][0-9a-fA-F]+)|[a-zA-Z]+);/g, (reference, name: string) => {
+    if (!name.startsWith("#")) return named[name] ?? reference
+    const value = name[1].toLowerCase() === "x" ? parseInt(name.slice(2), 16) : Number(name.slice(1))
+    return value > 0 && value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)
+      ? String.fromCodePoint(value)
+      : reference
+  })
+}
+
 function stripBlockedRegions(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -45,7 +65,11 @@ function isAllowedHref(href: string): boolean {
     }
   }
   if (h.startsWith("/") && !h.startsWith("//")) {
-    return !/[<>"`]/.test(h)
+    try {
+      return !/[<>"`]/.test(h) && new URL(h, "https://internal.invalid").origin === "https://internal.invalid"
+    } catch {
+      return false
+    }
   }
   return false
 }
@@ -108,7 +132,7 @@ function sanitizeRichTextChunk(chunk: string): string {
     if (isRichSplitToken(part)) {
       out += emitNormalizedTag(part)
     } else {
-      out += escapeHtml(part).replace(/\n/g, "<br />")
+      out += escapeHtmlText(part).replace(/\n/g, "<br />")
     }
   }
   return out
@@ -125,7 +149,7 @@ function parseLeadingHtmlAnchor(
   const openTag = s.slice(start, gt + 1)
   const hrefMatch = openTag.match(/\bhref\s*=\s*(["'])([^"']*)\1/i)
   if (!hrefMatch) return null
-  const href = hrefMatch[2].trim()
+  const href = decodeHtmlHref(hrefMatch[2]).trim()
   if (!isAllowedHref(href)) return null
   const close = s.toLowerCase().indexOf("</a>", gt + 1)
   if (close === -1) return null
@@ -153,7 +177,7 @@ function findNextMarkdownLink(s: string, from: number): { start: number; text: s
   return null
 }
 
-function findNextHtmlAnchor(s: string, from: number): { start: number; text: string; href: string; end: number } | null {
+function findNextHtmlAnchor(s: string, from: number): { start: number; text: string; href: string; end: number; htmlLabel: true } | null {
   const lower = s.toLowerCase()
   let pos = from
   while (pos < s.length) {
@@ -161,16 +185,16 @@ function findNextHtmlAnchor(s: string, from: number): { start: number; text: str
     if (i === -1) return null
     const parsed = parseLeadingHtmlAnchor(s, i)
     if (parsed) {
-      return { start: i, text: parsed.text, href: parsed.href, end: parsed.end }
+      return { start: i, text: parsed.text, href: parsed.href, end: parsed.end, htmlLabel: true }
     }
     pos = i + 2
   }
   return null
 }
 
-function renderBlogBodyLink(href: string, label: string): string {
+function renderBlogBodyLink(href: string, label: string, htmlLabel = false): string {
   const external = isExternalHref(href)
-  const safeLabel = escapeHtml(label)
+  const safeLabel = htmlLabel ? escapeHtmlText(label) : escapeHtml(label)
 
   if (!external) {
     const path = toInternalAppPath(href)
@@ -188,7 +212,7 @@ function renderSafeBodyHtml(conteudo: string): string {
     const md = findNextMarkdownLink(conteudo, pos)
     const ha = findNextHtmlAnchor(conteudo, pos)
 
-    let next: { start: number; text: string; href: string; end: number } | null = null
+    let next: { start: number; text: string; href: string; end: number; htmlLabel?: true } | null = null
     if (md && ha) {
       next = md.start <= ha.start ? md : ha
     } else if (md) {
@@ -209,7 +233,7 @@ function renderSafeBodyHtml(conteudo: string): string {
       html += sanitizeRichTextChunk(conteudo.slice(pos, next.start))
     }
 
-    html += renderBlogBodyLink(next.href, next.text)
+    html += renderBlogBodyLink(next.href, next.text, next.htmlLabel)
     pos = next.end
   }
 

@@ -170,6 +170,7 @@ jobs:
           npm audit --omit=dev --audit-level=high
           run_npm_audit
           npm run test:json-ld-security
+          node scripts/test-blog-v3.mjs --browser
           npm run test:public-ordering
           npm run test:public-http-states
           npm run test:public-data-access

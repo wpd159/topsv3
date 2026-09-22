@@ -605,19 +605,30 @@ await test("sitemap inclui somente editorial publicado e categoria nao vazia", a
     ok: true,
     status: 200,
     json: async () => url.includes("blog-posts")
-      ? [{ slug: "post-publicado", priority: 0.7 }]
+      ? [
+          { slug: "post-publicado", priority: 0.7, changeFrequency: "daily" },
+          { slug: "post-mensal", priority: 0.6, changeFrequency: "monthly" },
+          { slug: "post-semanal", priority: 0.5, changeFrequency: "weekly" },
+          { slug: "post-frequencia-invalida", priority: 0.4, changeFrequency: "always" },
+        ]
       : [
           category(),
           category({ id: "cat-2", slug: "vazia", postCountPublicados: 0 }),
           category({ id: "cat-3", slug: "inativa", ativa: false }),
         ],
   }))
-  const urls = (await module.default()).map((entry) => entry.url)
+  const entries = await module.default()
+  const urls = entries.map((entry) => entry.url)
   assert.ok(urls.includes("https://topsdojob.com/blog"))
   assert.ok(urls.includes("https://topsdojob.com/blog/post-publicado"))
   assert.ok(urls.includes("https://topsdojob.com/blog/categoria/seguranca"))
   assert.equal(urls.includes("https://topsdojob.com/blog/categoria/vazia"), false)
   assert.equal(urls.includes("https://topsdojob.com/blog/categoria/inativa"), false)
+  const editorial = (slug) => entries.find((entry) => entry.url === `https://topsdojob.com/blog/${slug}`)
+  assert.equal(editorial("post-publicado").changeFrequency, "daily")
+  assert.equal(editorial("post-mensal").changeFrequency, "monthly")
+  assert.equal(editorial("post-semanal").changeFrequency, "weekly")
+  assert.equal("changeFrequency" in editorial("post-frequencia-invalida"), false)
 })
 
 await test("falha editorial preserva sitemap basico, localidades e anuncios", async () => {
