@@ -90,7 +90,14 @@ assert.match(operationHelper, /previous\.health-profile/)
 assert.match(operationHelper, /candidate\.health-profile/)
 assert.match(operationHelper, /main-v1/)
 assert.match(operationHelper, /legacy-a60/)
-assert.match(operationHelper, /recovery_deadline=\$\(\(SECONDS \+ 300\)\)/)
+assert.match(operationHelper, /recovery_started_monotonic_ms="\$\(_op_monotonic_ms\)"/)
+assert.match(operationHelper, /recovery_deadline_ms=\$\(\(recovery_started_monotonic_ms \+ 300000\)\)/)
+assert.match(operationHelper, /RECOVERY_WINDOW event=start[^\n]*duration_ms=300000/)
+assert.match(
+  operationHelper,
+  /\[ "\$\{recovery_finished_monotonic_ms\}" -ge "\$\{recovery_deadline_ms\}" \]/,
+)
+assert.doesNotMatch(operationHelper, /recovery_deadline=\$\(\(SECONDS \+ 300\)\)/)
 const startup = activation.indexOf('op_phase ACTIVATING')
 const health = activation.indexOf('op_smoke "${release_sha}"')
 const switchLink = activation.indexOf('mv -Tf "${current_link}"')
