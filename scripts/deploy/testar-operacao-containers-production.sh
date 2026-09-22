@@ -41,20 +41,20 @@ source_observer_checked=0
 touch "$resources"
 record() { printf '%s|%s|%s\n' "$1" "$2" "${3:-$operation_owner_id}" >> "$resources"; }
 cleanup() {
-  local rc=$? kind identifier owner actual id
+  local original_rc=$? cleanup_rc=0 final_rc kind identifier owner actual id
   trap - EXIT
   if [[ "$attached" -eq 1 ]]; then
-    "$real_docker" network disconnect "$network" "$OPERATION_TEST_CONTROLLER" >/dev/null 2>&1 || { [[ "$rc" -ne 0 ]] || rc=1; }
+    "$real_docker" network disconnect "$network" "$OPERATION_TEST_CONTROLLER" >/dev/null 2>&1 || cleanup_rc=1
   fi
   while IFS='|' read -r kind identifier owner; do
     case "$kind" in
       container|image) actual="$("$real_docker" "$kind" inspect --format '{{index .Config.Labels "topsv3.operation.test"}}' "$identifier" 2>/dev/null)" || continue ;;
       volume|network) actual="$("$real_docker" "$kind" inspect --format '{{index .Labels "topsv3.operation.test"}}' "$identifier" 2>/dev/null)" || continue ;;
-      *) [[ "$rc" -ne 0 ]] || rc=1; continue ;;
+      *) cleanup_rc=1; continue ;;
     esac
     if [[ "$actual" != "$owner" ]]; then
       echo 'FALHA_CLEANUP: ownership divergente; recurso preservado' >&2
-      [[ "$rc" -ne 0 ]] || rc=1
+      cleanup_rc=1
       continue
     fi
     id="$("$real_docker" "$kind" inspect --format '{{.Id}}' "$identifier" 2>/dev/null)" || id="$identifier"
@@ -63,13 +63,30 @@ cleanup() {
       image) "$real_docker" image rm -f "$id" >/dev/null ;;
       volume) "$real_docker" volume rm "$identifier" >/dev/null ;;
       network) "$real_docker" network rm "$id" >/dev/null ;;
-    esac || { [[ "$rc" -ne 0 ]] || rc=1; }
+    esac || cleanup_rc=1
   done < <(tac "$resources")
-  if [[ "$rc" -ne 0 && -f "${work_dir}/last-operation.log" ]]; then tail -n 100 "${work_dir}/last-operation.log" >&2; fi
+  if [[ "$original_rc" -ne 0 ]]; then
+    printf 'RECOVERY_FAILURE_EVIDENCE_BEGIN original_exit=%s\n' "$original_rc" >&2
+    if [[ -f "${work_dir}/last-operation.log" ]]; then
+      grep '^RECOVERY_WINDOW ' "${work_dir}/last-operation.log" >&2 || true
+      tail -n 100 "${work_dir}/last-operation.log" >&2
+    fi
+    if [[ -n "${TEST_EVENTS:-}" && -f "${TEST_EVENTS}" ]]; then
+      grep -E '^(RESTORE_UP|PROBE_TRACE).*' "${TEST_EVENTS}" >&2 || true
+    fi
+    if [[ -n "${test_root:-}" && -f "${test_root}/operations/active.state" ]]; then
+      sed -n -E '/^(phase|result|original_rc|ambiguous|mutated)=/p' "${test_root}/operations/active.state" >&2
+    fi
+    printf 'RECOVERY_FAILURE_EVIDENCE_END original_exit=%s\n' "$original_rc" >&2
+  fi
   [[ "$work_dir" == "${work_base}/tops-operation-containers."* ]] || exit 1
-  rm -rf -- "$work_dir" || { [[ "$rc" -ne 0 ]] || rc=1; }
-  printf 'CONTAINER_TEST_CLEANUP exit=%s owned_resources_only=true\n' "$rc"
-  exit "$rc"
+  rm -rf -- "$work_dir" || cleanup_rc=1
+  final_rc="$original_rc"
+  [[ "$final_rc" -ne 0 ]] || final_rc="$cleanup_rc"
+  printf 'CONTAINER_TEST_CLEANUP_DETAIL original_exit=%s cleanup_exit=%s final_exit=%s\n' \
+    "$original_rc" "$cleanup_rc" "$final_rc"
+  printf 'CONTAINER_TEST_CLEANUP exit=%s owned_resources_only=true\n' "$final_rc"
+  exit "$final_rc"
 }
 trap cleanup EXIT
 
@@ -390,6 +407,31 @@ application_identity() {
   } | sha256sum | cut -d ' ' -f 1
 }
 
+read_timeout_recovery_window() {
+  local log="$1" duration_ms deadline_ms
+  [[ "$(grep -c '^RECOVERY_WINDOW event=start ' "$log")" -eq 1 ]] || fail 'helper nao registrou exatamente um inicio de janela'
+  [[ "$(grep -c '^RECOVERY_WINDOW event=end ' "$log")" -eq 1 ]] || fail 'helper nao registrou exatamente um fim de janela'
+  recovery_started_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=start time_ms=([0-9]+) .*$/\1/p' "$log")"
+  recovery_started_monotonic_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=start .* monotonic_ms=([0-9]+) .*$/\1/p' "$log")"
+  deadline_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=start .* deadline_monotonic_ms=([0-9]+) .*$/\1/p' "$log")"
+  duration_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=start .* duration_ms=([0-9]+)$/\1/p' "$log")"
+  recovery_finished_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=end time_ms=([0-9]+) .*$/\1/p' "$log")"
+  recovery_finished_monotonic_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=end .* monotonic_ms=([0-9]+) .*$/\1/p' "$log")"
+  elapsed_recovery_ms="$(sed -n -E 's/^RECOVERY_WINDOW event=end .* elapsed_ms=([0-9]+) .*$/\1/p' "$log")"
+  recovery_result="$(sed -n -E 's/^RECOVERY_WINDOW event=end .* result=([^ ]+) .*$/\1/p' "$log")"
+  [[ "$recovery_started_ms" =~ ^[0-9]+$ && "$recovery_started_monotonic_ms" =~ ^[0-9]+$ \
+    && "$deadline_ms" =~ ^[0-9]+$ && "$duration_ms" =~ ^[0-9]+$ \
+    && "$recovery_finished_ms" =~ ^[0-9]+$ && "$recovery_finished_monotonic_ms" =~ ^[0-9]+$ \
+    && "$elapsed_recovery_ms" =~ ^[0-9]+$ ]] || fail 'marcadores da janela real invalidos'
+  [[ "$duration_ms" -eq 300000 && "$deadline_ms" -eq $((recovery_started_monotonic_ms + duration_ms)) ]] || fail 'deadline monotonico divergente'
+  [[ "$elapsed_recovery_ms" -eq $((recovery_finished_monotonic_ms - recovery_started_monotonic_ms)) ]] || fail 'elapsed monotonico divergente'
+  [[ "$recovery_result" == timeout ]] || fail "janela negativa terminou como ${recovery_result}"
+  printf 'RECOVERY_ASSERTION source=helper_monotonic elapsed_ms=%s min_ms=300000 max_ms=325000 result=%s\n' \
+    "$elapsed_recovery_ms" "$recovery_result"
+  grep '^RECOVERY_WINDOW ' "$log"
+  (( elapsed_recovery_ms >= 300000 && elapsed_recovery_ms <= 325000 )) || fail 'janela negativa nao respeitou prazo real de 300s'
+}
+
 # Reuse the existing database gate's synthetic fixture builder. The actual
 # database/Flyway validators still execute; no application schema is recreated.
 source <(sed -n '/^write_snapshot() {$/,/^}$/p' "${script_dir}/testar-gate-banco-production.sh")
@@ -608,6 +650,8 @@ NODE_SOURCE_REJECTION
   case_timeout=220
   [[ "$scenario" != recovery_* ]] || case_timeout=390
   if timeout --kill-after=5s "${case_timeout}s" bash "${case_dir}/activation.sh" "$candidate_sha" > "${work_dir}/last-operation.log" 2>&1; then rc=0; else rc=$?; fi
+  operation_finished_ms="$(date +%s%3N)"
+  printf 'TEST_PHASE event=operation_end scenario=%s time_ms=%s rc=%s\n' "$scenario" "$operation_finished_ms" "$rc"
   expected=1
   [[ "$scenario" != success && "$scenario" != benign_success && "$scenario" != startup_callback ]] || expected=0
   [[ "$rc" -eq "$expected" ]] || fail "${scenario}: exit=${rc}, esperado=${expected}"
@@ -735,8 +779,10 @@ NODE_SOURCE_REJECTION
       }' scenario="$scenario" "$TEST_EVENTS" || fail 'prazo/espacamento/serialidade de recuperacao divergente'
     if [[ "$scenario" == recovery_absent || "$scenario" == recovery_benign_mixed_error ]]; then
       restore_started_ms="$(sed -n 's/^RESTORE_UP time_ms=//p' "$TEST_EVENTS")"
-      elapsed_recovery_ms=$(($(date +%s%3N) - restore_started_ms))
-      (( elapsed_recovery_ms >= 300000 && elapsed_recovery_ms <= 325000 )) || fail 'ausencia nao respeitou prazo real de 300s'
+      [[ "$restore_started_ms" =~ ^[0-9]+$ ]] || fail 'marcador RESTORE_UP invalido'
+      read_timeout_recovery_window "${work_dir}/last-operation.log"
+      printf 'RECOVERY_BOUNDARIES restore_up_ms=%s window_start_ms=%s window_end_ms=%s operation_end_ms=%s\n' \
+        "$restore_started_ms" "$recovery_started_ms" "$recovery_finished_ms" "$operation_finished_ms"
       printf 'RECOVERY_DEADLINE clock=real elapsed_ms=%s result=INCOMPLETE original_rc=1 recreate_count=1\n' "$elapsed_recovery_ms"
     fi
   fi
@@ -748,9 +794,12 @@ NODE_SOURCE_REJECTION
     grep -qx 'original_rc=1' "${test_root}/operations/active.state" || fail 'erro da candidata perdido'
     if [[ "$scenario" == recovery_new_frontend_down ]]; then
       grep -qx "${previous_sha}|main-v1" "${snapshot}/previous.health-profile" || fail 'base nova foi rebaixada a perfil legado'
+      [[ "$(grep -c '^RESTORE_UP ' "$TEST_EVENTS")" -eq 1 ]] || fail 'base nova nao registrou exatamente uma restauracao fisica'
       restore_started_ms="$(sed -n 's/^RESTORE_UP time_ms=//p' "$TEST_EVENTS")"
-      elapsed_recovery_ms=$(($(date +%s%3N) - restore_started_ms))
-      (( elapsed_recovery_ms >= 300000 && elapsed_recovery_ms <= 325000 )) || fail 'base nova sem health nao respeitou janela de 300s'
+      [[ "$restore_started_ms" =~ ^[0-9]+$ ]] || fail 'marcador RESTORE_UP invalido'
+      read_timeout_recovery_window "${work_dir}/last-operation.log"
+      printf 'RECOVERY_BOUNDARIES restore_up_ms=%s window_start_ms=%s window_end_ms=%s operation_end_ms=%s\n' \
+        "$restore_started_ms" "$recovery_started_ms" "$recovery_finished_ms" "$operation_finished_ms"
       printf 'NEW_BASE_RECOVERY elapsed_ms=%s result=INCOMPLETE profile=main-v1\n' "$elapsed_recovery_ms"
     else
       grep -qx "${previous_sha}|legacy-a60" "${snapshot}/previous.health-profile" || fail 'rollback legado sem perfil fixo'
