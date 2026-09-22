@@ -55,6 +55,15 @@ _op_smoke_health() {
 }
 
 _op_error() { printf 'ERRO operacao-production: %s\n' "$*" >&2; }
+_op_monotonic_ms() {
+  local value seconds fraction
+  read -r value _ < /proc/uptime || return 1
+  [[ "${value}" =~ ^([0-9]+)\.([0-9]+)$ ]] || return 1
+  seconds="${BASH_REMATCH[1]}"
+  fraction="${BASH_REMATCH[2]}000"
+  fraction="${fraction:0:3}"
+  printf '%s\n' "$((10#${seconds} * 1000 + 10#${fraction}))"
+}
 _op_sha() { [[ "$1" =~ ^[a-f0-9]{40}$ ]]; }
 _op_id() { [[ "$1" =~ ^[a-f0-9-]{36}$ ]]; }
 _op_start() {
@@ -352,7 +361,9 @@ _op_http_probe() {
   rm -f -- "${body}"
 }
 op_smoke() {
-  local sha="$1" attempt manifest correlation readiness_deadline ready=0 recovery_deadline remaining pause profile profile_file profile_sha
+  local sha="$1" attempt manifest correlation readiness_deadline ready=0 remaining pause profile profile_file profile_sha
+  local recovery_started_ms recovery_started_monotonic_ms recovery_deadline_ms recovery_now_ms recovery_remaining_ms recovery_probe_deadline
+  local recovery_finished_ms recovery_finished_monotonic_ms recovery_elapsed_ms
   _op_sha "${sha}" || return 2
   if [ "${sha}" = "${OP_PREVIOUS_SHA}" ]; then
     manifest="${OP_DIR}/images.tsv"
@@ -376,26 +387,75 @@ op_smoke() {
     # around 183s. Give recovery 300s, independent of candidate acceptance.
     # This is a probe-wait window, not a timeout for Docker/identity commands.
     # _op_restore has already recreated the services once; this loop only reads.
-    recovery_deadline=$((SECONDS + 300))
+    recovery_started_ms="$(date +%s%3N)" || return 1
+    [[ "${recovery_started_ms}" =~ ^[0-9]+$ ]] || return 1
+    recovery_started_monotonic_ms="$(_op_monotonic_ms)" || return 1
+    recovery_deadline_ms=$((recovery_started_monotonic_ms + 300000))
     attempt=0
-    while [ "${SECONDS}" -lt "${recovery_deadline}" ]; do
-      [ "${OP_CANCEL_RC:-0}" -eq 0 ] || return "${OP_CANCEL_RC}"
+    printf 'RECOVERY_WINDOW event=start time_ms=%s monotonic_ms=%s deadline_monotonic_ms=%s duration_ms=300000\n' \
+      "${recovery_started_ms}" "${recovery_started_monotonic_ms}" "${recovery_deadline_ms}"
+    while :; do
+      recovery_now_ms="$(_op_monotonic_ms)" || return 1
+      [[ "${recovery_now_ms}" =~ ^[0-9]+$ ]] || return 1
+      [ "${recovery_now_ms}" -lt "${recovery_deadline_ms}" ] || break
+      if [ "${OP_CANCEL_RC:-0}" -ne 0 ]; then
+        recovery_finished_ms="$(date +%s%3N)" || return 1
+        recovery_finished_monotonic_ms="$(_op_monotonic_ms)" || return 1
+        recovery_elapsed_ms=$((recovery_finished_monotonic_ms - recovery_started_monotonic_ms))
+        printf 'RECOVERY_WINDOW event=end time_ms=%s monotonic_ms=%s elapsed_ms=%s result=cancelled attempts=%s\n' \
+          "${recovery_finished_ms}" "${recovery_finished_monotonic_ms}" "${recovery_elapsed_ms}" "${attempt}"
+        return "${OP_CANCEL_RC}"
+      fi
       attempt=$((attempt + 1))
       correlation="deploy-${OP_ID}-recovery-${attempt}"
+      recovery_remaining_ms=$((recovery_deadline_ms - recovery_now_ms))
+      remaining=$(((recovery_remaining_ms + 999) / 1000))
+      # _op_smoke_health receives an absolute Bash SECONDS deadline. One extra
+      # second compensates only its integer phase; the millisecond deadline
+      # below remains authoritative and rejects a late successful batch.
+      recovery_probe_deadline=$((SECONDS + remaining + 1))
       if _op_verify_runtime "${sha}" "${manifest}" &&
-        _op_smoke_health "${profile}" "${correlation}-ready" "${recovery_deadline}" &&
-        _op_http_probe http://127.0.0.1:23000/ home "${correlation}-home" "$((recovery_deadline - SECONDS))" &&
-        _op_http_probe http://127.0.0.1:23000/anuncios catalog "${correlation}-catalog" "$((recovery_deadline - SECONDS))"; then
-        [ "${SECONDS}" -lt "${recovery_deadline}" ] || return 1
-        [ "${OP_CANCEL_RC:-0}" -eq 0 ] || return "${OP_CANCEL_RC}"
+        _op_smoke_health "${profile}" "${correlation}-ready" "${recovery_probe_deadline}" &&
+        _op_http_probe http://127.0.0.1:23000/ home "${correlation}-home" "$((recovery_probe_deadline - SECONDS))" &&
+        _op_http_probe http://127.0.0.1:23000/anuncios catalog "${correlation}-catalog" "$((recovery_probe_deadline - SECONDS))"; then
+        recovery_finished_ms="$(date +%s%3N)" || return 1
+        [[ "${recovery_finished_ms}" =~ ^[0-9]+$ ]] || return 1
+        recovery_finished_monotonic_ms="$(_op_monotonic_ms)" || return 1
+        if [ "${recovery_finished_monotonic_ms}" -ge "${recovery_deadline_ms}" ]; then
+          recovery_elapsed_ms=$((recovery_finished_monotonic_ms - recovery_started_monotonic_ms))
+          printf 'RECOVERY_WINDOW event=end time_ms=%s monotonic_ms=%s elapsed_ms=%s result=deadline attempts=%s\n' \
+            "${recovery_finished_ms}" "${recovery_finished_monotonic_ms}" "${recovery_elapsed_ms}" "${attempt}"
+          return 1
+        fi
+        if [ "${OP_CANCEL_RC:-0}" -ne 0 ]; then
+          recovery_finished_ms="$(date +%s%3N)" || return 1
+          recovery_finished_monotonic_ms="$(_op_monotonic_ms)" || return 1
+          recovery_elapsed_ms=$((recovery_finished_monotonic_ms - recovery_started_monotonic_ms))
+          printf 'RECOVERY_WINDOW event=end time_ms=%s monotonic_ms=%s elapsed_ms=%s result=cancelled attempts=%s\n' \
+            "${recovery_finished_ms}" "${recovery_finished_monotonic_ms}" "${recovery_elapsed_ms}" "${attempt}"
+          return "${OP_CANCEL_RC}"
+        fi
+        recovery_elapsed_ms=$((recovery_finished_monotonic_ms - recovery_started_monotonic_ms))
+        printf 'RECOVERY_WINDOW event=end time_ms=%s monotonic_ms=%s elapsed_ms=%s result=success attempts=%s\n' \
+          "${recovery_finished_ms}" "${recovery_finished_monotonic_ms}" "${recovery_elapsed_ms}" "${attempt}"
         return 0
       fi
-      remaining=$((recovery_deadline - SECONDS))
-      [ "${remaining}" -gt 0 ] || break
-      pause=15
-      [ "${remaining}" -ge "${pause}" ] || pause="${remaining}"
+      recovery_now_ms="$(_op_monotonic_ms)" || return 1
+      [[ "${recovery_now_ms}" =~ ^[0-9]+$ ]] || return 1
+      recovery_remaining_ms=$((recovery_deadline_ms - recovery_now_ms))
+      [ "${recovery_remaining_ms}" -gt 0 ] || break
+      if [ "${recovery_remaining_ms}" -ge 15000 ]; then
+        pause=15
+      else
+        printf -v pause '%d.%03d' "$((recovery_remaining_ms / 1000))" "$((recovery_remaining_ms % 1000))"
+      fi
       sleep "${pause}"
     done
+    recovery_finished_ms="$(date +%s%3N)" || return 1
+    recovery_finished_monotonic_ms="$(_op_monotonic_ms)" || return 1
+    recovery_elapsed_ms=$((recovery_finished_monotonic_ms - recovery_started_monotonic_ms))
+    printf 'RECOVERY_WINDOW event=end time_ms=%s monotonic_ms=%s elapsed_ms=%s result=timeout attempts=%s\n' \
+      "${recovery_finished_ms}" "${recovery_finished_monotonic_ms}" "${recovery_elapsed_ms}" "${attempt}"
     return 1
   fi
   # Boot readiness is cheap and independent of locality/SSR fan-out. Java may

@@ -658,23 +658,35 @@ for smoke_mode in recovery_late recovery_absent candidate_late baseline_late; do
     selected_sha="$previous_sha"
     [[ "$smoke_mode" != candidate_late ]] || selected_sha="$candidate_sha"
     [[ "$smoke_mode" != baseline_late ]] || OP_RECOVERING=0
-    probe_count=0 home_count=0 catalog_count=0 active_probe=0 last_probe_end=0
+    probe_count=0 home_count=0 catalog_count=0 active_probe=0 last_probe_end=0 clock_ms=0
     _op_verify_runtime() { [[ "$1" == "$selected_sha" ]]; }
+    _op_monotonic_ms() { printf '%s\n' "$clock_ms"; }
     sleep() {
+      local whole fraction duration_ms
+      [[ "$1" =~ ^([0-9]+)(\.([0-9]{1,3}))?$ ]] || fail 'sleep controlado recebeu duracao invalida'
+      whole="${BASH_REMATCH[1]}"
+      fraction="${BASH_REMATCH[3]:-}000"
+      fraction="${fraction}000"
+      fraction="${fraction:0:3}"
+      duration_ms=$((10#${whole} * 1000 + 10#${fraction}))
       if [[ "$smoke_mode" == recovery_* ]]; then
-        (( $1 == 15 || SECONDS + $1 == 300 )) || fail 'intervalo de recovery alterado'
+        (( duration_ms == 15000 || clock_ms + duration_ms == 300000 )) || fail 'intervalo de recovery alterado'
       fi
-      SECONDS=$((SECONDS + $1))
+      clock_ms=$((clock_ms + duration_ms))
+      SECONDS=$((clock_ms / 1000))
     }
     _op_http_probe() {
-      local kind="$2" remaining="${4:-999}" cost=1 result=0 start="$SECONDS"
+      local kind="$2" remaining="${4:-999}" cost=1 cost_ms result=0 start="$SECONDS"
+      local actual_remaining_ms expected_remaining
       # Extra health routes are exercised separately below; no simulated cost
       # is added here to the historical scheduler's 32/183/300s fixture.
       case "$kind" in backend-health|frontend-health) return 0 ;; esac
       (( active_probe == 0 )) || fail 'probe controlada sobreposta'
       active_probe=1
       if [[ "$smoke_mode" == recovery_* ]]; then
-        (( remaining == 300 - SECONDS && remaining > 0 )) || fail 'saldo absoluto do probe divergente'
+        actual_remaining_ms=$((300000 - clock_ms))
+        expected_remaining=$(((actual_remaining_ms + 999) / 1000))
+        (( actual_remaining_ms > 0 && remaining >= expected_remaining && remaining <= expected_remaining + 1 )) || fail 'saldo absoluto do probe divergente'
         if [[ "$kind" == readiness && "$probe_count" -gt 0 ]]; then
           (( SECONDS - last_probe_end >= 15 )) || fail 'novo lote sem espacamento'
         fi
@@ -688,13 +700,16 @@ for smoke_mode in recovery_late recovery_absent candidate_late baseline_late; do
         *) fail 'tipo de probe desconhecido' ;;
       esac
       (( cost <= remaining )) || cost="$remaining"
-      SECONDS=$((SECONDS + cost))
+      cost_ms=$((cost * 1000))
+      if [[ "$smoke_mode" == recovery_* && "$cost_ms" -gt "$actual_remaining_ms" ]]; then cost_ms="$actual_remaining_ms"; fi
+      clock_ms=$((clock_ms + cost_ms))
+      SECONDS=$((clock_ms / 1000))
       last_probe_end="$SECONDS" probe_count=$((probe_count + 1)) active_probe=0
       printf 'CLOCK_PROBE scenario=%s kind=%s start_s=%s end_s=%s remaining_s=%s rc=%s clock=controlled\n' \
         "$smoke_mode" "$kind" "$start" "$SECONDS" "$remaining" "$result"
       return "$result"
     }
-    SECONDS=0
+    clock_ms=0 SECONDS=0
     if op_smoke "$selected_sha"; then smoke_rc=0; else smoke_rc=$?; fi
     case "$smoke_mode" in
       recovery_late) (( smoke_rc == 0 && SECONDS >= 183 && SECONDS < 300 && catalog_count == 1 && home_count > 4 )) || fail 'recuperacao tardia nao coberta' ;;
