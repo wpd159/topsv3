@@ -16,6 +16,7 @@ export async function verifyBlogEditor() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
   const source = path.join(root, 'src')
   const baseline = process.argv.includes('--baseline')
+  const cacheRetryOnly = process.argv.includes('--cache-retry-only')
   const evidence = fs.mkdtempSync(path.join(process.env.TOPS_UI_EVIDENCE_ROOT || os.tmpdir(), baseline ? 'blog-editor-before-' : 'blog-editor-after-'))
   const write = (name, value) => fs.writeFileSync(path.join(evidence, name), value, { flag: 'wx' })
   const json = (name, value) => write(name, JSON.stringify(value, null, 2))
@@ -40,6 +41,7 @@ export async function verifyBlogEditor() {
   }
   json('source-overrides.json', overrides)
   json('tested-inputs.json', { mode: baseline ? 'baseline-observation-not-approval' : 'regression',
+    selection: cacheRetryOnly ? 'cache-retry-only' : 'all',
     baseRef: process.env.TOPS_BLOG_BASE_REF || null,
     formSha256: digest(overrides[path.join(root, formPath)] ?? fs.readFileSync(path.join(root, formPath))),
     testedSourceHashes: Object.fromEntries(editedSources.map(name => [name, digest(overrides[path.join(root, name)] ?? fs.readFileSync(path.join(root, name)))])),
@@ -71,10 +73,38 @@ export async function verifyBlogEditor() {
     conteudo: content, status: 'RASCUNHO', versao: 7, imagemUrl: null, imagemCapaId: null, ogImageUrl: null, imagemOgId: null,
     seoTitle: 'Título sintético', seoDescription: 'Descrição sintética', sitemapPriority: 0.7, changeFrequency: 'weekly' }
   write('loader.cjs', `const fs=require('node:fs');const overrides=JSON.parse(fs.readFileSync(${JSON.stringify(path.join(evidence, 'source-overrides.json'))},'utf8'));const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(overrides[this.resourcePath]??source,{fileName:this.resourcePath,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText}`)
-  write('navigation.js', `export const useRouter=()=>({replace(url){window.__navigation.push({method:'replace',url})},push(url){window.__navigation.push({method:'push',url})},refresh(){window.__navigation.push({method:'refresh'})}});`)
+  write('navigation.js', `export const useRouter=()=>({replace(url){window.__navigation.push({method:'replace',url});window.__remountEditor?.(url)},push(url){window.__navigation.push({method:'push',url})},refresh(){window.__navigation.push({method:'refresh'})}});`)
   write('link.tsx', `import React from 'react';export default function Link({href,children,...props}){return <a href={href} {...props}>{children}</a>}`)
-  write('server-actions.js', `export async function revalidarBlogPublico(slug){window.__revalidation.push({slug,synthetic:true});if(window.__revalidationFailures>0){window.__revalidationFailures--;throw new Error('Falha sintética na revalidação pública')}return {ok:true}}`)
-  write('entry.tsx', `import React from 'react';import{createRoot}from'react-dom/client';import{Toaster}from'sonner';import{BlogPostForm}from ${JSON.stringify(path.join(root, formPath))};import CategoriesPage from ${JSON.stringify(path.join(root, categoriesPath))};import ListPage from ${JSON.stringify(path.join(root, listPath))};window.__navigation=[];window.__revalidation=[];window.__revalidationFailures=window.__fixture.revalidationFailures||0;createRoot(document.getElementById('root')).render(<>{window.__fixture.view==='categories'?<CategoriesPage/>:window.__fixture.view==='list'?<ListPage/>:<BlogPostForm mode={window.__fixture.mode} postId={window.__fixture.mode==='edit'?'post-sintetico':undefined}/>}<Toaster/></>);window.__ready=true;`)
+  write('server-actions.js', `export async function revalidarBlogPublico(slug){
+    const call={slug,synthetic:true,state:'started'};window.__revalidation.push(call);
+    try{
+      if(window.__revalidationFailures>0){window.__revalidationFailures--;throw new Error('Falha sintética na revalidação pública')}
+      if(window.__fixture.deferCacheRetry&&window.__revalidation.length===2){
+        call.state='pending';await new Promise((resolve,reject)=>{window.__releaseCacheRetry=outcome=>{
+          delete window.__releaseCacheRetry;outcome==='success'?resolve():reject(new Error('Falha sintética na retomada da revalidação'))
+        }});
+      }
+      call.state='succeeded';return {ok:true};
+    }catch(error){call.state='failed';throw error}
+  }`)
+  write('entry.tsx', `import React,{useEffect,useState} from 'react';import{createRoot}from'react-dom/client';import{Toaster}from'sonner';
+    import{BlogPostForm}from ${JSON.stringify(path.join(root, formPath))};
+    import CategoriesPage from ${JSON.stringify(path.join(root, categoriesPath))};import ListPage from ${JSON.stringify(path.join(root, listPath))};
+    window.__navigation=[];window.__revalidation=[];window.__revalidationFailures=window.__fixture.revalidationFailures||0;
+    window.__editorGeneration=0;window.__postLoadFinishedGeneration=-1;
+    function Fixture(){
+      const[editor,setEditor]=useState({mode:window.__fixture.mode,generation:0});
+      useEffect(()=>{window.__remountEditor=url=>{
+        if(!window.__fixture.remountOnReplace)return;
+        if(url!=='/admin/blog/post-sintetico/editar')throw new Error('Unexpected editor destination');
+        const generation=++window.__editorGeneration;
+        setEditor({mode:'edit',generation});
+      };return()=>{delete window.__remountEditor}},[]);
+      return <>{window.__fixture.view==='categories'?<CategoriesPage/>:window.__fixture.view==='list'?<ListPage/>:
+        <div data-fixture-editor-generation={editor.generation}><BlogPostForm key={editor.generation} mode={editor.mode} postId={editor.mode==='edit'?'post-sintetico':undefined}/></div>}<Toaster/></>;
+    }
+    createRoot(document.getElementById('root')).render(<Fixture/>);window.__ready=true;
+  `)
   try {
     const cssFile = path.join(source, 'app/globals.css')
     const css = await postcss([tailwind({ base: root })]).process(fs.readFileSync(cssFile, 'utf8'), { from: cssFile })
@@ -108,6 +138,7 @@ export async function verifyBlogEditor() {
     const origin = `http://127.0.0.1:${server.address().port}`
     browser = await chromium.launch({ headless: true })
     async function scenario(name, config, run) {
+      if (cacheRetryOnly && !name.startsWith('revalidation-after-create-')) return
       const result = { name, checks: [], observations: [], requests: [], syntheticServerAction: true }
       results.push(result)
       const context = await browser.newContext({ viewport: { width: config.mobile ? 390 : 1366, height: config.mobile ? 844 : 900 },
@@ -115,7 +146,24 @@ export async function verifyBlogEditor() {
       contexts.add(context)
       let stored = { ...draft, status: config.view === 'list' ? 'PUBLICADO' : draft.status }, publicationAttempts = 0
       let storedCategories = [category]
-      await context.addInitScript(value => { window.__fixture = value }, { mode: config.mode || 'edit', view: config.view || 'editor', revalidationFailures: config.revalidationFailures || 0 })
+      let page
+      const trackedRequests = new WeakMap()
+      // Observe body completion before any gesture. When the router boundary
+      // remounts the real editor, its own GET reloads only the persisted post.
+      context.on('requestfinished', async request => {
+        const entry = trackedRequests.get(request)
+        if (!entry) return
+        entry.finished = true
+        if (config.remountOnReplace && entry.method === 'GET' && entry.path === '/api/admin/blog-posts/post-sintetico') {
+          try {
+            await page.evaluate(() => { window.__postLoadFinishedGeneration = window.__editorGeneration })
+          } catch (error) {
+            if (!page.isClosed()) browserErrors.push({ name, message: error.message })
+          }
+        }
+      })
+      await context.addInitScript(value => { window.__fixture = value }, { mode: config.mode || 'edit', view: config.view || 'editor',
+        revalidationFailures: config.revalidationFailures || 0, deferCacheRetry: Boolean(config.deferCacheRetry), remountOnReplace: Boolean(config.remountOnReplace) })
       await context.addCookies([{ name: 'XSRF-TOKEN', value: 'EXEMPLO_NAO_REAL', url: origin }])
       // Before first Page/navigation; Analytics SDK is not part of this bundle.
       await context.route('**/*', async route => {
@@ -124,6 +172,7 @@ export async function verifyBlogEditor() {
         if (!url.pathname.startsWith('/api/')) return route.continue()
         const entry = { method, path: url.pathname, body: request.postData() ? JSON.parse(request.postData()) : null }
         result.requests.push(entry)
+        trackedRequests.set(request, entry)
         const respond = (status, body) => { entry.status = status; return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }) }
         if (method !== 'GET') {
           const headers = await request.allHeaders()
@@ -161,7 +210,7 @@ export async function verifyBlogEditor() {
         }
         unexpected.push(entry); return route.abort()
       })
-      const page = await context.newPage()
+      page = await context.newPage()
       page.setDefaultTimeout(5000)
       page.on('pageerror', error => browserErrors.push({ name, message: error.message }))
       const check = (label, condition) => { result.checks.push({ label, passed: Boolean(condition) }) }
@@ -173,6 +222,8 @@ export async function verifyBlogEditor() {
           alerts: [...document.querySelectorAll('[role="alert"],[role="status"]')].map(node => node.textContent),
           successToasts: [...document.querySelectorAll('[data-sonner-toast][data-type="success"]')].map(node => node.textContent),
           navigation: window.__navigation, revalidation: window.__revalidation,
+          editorGeneration: window.__editorGeneration, postLoadFinishedGeneration: window.__postLoadFinishedGeneration,
+          mountedEditorGeneration: document.querySelector('[data-fixture-editor-generation]')?.getAttribute('data-fixture-editor-generation'),
           analyticsAbsent: typeof window.gtag === 'undefined' && !document.querySelector('script[src*="googletagmanager"],script[src*="google-analytics"]'),
           viewport: { width: innerWidth, height: innerHeight, touch: navigator.maxTouchPoints },
         }))
@@ -185,6 +236,14 @@ export async function verifyBlogEditor() {
       async function settle() {
         await page.waitForFunction(() => !/Carregando(?: post)?\.\.\.|Processando\.\.\.|Salvando\.\.\./.test(document.body.innerText))
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+        if (config.remountOnReplace) {
+          const generation = await page.evaluate(() => window.__editorGeneration)
+          if (generation > 0) {
+            await page.waitForFunction(expected => window.__postLoadFinishedGeneration === expected
+              && document.querySelector('[data-fixture-editor-generation]')?.getAttribute('data-fixture-editor-generation') === String(expected)
+              && Boolean(document.querySelector('#post-title')), generation)
+          }
+        }
       }
       async function click(label) {
         const response = page.waitForResponse(value => value.url().startsWith(origin + '/api/admin/blog-') && value.request().method() !== 'GET')
@@ -267,7 +326,8 @@ export async function verifyBlogEditor() {
       check('no published success', !observed.successToasts.some(text => /publicad/i.test(text)))
       check('no publication request', !requests.some(item => item.path.endsWith('/publicar')))
     })
-    await scenario('revalidation-after-create', { mode: 'create', revalidationFailures: 1 }, async ({ page, check, snapshot, click, settle, requests }) => {
+    for (const retryOutcome of ['success', 'failure']) await scenario('revalidation-after-create-' + retryOutcome,
+      { mode: 'create', revalidationFailures: 1, deferCacheRetry: true, remountOnReplace: true }, async ({ page, check, snapshot, click, settle, requests }) => {
       await fillNew(page)
       await click('Salvar rascunho')
       const observed = await snapshot('revalidation-failed')
@@ -280,10 +340,44 @@ export async function verifyBlogEditor() {
       const retryExists = await retry.count() === 1
       check('dedicated cache retry available', retryExists)
       if (retryExists) {
-        await retry.click(); await settle()
+        const titleBefore = draft.titulo + ' — edição anterior à retomada'
+        const bodyBefore = content + '<p>EDIÇÃO-ANTES-DO-RETRY</p>'
+        await page.locator('#post-title').fill(titleBefore)
+        await page.locator('#post-content').fill(bodyBefore)
+        const beforeRetry = await snapshot('edited-before-retry')
+        check('local edits exist before retry', beforeRetry.title === titleBefore && beforeRetry.content === bodyBefore)
+        await retry.click()
+        await page.waitForFunction(() => window.__revalidation[1]?.state === 'pending' && typeof window.__releaseCacheRetry === 'function')
+        const pending = await snapshot('retry-pending')
+        check('retry starts without replacing edits', pending.title === titleBefore && pending.content === bodyBefore)
+        const titleDuring = draft.titulo + ' — edição durante a retomada'
+        const bodyDuring = bodyBefore + '<p>EDIÇÃO-DURANTE-DO-RETRY</p>'
+        await page.locator('#post-title').fill(titleDuring)
+        await page.locator('#post-content').fill(bodyDuring)
+        const editedPending = await snapshot('edited-while-retry-pending')
+        check('edits remain possible during pending revalidation', editedPending.title === titleDuring && editedPending.content === bodyDuring)
+        await page.evaluate(outcome => window.__releaseCacheRetry(outcome), retryOutcome)
+        await page.waitForFunction(expected => window.__revalidation[1]?.state === expected, retryOutcome === 'success' ? 'succeeded' : 'failed')
+        await settle()
         const retried = await snapshot('cache-only-retry')
         check('retry is only revalidation', retried.revalidation.length === 2 && requests.filter(item => item.method !== 'GET').length === 1)
-        check('cache recovery navigates to saved editor', retried.navigation.some(item => item.method === 'replace' && item.url === '/admin/blog/post-sintetico/editar'))
+        check('retry does not navigate away from local changes', retried.navigation.length === 0 && retried.editorGeneration === 0)
+        check('title edited during retry survives its result', retried.title === titleDuring)
+        check('complete body edited during retry survives its result', retried.content === bodyDuring)
+        check('cache retry does not claim a new save', retried.successToasts.length === 0)
+        if (retryOutcome === 'failure') check('failed retry keeps cache error visible', /atualiza|revalida/i.test(retried.alerts.join(' ')))
+        const mutationsBeforeSave = requests.filter(item => item.method !== 'GET')
+        check('no hidden update or publication during retry', mutationsBeforeSave.length === 1
+          && mutationsBeforeSave[0].method === 'POST' && mutationsBeforeSave[0].path === '/api/admin/blog-posts')
+        await click('Salvar rascunho')
+        const saved = await snapshot('explicit-save-after-retry')
+        const updates = requests.filter(item => item.method === 'PUT')
+        check('explicit save reuses committed ID and version', updates.length === 1
+          && updates[0].path === '/api/admin/blog-posts/post-sintetico' && updates[0].body.versao === 1)
+        check('explicit save contains the latest local edits', updates.length === 1
+          && updates[0].body.titulo === titleDuring && updates[0].body.conteudo === bodyDuring)
+        check('saved editor retains complete latest text', saved.title === titleDuring && saved.content === bodyDuring)
+        check('no duplicate create or unintended publication', requests.filter(item => item.method === 'POST').length === 1)
       }
     })
     await scenario('category-create-revalidation', { view: 'categories', revalidationFailures: 1 }, async ({ page, check, snapshot, click, settle, requests }) => {
@@ -356,6 +450,7 @@ export async function verifyBlogEditor() {
     try { assert.deepEqual(afterHashes, beforeHashes, 'Source inputs changed during execution') } catch (error) { failure ||= error }
     if (!failure && cleanupErrors.length) failure = Error('Cleanup failed')
     json('result.json', { result: failure ? 'FAIL' : baseline ? 'BASELINE_RECORDED_NOT_APPROVED' : 'PASS', baseline,
+      selection: cacheRetryOnly ? 'cache-retry-only' : 'all',
       browser: browser?.version(), node: process.version, playwright: playwrightVersion,
       syntheticTransport: true, syntheticServerAction: true, realAndroid: false, results, unexpected, browserErrors, cleanup, cleanupErrors, failure: failure?.stack })
   }

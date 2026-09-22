@@ -222,9 +222,7 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
     if (busy || !refreshError) return
     setBusy(true)
     try {
-      if (await refreshPublic(refreshError.slug) && mode === 'create' && post) {
-        router.replace(`/admin/blog/${post.id}/editar`)
-      }
+      await refreshPublic(refreshError.slug)
     } finally {
       setBusy(false)
     }
@@ -321,7 +319,7 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
       ) : null}
       {refreshError ? (
         <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
-          <p className="font-semibold">Alteração salva; a atualização da exibição pública não foi confirmada.</p>
+          <p className="font-semibold">A atualização pública da última gravação não foi confirmada. Edições posteriores ainda precisam ser salvas.</p>
           <p className="text-sm">{normalizeApiError(refreshError.error).message}</p>
           <Button type="button" variant="outline" disabled={busy} onClick={() => void retryRefresh()}>
             Atualizar exibição pública
