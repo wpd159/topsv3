@@ -23,6 +23,7 @@ import {
   listarBlogCategoriasAdmin,
 } from '@/lib/admin-blog-api'
 import type { BlogCategoriaPublic } from '@/lib/blog-api'
+import { normalizeApiError } from '@/lib/api-contract'
 import { revalidarBlogPublico } from '../actions'
 
 const EMPTY = { nome: '', slug: '', ordem: '0', ativa: true }
@@ -32,14 +33,18 @@ export default function BlogCategoriesPage() {
   const [editing, setEditing] = useState<BlogCategoriaPublic | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState<unknown>(null)
+  const [actionError, setActionError] = useState<unknown>(null)
+  const [refreshError, setRefreshError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
     try {
       setCategories(await listarBlogCategoriasAdmin())
+      return true
     } catch (loadError) {
       setError(loadError)
+      return false
     }
   }, [])
 
@@ -62,10 +67,31 @@ export default function BlogCategoriesPage() {
     setForm(EMPTY)
   }
 
+  async function refreshPublic() {
+    try {
+      await revalidarBlogPublico()
+      setRefreshError(null)
+      return true
+    } catch (refreshFailure) {
+      setRefreshError(refreshFailure)
+      return false
+    }
+  }
+
+  async function retryRefresh() {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (await refreshPublic()) await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function submit() {
     if (busy) return
     setBusy(true)
-    setError(null)
+    setActionError(null)
     const input = {
       nome: form.nome,
       slug: form.slug,
@@ -74,17 +100,17 @@ export default function BlogCategoriesPage() {
       versao: editing?.versao ?? null,
     }
     try {
-      if (editing) {
-        await atualizarBlogCategoriaAdmin(editing.id, input)
-      } else {
-        await criarBlogCategoriaAdmin(input)
-      }
-      await revalidarBlogPublico()
-      await load()
+      const saved = editing
+        ? await atualizarBlogCategoriaAdmin(editing.id, input)
+        : await criarBlogCategoriaAdmin(input)
+      // Preserve a categoria e a versão gravadas mesmo se a atualização pública falhar.
+      startEdit(saved)
+      setCategories((current) => [...current.filter((item) => item.id !== saved.id), saved])
+      if (!await refreshPublic() || !await load()) return
       cancelEdit()
       toast.success(editing ? 'Categoria atualizada.' : 'Categoria criada.')
     } catch (submitError) {
-      setError(submitError)
+      setActionError(submitError)
     } finally {
       setBusy(false)
     }
@@ -93,14 +119,15 @@ export default function BlogCategoriesPage() {
   async function deactivate(category: BlogCategoriaPublic) {
     if (busy || !category.ativa) return
     setBusy(true)
-    setError(null)
+    setActionError(null)
     try {
-      await desativarBlogCategoriaAdmin(category.id)
-      await revalidarBlogPublico()
-      await load()
+      const saved = await desativarBlogCategoriaAdmin(category.id)
+      setCategories((current) => current.map((item) => item.id === saved.id ? saved : item))
+      if (editing?.id === saved.id) startEdit(saved)
+      if (!await refreshPublic() || !await load()) return
       toast.success('Categoria desativada.')
     } catch (deactivateError) {
-      setError(deactivateError)
+      setActionError(deactivateError)
     } finally {
       setBusy(false)
     }
@@ -115,6 +142,21 @@ export default function BlogCategoriesPage() {
         <h1 className="text-2xl font-bold text-gray-900">Categorias do blog</h1>
       </div>
       {error ? <ContractState error={error} onRetry={load} /> : null}
+      {actionError ? (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p className="font-semibold">Não foi possível salvar a alteração da categoria.</p>
+          <p className="mt-1 text-sm">{normalizeApiError(actionError).message}</p>
+        </div>
+      ) : null}
+      {refreshError ? (
+        <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p className="font-semibold">Categoria salva; a atualização da exibição pública não foi confirmada.</p>
+          <p className="text-sm">{normalizeApiError(refreshError).message}</p>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => void retryRefresh()}>
+            Atualizar exibição pública
+          </Button>
+        </div>
+      ) : null}
 
       <form
         className="grid gap-4 rounded-lg border border-gray-200 bg-white p-5 md:grid-cols-4"

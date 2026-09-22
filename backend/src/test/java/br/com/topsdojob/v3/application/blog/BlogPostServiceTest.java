@@ -1,7 +1,9 @@
 package br.com.topsdojob.v3.application.blog;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -21,6 +23,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 class BlogPostServiceTest {
 
@@ -103,6 +108,42 @@ class BlogPostServiceTest {
   }
 
   @Test
+  void detalhePublicoRespeitaRascunhoRetiradaESlugAtualSemTruncarConteudo() {
+    String conteudo = "<h2>Inicio sintetico</h2>\n"
+        + "<p>Paragrafo editorial completo, com acentuação.</p>\n".repeat(1000)
+        + "<p>Marcador final sintetico.</p>";
+    var criado = service.criar(request("slug-original", conteudo, null), ator, "request-blog-ciclo");
+    var captor = ArgumentCaptor.forClass(BlogPostEntity.class);
+    verify(repository).saveAndFlush(captor.capture());
+    BlogPostEntity entity = captor.getValue();
+    assertThat(entity.getConteudo()).isEqualTo(conteudo);
+    assertThat(criado.conteudo()).isEqualTo(conteudo);
+
+    // Fronteira do repository em memoria; nao substitui uma prova PostgreSQL.
+    when(repository.findByIdForUpdate(entity.getId())).thenReturn(Optional.of(entity));
+    when(repository.findBySlugAndStatus(anyString(), anyString())).thenAnswer(invocation ->
+        entity.getSlug().equals(invocation.getArgument(0))
+                && entity.getStatus().equals(invocation.getArgument(1))
+            ? Optional.of(entity)
+            : Optional.empty());
+
+    assertNaoPublicado("slug-original");
+    assertNaoPublicado("inexistente");
+    service.publicar(entity.getId(), ator, "request-blog-publicar");
+    assertThat(service.buscarPublicado("slug-original").conteudo()).isEqualTo(conteudo);
+
+    service.retirar(entity.getId(), ator, "request-blog-retirar");
+    assertThat(entity.getStatus()).isEqualTo("RASCUNHO");
+    assertNaoPublicado("slug-original");
+
+    service.publicar(entity.getId(), ator, "request-blog-republicar");
+    service.atualizar(entity.getId(), request("slug-alterado", conteudo, entity.getVersao()),
+        ator, "request-blog-alterar-slug");
+    assertNaoPublicado("slug-original");
+    assertThat(service.buscarPublicado("slug-alterado").conteudo()).isEqualTo(conteudo);
+  }
+
+  @Test
   void listagemAdminSemTermoNaoEnviaParametroNuloParaLower() {
     when(repository.findAllByOrderByAtualizadoEmDescIdAsc()).thenReturn(List.of());
 
@@ -133,12 +174,17 @@ class BlogPostServiceTest {
   }
 
   private BlogPostRequest request() {
+    return request("homologacao-blog-v3",
+        "<h2>Conteudo de homologacao</h2><p>Texto editorial seguro e completo.</p>", null);
+  }
+
+  private BlogPostRequest request(String slug, String conteudo, Long versao) {
     return new BlogPostRequest(
         categoriaId,
         "Homologacao Blog V3",
-        "homologacao-blog-v3",
+        slug,
         "Resumo editorial completo para publicacao segura.",
-        "<h2>Conteudo de homologacao</h2><p>Texto editorial seguro e completo.</p>",
+        conteudo,
         "Equipe Tops do Job",
         "Homologacao Blog V3",
         "Descricao editorial completa para mecanismos de busca.",
@@ -146,6 +192,12 @@ class BlogPostServiceTest {
         "weekly",
         null,
         null,
-        null);
+        versao);
+  }
+
+  private void assertNaoPublicado(String slug) {
+    assertThatThrownBy(() -> service.buscarPublicado(slug))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
   }
 }

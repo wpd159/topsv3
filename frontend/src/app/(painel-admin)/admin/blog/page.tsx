@@ -29,6 +29,7 @@ import {
   retirarBlogPostAdmin,
 } from '@/lib/admin-blog-api'
 import type { BlogPostDetail } from '@/lib/blog-api'
+import { normalizeApiError } from '@/lib/api-contract'
 import { revalidarBlogPublico } from './actions'
 
 export default function AdminBlogPage() {
@@ -37,6 +38,8 @@ export default function AdminBlogPage() {
   const [status, setStatus] = useState('TODOS')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
+  const [actionError, setActionError] = useState<unknown>(null)
+  const [refreshError, setRefreshError] = useState<{ slug: string; error: unknown } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -44,8 +47,10 @@ export default function AdminBlogPage() {
     setError(null)
     try {
       setPosts(await listarBlogPostsAdmin({ termo, status }))
+      return true
     } catch (loadError) {
       setError(loadError)
+      return false
     } finally {
       setLoading(false)
     }
@@ -55,19 +60,43 @@ export default function AdminBlogPage() {
     void load()
   }, [load])
 
+  async function refreshPublic(slug: string) {
+    try {
+      await revalidarBlogPublico(slug)
+      setRefreshError(null)
+      return true
+    } catch (refreshFailure) {
+      setRefreshError({ slug, error: refreshFailure })
+      return false
+    }
+  }
+
+  async function retryRefresh() {
+    if (busyId || !refreshError) return
+    setBusyId('refresh')
+    try {
+      if (await refreshPublic(refreshError.slug)) await load()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function changeStatus(
     post: BlogPostDetail,
     action: 'publicar' | 'retirar' | 'arquivar',
   ) {
     if (busyId) return
     setBusyId(post.id)
-    setError(null)
+    setActionError(null)
     try {
-      if (action === 'publicar') await publicarBlogPostAdmin(post.id)
-      if (action === 'retirar') await retirarBlogPostAdmin(post.id)
-      if (action === 'arquivar') await arquivarBlogPostAdmin(post.id)
-      await revalidarBlogPublico(post.slug)
-      await load()
+      const saved = action === 'publicar'
+        ? await publicarBlogPostAdmin(post.id)
+        : action === 'retirar'
+          ? await retirarBlogPostAdmin(post.id)
+          : await arquivarBlogPostAdmin(post.id)
+      setPosts((current) => current.map((item) => item.id === saved.id ? saved : item)
+        .filter((item) => status === 'TODOS' || item.status === status))
+      if (!await refreshPublic(saved.slug) || !await load()) return
       toast.success(
         action === 'publicar'
           ? 'Post publicado.'
@@ -75,8 +104,8 @@ export default function AdminBlogPage() {
             ? 'Post retirado da publicação.'
             : 'Post arquivado.',
       )
-    } catch (actionError) {
-      setError(actionError)
+    } catch (changeError) {
+      setActionError(changeError)
     } finally {
       setBusyId(null)
     }
@@ -105,6 +134,21 @@ export default function AdminBlogPage() {
       </div>
 
       {error ? <ContractState error={error} onRetry={load} /> : null}
+      {actionError ? (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p className="font-semibold">Não foi possível alterar o status do post.</p>
+          <p className="mt-1 text-sm">{normalizeApiError(actionError).message}</p>
+        </div>
+      ) : null}
+      {refreshError ? (
+        <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p className="font-semibold">Alteração salva; a atualização da exibição pública não foi confirmada.</p>
+          <p className="text-sm">{normalizeApiError(refreshError.error).message}</p>
+          <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => void retryRefresh()}>
+            Atualizar exibição pública
+          </Button>
+        </div>
+      ) : null}
 
       <form
         className="grid gap-3 rounded-lg border border-gray-200 bg-white p-4 md:grid-cols-[1fr_220px_auto]"

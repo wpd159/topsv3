@@ -67,10 +67,14 @@ async function buildEditorialSitemap(
     )
     lastModified = maxDate(lastModified, routeLastModified)
     const configuredPriority = numberField(post, "priority")
+    const changeFrequency = textField(post, "changeFrequency")
     postRoutes.push({
       url,
       lastModified: routeLastModified,
       priority: configuredPriority > 0 ? configuredPriority : 0.7,
+      ...(changeFrequency === "daily" || changeFrequency === "weekly" || changeFrequency === "monthly"
+        ? { changeFrequency }
+        : {}),
     })
   }
 

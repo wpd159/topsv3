@@ -90,7 +90,13 @@ async function request<T>(
     credentials: 'include',
     cache: 'no-store',
   })
-  if (!response.ok) throw await apiErrorFromResponse(response)
+  if (!response.ok) {
+    const error = await apiErrorFromResponse(response)
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && error.kind === 'TECHNICAL_FAILURE') {
+      error.message = 'O serviço não confirmou a operação. Verifique o estado antes de tentar novamente.'
+    }
+    throw error
+  }
   return (await response.json()) as T
 }
 

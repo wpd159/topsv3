@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { SafeBlogPostBody } from '@/lib/blog/safe-blog-body'
+import { normalizeApiError } from '@/lib/api-contract'
 import {
   arquivarBlogPostAdmin,
   atualizarBlogPostAdmin,
@@ -112,11 +113,13 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
   const [ogFile, setOgFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(mode === 'edit' && !initialPost)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<unknown>(null)
+  const [loadError, setLoadError] = useState<unknown>(null)
+  const [actionError, setActionError] = useState<{ title: string; error: unknown } | null>(null)
+  const [refreshError, setRefreshError] = useState<{ slug: string; error: unknown } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError(null)
+    setLoadError(null)
     try {
       const [loadedCategories, loadedPost] = await Promise.all([
         listarBlogCategoriasAdmin(),
@@ -129,8 +132,8 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
         setPost(loadedPost)
         setForm(fromPost(loadedPost))
       }
-    } catch (loadError) {
-      setError(loadError)
+    } catch (error) {
+      setLoadError(error)
     } finally {
       setLoading(false)
     }
@@ -163,20 +166,25 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
   }
 
   async function save(publishAfter = false) {
-    if (busy) return
+    if (busy || loading || loadError || (mode === 'edit' && !post)) return
     setBusy(true)
-    setError(null)
+    setActionError(null)
+    let persisted = false
     try {
       let saved = post
         ? await atualizarBlogPostAdmin(post.id, input())
         : await criarBlogPostAdmin(input())
-      if (publishAfter && saved.status !== 'PUBLICADO') {
-        saved = await publicarBlogPostAdmin(saved.id)
-      }
+      // A publicação é uma segunda operação: preserve o ID e a versão já gravados.
       setPost(saved)
       setForm(fromPost(saved))
-      await revalidarBlogPublico(saved.slug)
-      if (!post) {
+      persisted = true
+      if (publishAfter && saved.status !== 'PUBLICADO') {
+        saved = await publicarBlogPostAdmin(saved.id)
+        setPost(saved)
+        setForm(fromPost(saved))
+      }
+      if (!await refreshPublic(saved.slug)) return
+      if (mode === 'create') {
         router.replace(`/admin/blog/${saved.id}/editar`)
       }
       toast.success(
@@ -187,7 +195,36 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
             : 'Rascunho salvo.',
       )
     } catch (saveError) {
-      setError(saveError)
+      setActionError({
+        title: persisted
+          ? 'Post salvo, mas não foi possível publicar.'
+          : 'Não foi possível salvar o post.',
+        error: saveError,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function refreshPublic(slug: string) {
+    try {
+      await revalidarBlogPublico(slug)
+      setRefreshError(null)
+      return true
+    } catch (error) {
+      // Falha de cache não desfaz a gravação nem autoriza repetir a mutação.
+      setRefreshError({ slug, error })
+      return false
+    }
+  }
+
+  async function retryRefresh() {
+    if (busy || !refreshError) return
+    setBusy(true)
+    try {
+      if (await refreshPublic(refreshError.slug) && mode === 'create' && post) {
+        router.replace(`/admin/blog/${post.id}/editar`)
+      }
     } finally {
       setBusy(false)
     }
@@ -196,21 +233,21 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
   async function changeStatus(action: 'retirar' | 'arquivar') {
     if (!post || busy) return
     setBusy(true)
-    setError(null)
+    setActionError(null)
     try {
       const updated = action === 'retirar'
         ? await retirarBlogPostAdmin(post.id)
         : await arquivarBlogPostAdmin(post.id)
       setPost(updated)
       setForm(fromPost(updated))
-      await revalidarBlogPublico(updated.slug)
+      if (!await refreshPublic(updated.slug)) return
       toast.success(
         action === 'retirar'
           ? 'Post retirado da publicação.'
           : 'Post arquivado.',
       )
     } catch (changeError) {
-      setError(changeError)
+      setActionError({ title: 'Não foi possível alterar o status do post.', error: changeError })
     } finally {
       setBusy(false)
     }
@@ -220,7 +257,7 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
     const file = tipo === 'CAPA' ? coverFile : ogFile
     if (!file || busy) return
     setBusy(true)
-    setError(null)
+    setActionError(null)
     try {
       const uploaded = await enviarImagemBlogAdmin(file, tipo)
       if (tipo === 'CAPA') {
@@ -234,7 +271,7 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
       }
       toast.success('Imagem editorial processada e armazenada com segurança.')
     } catch (uploadError) {
-      setError(uploadError)
+      setActionError({ title: 'Não foi possível enviar a imagem.', error: uploadError })
     } finally {
       setBusy(false)
     }
@@ -242,6 +279,17 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
 
   if (loading) {
     return <p className="py-10 text-center text-gray-500">Carregando post...</p>
+  }
+
+  if (loadError) {
+    return (
+      <section className="space-y-6">
+        <ContractState error={loadError} onRetry={load} />
+        <Button asChild variant="outline">
+          <Link href="/admin/blog">Voltar aos posts</Link>
+        </Button>
+      </section>
+    )
   }
 
   return (
@@ -265,7 +313,21 @@ export function BlogPostForm({ mode, initialPost, postId }: Props) {
         </Button>
       </div>
 
-      {error ? <ContractState error={error} onRetry={load} /> : null}
+      {actionError ? (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p className="font-semibold">{actionError.title}</p>
+          <p className="mt-1 text-sm">{normalizeApiError(actionError.error).message}</p>
+        </div>
+      ) : null}
+      {refreshError ? (
+        <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+          <p className="font-semibold">Alteração salva; a atualização da exibição pública não foi confirmada.</p>
+          <p className="text-sm">{normalizeApiError(refreshError.error).message}</p>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => void retryRefresh()}>
+            Atualizar exibição pública
+          </Button>
+        </div>
+      ) : null}
 
       {categories.length === 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
