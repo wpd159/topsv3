@@ -29,6 +29,7 @@ import {
   montarEventoIndexNowAnuncio,
 } from '@/lib/seo/indexnow-client'
 import { StepPanel } from './wizard-ui'
+import type { EditPendingMedia } from '../types'
 
 type WizardStepFotosProps = {
   slug?: string
@@ -48,6 +49,12 @@ type WizardStepFotosProps = {
   onInteractionStart?: () => boolean
   onInteractionEnd?: () => void
   onStateUnconfirmed?: () => void
+  pendingFiles?: EditPendingMedia[]
+  onPendingFilesChange?: (files: EditPendingMedia[]) => void
+  uploadUnconfirmed?: boolean
+  onUploadUnconfirmedChange?: (value: boolean) => void
+  pendingSaveNotice?: boolean
+  accountScope?: string
 }
 
 function fileKey(file: File) {
@@ -87,6 +94,12 @@ export function WizardStepFotos({
   onInteractionStart,
   onInteractionEnd,
   onStateUnconfirmed,
+  pendingFiles: controlledPendingFiles,
+  onPendingFilesChange,
+  uploadUnconfirmed = false,
+  onUploadUnconfirmedChange,
+  pendingSaveNotice = false,
+  accountScope = '',
 }: WizardStepFotosProps) {
   const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(persistedState ?? null)
   const [loading, setLoading] = useState(Boolean(slug) && persistedState === undefined)
@@ -101,17 +114,20 @@ export function WizardStepFotos({
   const stateUnconfirmedRef = useRef(false)
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [pendingPersistedFiles, setPendingPersistedFiles] = useState<File[]>([])
+  const [uncontrolledPendingFiles, setUncontrolledPendingFiles] = useState<EditPendingMedia[]>([])
+  const pendingEntries = controlledPendingFiles ?? uncontrolledPendingFiles
+  const pendingPersistedFiles = pendingEntries.map((entry) => entry.file)
   const [persistedValidation, setPersistedValidation] = useState<{
-    files: File[]
+    selection: EditPendingMedia[]
     results: PhotoUploadValidationResult[]
-  }>({ files: [], results: [] })
+  }>({ selection: [], results: [] })
   const [retryable, setRetryable] = useState(false)
-  const pendingFilesRef = useRef(pendingPersistedFiles)
+  const pendingFilesRef = useRef(pendingEntries)
+  pendingFilesRef.current = pendingEntries
   const uploadLockRef = useRef(false)
   const selectionVersionRef = useRef(0)
-  const photoFilesRef = useRef(new WeakSet<File>())
-  const validationReady = persistedValidation.files === pendingPersistedFiles
+  const pendingSaveNoticeRef = useRef<HTMLParagraphElement | null>(null)
+  const validationReady = persistedValidation.selection === pendingEntries
   const validationPending = pendingPersistedFiles.length > 0 && !validationReady
   const invalidSelection = validationReady && persistedValidation.results.some((result) => !result.valid)
   // The canonical total identifies the chosen photo only when the complete
@@ -126,6 +142,10 @@ export function WizardStepFotos({
     mountedRef.current = true
     return () => { mountedRef.current = false; operationGenerationRef.current += 1 }
   }, [slug])
+
+  useEffect(() => {
+    if (pendingSaveNotice) pendingSaveNoticeRef.current?.focus()
+  }, [pendingSaveNotice])
 
   useEffect(() => {
     if (persistedState === undefined || terminalRef.current) return
@@ -169,13 +189,13 @@ export function WizardStepFotos({
 
   useEffect(() => {
     let current = true
-    const files = pendingPersistedFiles
-    void Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))
+    const files = pendingEntries
+    void Promise.all(files.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo')))
       .then((results) => {
-        if (current) setPersistedValidation({ files, results })
+        if (current) setPersistedValidation({ selection: files, results })
       })
     return () => { current = false }
-  }, [pendingPersistedFiles])
+  }, [pendingEntries])
 
   const refresh = useCallback(async () => {
     if (!slug || persistedState !== undefined || terminalRef.current) return
@@ -228,16 +248,17 @@ export function WizardStepFotos({
     }
   }, [slug])
 
-  const uploadPersisted = async (files: File[]) => {
+  const uploadPersisted = async (entries: EditPendingMedia[]) => {
+    const files = entries.map((entry) => entry.file)
     if (!slug || !files.length || disabled || busy || uploadLockRef.current || !validationReady || invalidSelection
-      || files !== pendingFilesRef.current || (errors.lote && !retryable)) return
-    const fotosNovas = files.filter((file) => photoFilesRef.current.has(file)).length
+      || entries !== pendingFilesRef.current || (errors.lote && !retryable)) return
+    const fotosNovas = entries.filter((entry) => entry.kind === 'photo').length
     const videosNovos = files.length - fotosNovas
-    if (persisted && fotosNovas > persisted.limites.fotosDisponiveis) {
+    if (!uploadUnconfirmed && persisted && fotosNovas > persisted.limites.fotosDisponiveis) {
       setErrors({ lote: 'Você atingiu o limite de fotos deste anúncio.' })
       return
     }
-    if (persisted && videosNovos > persisted.limites.videosDisponiveis) {
+    if (!uploadUnconfirmed && persisted && videosNovos > persisted.limites.videosDisponiveis) {
       setErrors({
         lote: persisted.limites.videoAtivo
           ? 'Este anúncio já atingiu o limite de vídeos.'
@@ -251,22 +272,37 @@ export function WizardStepFotos({
     setBusy(true)
     setErrors({})
     try {
-      const results = await Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))
-      if (version !== selectionVersionRef.current || files !== pendingFilesRef.current || results.some((result) => !result.valid)) return
+      const results = await Promise.all(entries.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo')))
+      if (version !== selectionVersionRef.current || entries !== pendingFilesRef.current || results.some((result) => !result.valid)) return
+      if (uploadUnconfirmed) {
+        // A prior response may have been lost after commit. Re-read the canonical
+        // ad first; the same idempotency key then resolves any remaining ambiguity.
+        const fresh = await listarMinhasMidias(slug)
+        if (!acceptResponse(fresh, generation) || terminalRef.current) return
+      }
       const latest = await enviarMinhasMidiasEmLote(slug, files, (value) => {
-        setProgress((current) => Object.fromEntries([
-          ...Object.entries(current),
-          ...files.map((file) => [file.name, value] as const),
-        ]))
-      })
-      if (acceptResponse(latest, generation)) updatePendingFiles([])
+        if (mountedRef.current && generation === operationGenerationRef.current
+          && version === selectionVersionRef.current && entries === pendingFilesRef.current) {
+          setProgress((current) => Object.fromEntries([
+            ...Object.entries(current),
+            ...files.map((file) => [file.name, value] as const),
+          ]))
+        }
+      }, accountScope)
+      if (version === selectionVersionRef.current && entries === pendingFilesRef.current
+        && acceptResponse(latest, generation)) updatePendingFiles([])
     } catch (error) {
       if (!mountedRef.current || generation !== operationGenerationRef.current) return
-      handleUnconfirmedState(error)
+      const ambiguous = error instanceof TypeError || (error instanceof MeusAnunciosApiError
+        && (error.status === 0 || error.status === 408 || error.status >= 500
+          || error.code === 'MIDIAS_ESTADO_NAO_CONFIRMADO'))
+      if (ambiguous) onUploadUnconfirmedChange?.(true)
       setRetryable(error instanceof TypeError || (error instanceof MeusAnunciosApiError
         && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)))
       setErrors({
-        lote: meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.'),
+        lote: ambiguous
+          ? 'Não foi possível confirmar o envio. Confira o estado do anúncio e tente novamente.'
+          : meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.'),
       })
     } finally {
       endInteraction()
@@ -274,13 +310,15 @@ export function WizardStepFotos({
     }
   }
 
-  const pendingPersistedPhotos = pendingPersistedFiles.filter((file) => photoFilesRef.current.has(file))
-  const pendingPersistedVideos = pendingPersistedFiles.filter((file) => !photoFilesRef.current.has(file))
+  const pendingPersistedPhotos = pendingEntries.filter((entry) => entry.kind === 'photo')
+  const pendingPersistedVideos = pendingEntries.filter((entry) => entry.kind === 'video')
 
-  function updatePendingFiles(files: File[]) {
+  function updatePendingFiles(files: EditPendingMedia[]) {
     selectionVersionRef.current += 1
     pendingFilesRef.current = files
-    setPendingPersistedFiles(files)
+    if (onPendingFilesChange) onPendingFilesChange(files)
+    else setUncontrolledPendingFiles(files)
+    onUploadUnconfirmedChange?.(false)
     setErrors({})
     setProgress({})
     setRetryable(false)
@@ -289,17 +327,18 @@ export function WizardStepFotos({
   function selectPersistedFiles(files: File[], photos = true) {
     if (busy || uploadLockRef.current || disabled || terminalRef.current) return
     if (photos) {
-      files.forEach((file) => photoFilesRef.current.add(file))
-      updatePendingFiles([...pendingFilesRef.current, ...files])
+      updatePendingFiles([...pendingFilesRef.current, ...files.map((file) => ({ file, kind: 'photo' as const }))])
     } else {
-      updatePendingFiles([...pendingFilesRef.current.filter((file) => photoFilesRef.current.has(file)), ...files])
+      updatePendingFiles([
+        ...pendingFilesRef.current.filter((entry) => entry.kind === 'photo'),
+        ...files.map((file) => ({ file, kind: 'video' as const })),
+      ])
     }
   }
 
-  function removePendingPersistedFile(file: File) {
+  function removePendingPersistedFile(entry: EditPendingMedia) {
     if (busy || uploadLockRef.current || disabled || terminalRef.current) return
-    photoFilesRef.current.delete(file)
-    updatePendingFiles(pendingFilesRef.current.filter((item) => item !== file))
+    updatePendingFiles(pendingFilesRef.current.filter((item) => item !== entry))
   }
 
   const move = async (index: number, direction: -1 | 1) => {
@@ -514,13 +553,24 @@ export function WizardStepFotos({
           ) : null}
         </header>
 
+        {pendingSaveNotice && pendingEntries.length ? (
+          <p
+            ref={pendingSaveNoticeRef}
+            role="alert"
+            tabIndex={-1}
+            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
+          >
+            Você selecionou arquivos que ainda não foram enviados. Clique em Enviar arquivos para concluir.
+          </p>
+        ) : null}
+
         <p className="text-sm text-zinc-600">{PHOTO_UPLOAD_GUIDANCE}</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <FilePicker
             ariaLabel="Selecionar fotos do anúncio"
             buttonLabel="Selecionar foto"
             accept={PHOTO_UPLOAD_ACCEPT}
-            files={pendingPersistedPhotos}
+            files={pendingPersistedPhotos.map((entry) => entry.file)}
             multiple
             disabled={disabled || busy || !persisted || (persisted.limites.fotosDisponiveis === 0 && !pendingPersistedPhotos.length)}
             helperText={persisted?.limites.fotosExtrasAtivo
@@ -534,7 +584,7 @@ export function WizardStepFotos({
               ariaLabel="Selecionar vídeo do anúncio"
               buttonLabel="Selecionar vídeo"
               accept="video/mp4,video/quicktime,.mp4,.mov"
-              files={pendingPersistedVideos}
+              files={pendingPersistedVideos.map((entry) => entry.file)}
               disabled={disabled || busy || (persisted.limites.videosDisponiveis === 0 && !pendingPersistedVideos.length)}
               helperText="Você pode adicionar 1 vídeo em MP4 ou MOV."
               onSelect={(files) => selectPersistedFiles(files.slice(0, 1), false)}
@@ -553,11 +603,12 @@ export function WizardStepFotos({
           )}
         </div>
 
-        {pendingPersistedFiles.map((file, index) => {
+        {pendingEntries.map((entry, index) => {
+          const file = entry.file
           const result = validationReady ? persistedValidation.results[index] : undefined
           return (
             <p key={`${fileKey(file)}:${index}`} role={result && !result.valid ? 'alert' : 'status'} className="text-sm text-zinc-700">
-              {file.name}: {!result ? photoFilesRef.current.has(file) ? 'Verificando foto…' : 'Verificando vídeo…' : result.valid ? 'Arquivo pronto para envio.' : result.message}
+              {file.name}: {!result ? entry.kind === 'photo' ? 'Verificando foto…' : 'Verificando vídeo…' : result.valid ? 'Arquivo pronto para envio.' : result.message}
             </p>
           )
         })}
@@ -577,11 +628,11 @@ export function WizardStepFotos({
           <p key={key} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">{message}</p>
         ))}
 
-        {pendingPersistedFiles.length ? (
+        {pendingEntries.length ? (
           <button
             type="button"
             disabled={disabled || busy || !persisted || validationPending || invalidSelection || Boolean(errors.lote && !retryable)}
-            onClick={() => void uploadPersisted(pendingPersistedFiles)}
+            onClick={() => void uploadPersisted(pendingEntries)}
             className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 disabled:opacity-50"
           >
             {busy ? 'Enviando...' : validationPending ? pendingPersistedVideos.length ? 'Verificando arquivos…' : 'Verificando foto…' : errors.lote && retryable ? 'Tentar enviar novamente' : 'Enviar arquivos'}

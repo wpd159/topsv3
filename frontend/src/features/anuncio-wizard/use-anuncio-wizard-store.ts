@@ -10,7 +10,7 @@ import {
   wizardCacheKey,
   type WizardCacheScope,
 } from './wizard-storage'
-import { initialWizardState, wizardStepIds, type WizardFormState, type WizardKycState, type WizardState, type WizardStepId } from './types'
+import { initialWizardState, wizardStepIds, type EditPendingMedia, type WizardFormState, type WizardKycState, type WizardState, type WizardStepId } from './types'
 
 type Action =
   | { type: 'hydrate'; payload: WizardState }
@@ -19,6 +19,8 @@ type Action =
   | { type: 'set-step'; payload: WizardStepId }
   | { type: 'set-fotos'; payload: File[] }
   | { type: 'set-videos'; payload: File[] }
+  | { type: 'set-edit-pending-media'; payload: { scope: string; files: EditPendingMedia[]; unconfirmed: boolean } }
+  | { type: 'set-edit-upload-unconfirmed'; payload: boolean }
   | { type: 'set-documentos'; payload: File[] }
   | { type: 'reset' }
 
@@ -60,6 +62,18 @@ function reducer(state: WizardState, action: Action): WizardState {
           videoNomes: action.payload.map((file) => file.name),
         },
       }
+    case 'set-edit-pending-media':
+      return {
+        ...state,
+        form: {
+          ...state.form,
+          editPendingMedia: action.payload.files,
+          editPendingMediaScope: action.payload.scope,
+          editUploadUnconfirmed: action.payload.unconfirmed,
+        },
+      }
+    case 'set-edit-upload-unconfirmed':
+      return { ...state, form: { ...state.form, editUploadUnconfirmed: action.payload } }
     case 'set-documentos':
       return {
         ...state,
@@ -78,6 +92,14 @@ function reducer(state: WizardState, action: Action): WizardState {
 
 export function stepIndexFromId(step: WizardStepId) {
   return Math.max(0, wizardStepIds.indexOf(step))
+}
+
+// Mirrors the backend's default Java regex classes and String.trim() before
+// comparing UTF-16 code units. The submitted text itself is never truncated.
+export function normalizeEditDescription(value: string) {
+  return value.replace(/[\x00-\x1f\x7f]/g, ' ')
+    .replace(/[ \t\n\v\f\r]+/g, ' ')
+    .replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
 }
 
 export function validateWizardStep(
@@ -106,16 +128,19 @@ export function validateWizardStep(
   }
   if (step === 'servicos') {
     const preco = Number(form.preco.replace(/\D/g, '')) / 100
+    const editDescriptionLength = mode === 'edit' ? normalizeEditDescription(form.descricao).length : 0
     if (form.atendimentoExclusivamenteVirtual && !form.servicos.includes('VIDEOCHAMADA')) {
       return 'Atendimento exclusivamente virtual exige o serviço Atendimento Virtual.'
+    }
+    if (mode === 'edit' && (editDescriptionLength < 20 || editDescriptionLength > 500)) {
+      return 'A descrição deve ter entre 20 e 500 caracteres.'
     }
     if (
       !Number.isFinite(preco) ||
       preco <= 0 ||
       (mode === 'create' && !form.horario) ||
       form.locaisAtendimento.length === 0 ||
-      form.servicos.length === 0 ||
-      (mode === 'edit' && form.descricao.trim().length < 20)
+      form.servicos.length === 0
     ) {
       return mode === 'create'
         ? 'Informe preço, horário, local de atendimento e ao menos um serviço.'
@@ -244,6 +269,12 @@ export function useAnuncioWizardStore({ cacheScope, backendFirst = false }: Wiza
   }, [])
   const setFotos = useCallback((payload: File[]) => dispatch({ type: 'set-fotos', payload }), [])
   const setVideos = useCallback((payload: File[]) => dispatch({ type: 'set-videos', payload }), [])
+  const setEditPendingMedia = useCallback((scope: string, files: EditPendingMedia[], unconfirmed = false) => {
+    dispatch({ type: 'set-edit-pending-media', payload: { scope, files, unconfirmed } })
+  }, [])
+  const setEditUploadUnconfirmed = useCallback((value: boolean) => {
+    dispatch({ type: 'set-edit-upload-unconfirmed', payload: value })
+  }, [])
   const setDocumentos = useCallback((payload: File[]) => dispatch({ type: 'set-documentos', payload }), [])
 
   return {
@@ -256,6 +287,8 @@ export function useAnuncioWizardStore({ cacheScope, backendFirst = false }: Wiza
     updateKyc,
     setFotos,
     setVideos,
+    setEditPendingMedia,
+    setEditUploadUnconfirmed,
     setDocumentos,
     setStep,
     nextStep,

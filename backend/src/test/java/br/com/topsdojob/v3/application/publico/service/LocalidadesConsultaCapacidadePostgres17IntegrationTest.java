@@ -97,7 +97,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Real PG17/JPA/pool5; separate signed R2 HTTP transport tests never feed SEO or persisted previews. */
-@DataJpaTest(showSql = false)
+@DataJpaTest(showSql = false, properties = {
+        "logging.level.org.hibernate.stat=OFF",
+        "logging.level.org.hibernate.engine.internal.StatisticalLoggingSessionEventListener=OFF"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ContextConfiguration(classes = TopsDoJobBackendApplication.class,
         initializers = LocalidadesConsultaCapacidadePostgres17IntegrationTest.CapacidadeInitializer.class)
@@ -118,6 +120,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     private static final UUID CITY_GO = UUID.fromString("72000000-0000-4000-8000-000000000001");
     private static final UUID CITY_SP = UUID.fromString("72000000-0000-4000-8000-000000000002");
     private static final LocalS3 REMOTE = LocalS3.start();
+    private static final ListTimeline TIMELINE = new ListTimeline();
     @Autowired private LocalidadePublicaConsultaService service;
     @SpyBean private LocalidadesConsultaCoordenador coordinator;
     @Autowired private HikariDataSource pool;
@@ -398,16 +401,27 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         Inventory fixture = seed(715, 1311);
         List<UUID> files = previewFiles();
         REMOTE.configure(fixture.keys(), 2358, 1250, 800, 800);
-        long started = System.nanoTime();
-        Set<String> response = previewOperation(files);
-        assertThat(response).hasSize(1311);
-        assertThat(response).containsExactlyInAnyOrderElementsOf(fixture.keys());
-        assertThat(verifiedKeys.get()).containsExactlyInAnyOrderElementsOf(fixture.keys());
-        assertThat(milliseconds(started)).isLessThan(3500);
-        assertThat(REMOTE.lists.get()).isEqualTo(3);
-        assertThat(REMOTE.bytes.get()).isGreaterThanOrEqualTo(690_000);
-        assertThat(REMOTE.heads.get()).isZero();
-        assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
+        TIMELINE.begin("three_pages_1311");
+        Throwable failure = null;
+        try {
+            long started = System.nanoTime();
+            Set<String> response;
+            try { response = previewOperation(files); }
+            finally { TIMELINE.operationDone(); }
+            assertThat(response).hasSize(1311);
+            assertThat(response).containsExactlyInAnyOrderElementsOf(fixture.keys());
+            assertThat(verifiedKeys.get()).containsExactlyInAnyOrderElementsOf(fixture.keys());
+            assertThat(milliseconds(started)).isLessThan(3500);
+            assertThat(REMOTE.lists.get()).isEqualTo(3);
+            assertThat(REMOTE.bytes.get()).isGreaterThanOrEqualTo(690_000);
+            assertThat(REMOTE.heads.get()).isZero();
+            assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
+        } catch (RuntimeException | Error error) {
+            failure = error;
+            throw error;
+        } finally {
+            TIMELINE.report(failure);
+        }
     }
 
     @Test
@@ -945,11 +959,129 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         }
         @Bean R2VerificacaoAgrupadaPreviews realGroupedVerifier(R2StorageProperties properties) {
             // Same production constructor; locality discovery must not enter its remote path.
-            return spy(new R2VerificacaoAgrupadaPreviews(properties));
+            return spy(new R2VerificacaoAgrupadaPreviews(properties, null, TIMELINE));
         }
         @Bean MidiaRestritaDerivacaoService derivation(ObjectProvider<ObjectStorage> storage,
                 R2StorageProperties properties, FotoUploadProcessor processor, ArquivoMidiaRepository repository) {
             return new MidiaRestritaDerivacaoService(storage, properties, processor, repository);
+        }
+    }
+
+    /** One buffered timeline for the three-page, loopback-only capacity scenario. */
+    private static final class ListTimeline implements R2VerificacaoAgrupadaPreviews.ListDiagnostic {
+        private final AtomicReference<Run> current = new AtomicReference<>();
+
+        void begin(String scenario) {
+            assertThat(current.compareAndSet(null, new Run(scenario))).isTrue();
+        }
+        @Override public boolean enabled() { return current.get() != null; }
+        @Override public void mark(String operationId, int page, String phase, long nanoTime, int value) {
+            Run run = current.get();
+            if (run != null) run.mark(operationId, page, phase, nanoTime, value);
+        }
+        void server(int page, String phase, int value) {
+            Run run = current.get();
+            if (run != null) run.mark(null, page, phase, System.nanoTime(), value);
+        }
+        void serverAt(int page, String phase, long nanoTime, int value) {
+            Run run = current.get();
+            if (run != null) run.mark(null, page, phase, nanoTime, value);
+        }
+        void operationDone() {
+            Run run = current.get();
+            if (run != null) run.done();
+        }
+        void report(Throwable failure) {
+            Run run = current.getAndSet(null);
+            if (run == null) return;
+            try { System.out.println(run.line(failure)); }
+            catch (RuntimeException | Error diagnosticFailure) {
+                // Diagnostic formatting must never replace the functional test failure.
+                System.out.println("CAPACITY_R2_TIMELINE result=DIAGNOSTIC_ERROR");
+            }
+        }
+
+        private static final class Run {
+            private final String scenario;
+            private final long[] gcBefore = gcTotals();
+            private final long started = System.nanoTime();
+            private long[] gcAfter;
+            private String operationId = "none";
+            private int maxPage;
+            private final Map<String, Long> times = new HashMap<>();
+            private final Map<String, Integer> values = new HashMap<>();
+
+            private Run(String scenario) { this.scenario = scenario; }
+            private synchronized void mark(String id, int page, String phase, long at, int value) {
+                if (id != null) operationId = id;
+                maxPage = Math.max(maxPage, page);
+                String key = page + "." + phase;
+                times.putIfAbsent(key, at);
+                values.put(key, value);
+            }
+            private void done() {
+                mark(null, 0, "operation_done", System.nanoTime(), 0);
+                gcAfter = gcTotals();
+            }
+            private synchronized String line(Throwable failure) {
+                StringBuilder out = new StringBuilder("CAPACITY_R2_TIMELINE scenario=").append(scenario)
+                        .append(" result=").append(failure == null ? "PASS" : failure.getClass().getSimpleName())
+                        .append(" operation=").append(operationId)
+                        .append(" setupMs=").append(offset(0, "list_start"))
+                        .append(" requested=").append(value(0, "list_start"))
+                        .append(" elapsedMs=").append(offset(0, "operation_done"));
+                long[] after = gcAfter == null ? gcTotals() : gcAfter;
+                out.append(" gcCount=").append(after[0] - gcBefore[0])
+                        .append(" gcTimeMs=").append(after[1] - gcBefore[1]);
+                for (int page = 1; page <= Math.max(3, maxPage); page++) {
+                    out.append(" p").append(page).append("[at=").append(offset(page, "page_start"))
+                            .append(",prep=").append(delta(page, "page_start", "send_start"))
+                            .append(",dispatch=").append(delta(page, "send_start", "server_enter"))
+                            .append(",serverPrep=").append(delta(page, "server_enter", "sleep_start"))
+                            .append(",sleep=").append(delta(page, "sleep_start", "sleep_done"))
+                            .append(",xml=").append(delta(page, "xml_start", "xml_done"))
+                            .append(",write=").append(delta(page, "xml_done", "write_done"))
+                            .append(",httpWait=").append(delta(page, "send_start", "headers"))
+                            .append(",firstByte=").append(delta(page, "headers", "body_first"))
+                            .append(",transfer=").append(delta(page, "body_first", "body_received"))
+                            .append(",materialize=").append(delta(page, "body_received", "future_done"))
+                            .append(",postHttp=").append(delta(page, "future_done", "parse_start"))
+                            .append(",parse=").append(delta(page, "parse_start", "parse_done"))
+                            .append(",match=").append(delta(page, "match_start", "match_done"))
+                            .append(",next=").append(page < maxPage ? between(page, "match_done", page + 1, "send_start") : "-")
+                            .append(",bytes=").append(value(page, "parse_start"))
+                            .append(",keys=").append(value(page, "parse_done"))
+                            .append(",found=").append(value(page, "match_done")).append(']');
+                }
+                return out.toString();
+            }
+            private String value(int page, String phase) {
+                Integer value = values.get(page + "." + phase);
+                return value == null ? "-" : value.toString();
+            }
+            private String offset(int page, String phase) {
+                Long at = times.get(page + "." + phase);
+                return at == null ? "-" : ms(at - started);
+            }
+            private String delta(int page, String from, String to) {
+                return between(page, from, page, to);
+            }
+            private String between(int fromPage, String from, int toPage, String to) {
+                Long start = times.get(fromPage + "." + from);
+                Long end = times.get(toPage + "." + to);
+                return start == null || end == null ? "-" : ms(end - start);
+            }
+            private static String ms(long nanos) {
+                return String.format(Locale.ROOT, "%.3f", nanos / 1_000_000d);
+            }
+            private static long[] gcTotals() {
+                long count = 0, time = 0;
+                for (var collector : ManagementFactory.getGarbageCollectorMXBeans()) {
+                    count += Math.max(0, collector.getCollectionCount());
+                    time += Math.max(0, collector.getCollectionTime());
+                }
+                return new long[]{count, time};
+            }
         }
     }
 
@@ -986,6 +1118,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             entered = new CountDownLatch(1); release = new CountDownLatch(1);
         }
         private void handle(HttpExchange exchange) throws IOException {
+            long enteredAt = TIMELINE.enabled() ? System.nanoTime() : 0L;
             maxActive.accumulateAndGet(active.incrementAndGet(), Math::max);
             try {
                 assertThat(exchange.getRequestHeaders().getFirst("Authorization")).startsWith("AWS4-HMAC-SHA256 ");
@@ -1007,15 +1140,22 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                 assertThat(query).containsEntry("list-type", "2").containsEntry("prefix", PREFIX).containsEntry("max-keys", "1000");
                 String continuationCursor = query.get("continuation-token");
                 int page = continuationCursor == null ? 1 : Integer.parseInt(continuationCursor.substring("synthetic-page-".length()));
+                if (enteredAt != 0L) TIMELINE.serverAt(page, "server_enter", enteredAt, 0);
                 lists.incrementAndGet(); samplePool();
                 if (page == gatePage) { entered.countDown(); assertThat(release.await(5, TimeUnit.SECONDS)).isTrue(); }
+                TIMELINE.server(page, "sleep_start", 0);
                 Thread.sleep(pageDelays[Math.min(page - 1, pageDelays.length - 1)]); samplePool();
+                TIMELINE.server(page, "sleep_done", 0);
                 int responseStatus = fault.matches("[45][0-9][0-9]") ? Integer.parseInt(fault) : 200;
+                TIMELINE.server(page, "xml_start", 0);
                 byte[] response = xml(page).getBytes(StandardCharsets.UTF_8);
+                TIMELINE.server(page, "xml_done", response.length);
                 bytes.addAndGet(response.length);
                 exchange.getResponseHeaders().set("Content-Type", "application/xml");
                 exchange.sendResponseHeaders(responseStatus, response.length);
+                TIMELINE.server(page, "headers_sent", responseStatus);
                 try { exchange.getResponseBody().write(response); } catch (IOException cancelledClient) { /* Expected on explicit deadline/cancellation. */ }
+                TIMELINE.server(page, "write_done", response.length);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             } catch (Throwable error) {

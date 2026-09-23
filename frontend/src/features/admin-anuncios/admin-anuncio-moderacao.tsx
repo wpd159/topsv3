@@ -39,6 +39,7 @@ import { getAdminUser } from '@/features/admin-usuarios/api'
 import { cpfDigits, isValidCpf, maskCpf } from '@/lib/cpf-mask'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import { ApiContractError, normalizeApiError } from '@/lib/api-contract'
+import { buildPublicPath, buildPublicUrl } from '@/lib/seo/public-url'
 import {
   anuncioEstaPublicamenteIndexavel,
   enviarIndexNowNoCliente,
@@ -1278,7 +1279,21 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-semibold text-pink-700 hover:text-pink-800"><ArrowLeft className="h-4 w-4" />Voltar para a fila</Link>
         <div className="mt-3 flex flex-col gap-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-950">{ad.titulo}</h1><p className="mt-1 break-all text-xs text-zinc-500">{ad.slug}</p></div>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-zinc-950">
+                <a
+                  href={buildPublicUrl(buildPublicPath('anuncios', ad.slug))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${ad.titulo} (abre em nova aba)`}
+                  className="inline-flex items-baseline gap-1.5 break-words hover:text-pink-700 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600"
+                >
+                  {ad.titulo}
+                  <ExternalLink aria-hidden="true" className="h-4 w-4 shrink-0 opacity-55" />
+                </a>
+              </h1>
+              <p className="mt-1 break-all text-xs text-zinc-500">{ad.slug}</p>
+            </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Badge variant="outline" className={moderationTone(ad.status)}>{formatEnum(ad.status)}</Badge>
               {ad.status !== ad.statusModeracao

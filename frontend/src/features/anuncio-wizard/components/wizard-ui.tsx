@@ -8,9 +8,9 @@ export function StepPanel({ children }: { children: React.ReactNode }) {
   return <div className="space-y-5">{children}</div>
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children, invalid = false }: { label: string; children: React.ReactNode; invalid?: boolean }) {
   return (
-    <div className="space-y-2">
+    <div className={cn('space-y-2', invalid && 'rounded-xl ring-2 ring-red-600 ring-offset-2')}>
       <Label className="text-sm font-semibold text-zinc-800">{label}</Label>
       {children}
     </div>
@@ -22,14 +22,16 @@ export function ChoiceGroup({
   items,
   selected,
   onToggle,
+  invalid = false,
 }: {
   title: string
   items: Array<{ value: string; label: string }>
   selected: string[]
   onToggle: (value: string) => void
+  invalid?: boolean
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn('space-y-2', invalid && 'rounded-xl ring-2 ring-red-600 ring-offset-2')}>
       <Label className="text-sm font-semibold text-zinc-800">{title}</Label>
       <div className="flex flex-wrap gap-2">
         {items.map((item) => {
@@ -95,6 +97,7 @@ export function AutoResizeTextarea({
   minRows = 4,
   maxRows = 8,
   maxLength,
+  invalid = false,
 }: {
   value: string
   onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void
@@ -102,6 +105,7 @@ export function AutoResizeTextarea({
   minRows?: number
   maxRows?: number
   maxLength?: number
+  invalid?: boolean
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null)
 
@@ -132,7 +136,8 @@ export function AutoResizeTextarea({
       rows={minRows}
       placeholder={placeholder}
       maxLength={maxLength}
-      className="min-h-[120px] w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50/60 px-4 py-3 text-base leading-6 text-zinc-900 shadow-none outline-none transition-[border-color,background-color,box-shadow] placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white focus:ring-2 focus:ring-zinc-900/10 sm:text-sm"
+      aria-invalid={invalid}
+      className={cn('min-h-[120px] w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50/60 px-4 py-3 text-base leading-6 text-zinc-900 shadow-none outline-none transition-[border-color,background-color,box-shadow] placeholder:text-zinc-400 focus:border-zinc-900 focus:bg-white focus:ring-2 focus:ring-zinc-900/10 sm:text-sm', invalid && 'border-red-600')}
     />
   )
 }

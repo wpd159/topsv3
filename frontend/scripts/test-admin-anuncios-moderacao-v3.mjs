@@ -674,6 +674,9 @@ const element = (type, props) => ({ type, props: props ?? {} })
 const jsxRuntime = { jsx: element, jsxs: element, Fragment: 'Fragment' }
 const icons = new Proxy({}, { get: (_, key) => String(key) })
 const contractRuntime = runtimeModule('lib/api-contract.ts')
+const publicUrlRuntime = runtimeModule('lib/seo/public-url.ts', {
+  '@/lib/seo/search-indexing-policy': { FINAL_PRODUCTION_ORIGIN: 'https://topsdojob.com' },
+})
 const feedbackRuntime = runtimeModule('components/feedback/contract-state.tsx', {
   react: {}, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
   '@/components/ui/button': { Button: 'Button' }, '@/lib/api-contract': contractRuntime,
@@ -730,6 +733,7 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
     'next/navigation': { useRouter: () => Object.fromEntries(['push', 'replace', 'refresh'].map((method) => [method, (...args) => effects.push([method, ...args])])) },
     '@/lib/admin-auth-api': { getAdminSession: async () => session },
     '@/lib/api-contract': contractRuntime,
+    '@/lib/seo/public-url': publicUrlRuntime,
     '@/components/feedback/contract-state': feedbackRuntime,
     '@/components/forms/masked-phone-input': { MaskedPhoneInput: 'MaskedPhoneInput' },
     '@/lib/phone-mask': { maskPhoneBR: (value) => value, phoneToE164BR: (value) => value || null },
@@ -764,6 +768,15 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
 for (const ad of [removedAd, syntheticAd]) {
   const detailCase = await mountAdministrativeComponent({ mode: 'detail', reads: [ad] })
   const tree = detailCase.runner.tree
+  const publicHref = publicUrlRuntime.buildPublicUrl(publicUrlRuntime.buildPublicPath('anuncios', ad.slug))
+  const titleHeading = controls(tree, (node) => node.type === 'h1' && visibleText(node).includes(ad.titulo))
+  const publicTitleLinks = controls(titleHeading, (node) => node.type === 'a' && node.props.href === publicHref)
+  assert.equal(titleHeading.length, 1, 'O título deve permanecer como heading do detalhe.')
+  assert.equal(publicTitleLinks.length, 1, 'O título deve usar o slug real na rota pública existente.')
+  assert.equal(publicTitleLinks[0].props.target, '_blank')
+  assert.equal(publicTitleLinks[0].props.rel, 'noopener noreferrer')
+  assert.equal(publicTitleLinks[0].props['aria-label'], `${ad.titulo} (abre em nova aba)`)
+  assert.match(publicTitleLinks[0].props.className, /focus-visible:outline/)
   assert.equal(controls(tree, (node) => node.type === 'Link' && node.props.href === '/admin/anuncios/synthetic-ad/editar').length, ad.status === 'REMOVIDO' ? 0 : 1)
   if (ad.status === 'REMOVIDO') assert.match(visibleText(tree), /Anúncio removido/)
   assert.ok(visibleText(tree).includes(ad.titulo), 'O detalhe deve preservar os dados para consulta.')
@@ -772,6 +785,14 @@ for (const ad of [removedAd, syntheticAd]) {
   assert.deepEqual(detailCase.effects, [])
   detailCase.finish()
 }
+
+const encodedSlug = 'perfil-área'
+const encodedDetail = await mountAdministrativeComponent({ mode: 'detail', reads: [{ ...syntheticAd, slug: encodedSlug }] })
+const encodedPublicHref = publicUrlRuntime.buildPublicUrl(publicUrlRuntime.buildPublicPath('anuncios', encodedSlug))
+assert.equal(controls(encodedDetail.runner.tree, (node) => node.type === 'a' && node.props.href === encodedPublicHref).length, 1)
+assert.match(encodedPublicHref, /perfil-%C3%A1rea$/)
+assert.deepEqual(encodedDetail.effects, [], 'Abrir o destino público não deve navegar a aba administrativa por código.')
+encodedDetail.finish()
 
 const directRemoved = await mountAdministrativeComponent({ reads: [removedAd] })
 assert.ok(visibleText(directRemoved.runner.tree).includes(removedMessage))

@@ -528,11 +528,13 @@ assert.ok(createUpload.indexOf('await enviarMinhasMidiasEmLote') < createUpload.
 const createFailure = createUpload.slice(createUpload.indexOf('} catch (error)'), createUpload.indexOf('\n      }', createUpload.indexOf('} catch (error)')))
 assert.doesNotMatch(createFailure, /setFotos\(\[\]\)|setVideos\(\[\]\)/)
 assert.match(wizardPhotos, /meusAnunciosErrorMessage\(error, 'Falha ao enviar os arquivos\.'\)/)
-assert.match(wizardPhotos, /const \[pendingPersistedFiles, setPendingPersistedFiles\] = useState<File\[]>\(\[\]\)/)
+assert.match(wizardPhotos, /const pendingEntries = controlledPendingFiles \?\? uncontrolledPendingFiles/)
+assert.match(wizardPhotos, /onPendingFilesChange\(files\)/,
+  'A seleção da edição deve subir ao formulário para sobreviver às etapas.')
 assert.ok(persistedUpload.indexOf('await enviarMinhasMidiasEmLote') < persistedUpload.indexOf('updatePendingFiles([])'), 'Edicao deve limpar a selecao apenas depois do 2xx.')
 const persistedFailure = persistedUpload.slice(persistedUpload.indexOf('} catch (error)'), persistedUpload.indexOf('} finally'))
-assert.doesNotMatch(persistedFailure, /setPendingPersistedFiles\(\[\]\)|updatePendingFiles\(\[\]\)/)
-assert.match(wizardPhotos, /onClick=\{\(\) => void uploadPersisted\(pendingPersistedFiles\)\}/)
+assert.doesNotMatch(persistedFailure, /setUncontrolledPendingFiles\(\[\]\)|updatePendingFiles\(\[\]\)/)
+assert.match(wizardPhotos, /onClick=\{\(\) => void uploadPersisted\(pendingEntries\)\}/)
 assert.match(normalized(wizardPhotos), /Tentar enviar novamente/)
 
 console.log('PAINEL_ANUNCIANTE_FASE_1B_RESULT=OK')

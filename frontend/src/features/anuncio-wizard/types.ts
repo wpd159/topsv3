@@ -2,6 +2,8 @@ export const wizardStepIds = ['perfil', 'localizacao', 'servicos', 'fotos', 'rev
 
 export type WizardStepId = (typeof wizardStepIds)[number]
 
+export type EditPendingMedia = { file: File; kind: 'photo' | 'video' }
+
 export type WizardFormState = {
   titulo: string
   categoria: string
@@ -25,6 +27,9 @@ export type WizardFormState = {
   fotoNomes: string[]
   videos: File[]
   videoNomes: string[]
+  editPendingMedia: EditPendingMedia[]
+  editPendingMediaScope: string | null
+  editUploadUnconfirmed: boolean
   premiumChoice: 'gratis' | 'destaque'
 }
 
@@ -66,6 +71,9 @@ export const initialWizardFormState: WizardFormState = {
   fotoNomes: [],
   videos: [],
   videoNomes: [],
+  editPendingMedia: [],
+  editPendingMediaScope: null,
+  editUploadUnconfirmed: false,
   premiumChoice: 'gratis',
 }
 

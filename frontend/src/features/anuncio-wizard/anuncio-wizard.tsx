@@ -76,15 +76,61 @@ type AnuncioWizardProps = {
   slug?: string
 }
 
-function editErrorMessage(error: unknown) {
-  if (!(error instanceof MeusAnunciosApiError)) {
-    return error instanceof Error ? error.message : 'Não foi possível carregar o anúncio.'
-  }
+type EditFieldError = { field: string; message: string; step: WizardStepId }
+
+const editFieldRules: Record<string, { step: WizardStepId; rules: Record<string, string> }> = {
+  titulo: { step: 'perfil', rules: {
+    TAMANHO_INVALIDO: 'O nome do anúncio deve ter entre 10 e 80 caracteres.',
+    CONTEUDO_NAO_PERMITIDO: 'Revise o nome do anúncio e remova o conteúdo não permitido.',
+    CONTATO_NAO_PERMITIDO: 'Remova dados de contato do nome do anúncio.',
+  } },
+  categoria: { step: 'perfil', rules: { CATEGORIA_INVALIDA: 'Escolha uma categoria válida.' } },
+  descricao: { step: 'servicos', rules: { TAMANHO_INVALIDO: 'A descrição deve ter entre 20 e 500 caracteres.' } },
+  preco: { step: 'servicos', rules: { PRECO_INVALIDO: 'Informe um preço válido.' } },
+  locaisAtendimento: { step: 'servicos', rules: { VALOR_INVALIDO: 'Revise os locais de atendimento selecionados.' } },
+  servicos: { step: 'servicos', rules: { VALOR_INVALIDO: 'Revise os serviços selecionados.' } },
+  atendimentoExclusivamenteVirtual: { step: 'servicos', rules: { EXCLUSIVIDADE_VIRTUAL_INVALIDA: 'Atendimento exclusivamente virtual exige Atendimento Virtual.' } },
+  linkConteudo: { step: 'servicos', rules: {
+    TAMANHO_INVALIDO: 'O link para conteúdo é muito longo.', URL_INVALIDA: 'Informe um link válido para seu conteúdo.',
+  } },
+  uf: { step: 'localizacao', rules: {
+    TAMANHO_INVALIDO: 'Revise o estado selecionado.', UF_INVALIDA: 'Escolha um estado válido.',
+    LOCALIDADE_NAO_ENCONTRADA: 'O estado selecionado não foi encontrado.',
+  } },
+  cidade: { step: 'localizacao', rules: {
+    TAMANHO_INVALIDO: 'Revise a cidade selecionada.', LOCALIDADE_NAO_ENCONTRADA: 'A cidade selecionada não foi encontrada.',
+  } },
+  bairro: { step: 'localizacao', rules: {
+    TAMANHO_INVALIDO: 'Revise o bairro selecionado.', LOCALIDADE_NAO_ENCONTRADA: 'O bairro selecionado não foi encontrado.',
+  } },
+  enderecoResumido: { step: 'localizacao', rules: {
+    TAMANHO_INVALIDO: 'O ponto de referência é muito longo.',
+    CONTEUDO_NAO_PERMITIDO: 'Revise o ponto de referência e remova o conteúdo não permitido.',
+  } },
+}
+
+function editValidationError(error: unknown): EditFieldError | null {
+  if (!(error instanceof MeusAnunciosApiError) || error.status !== 400 || error.code !== 'BAD_REQUEST') return null
+  const entry = error.field ? editFieldRules[error.field] : null
+  const message = error.ruleCode && entry?.rules[error.ruleCode]
+  return entry && message ? { field: error.field!, message, step: entry.step } : null
+}
+
+function safeRequestId(error: MeusAnunciosApiError) {
+  return error.requestId && /^[A-Za-z0-9._:-]{1,80}$/.test(error.requestId)
+    ? ` · Request ID: ${error.requestId}` : ''
+}
+
+function editErrorMessage(error: unknown, action: 'load' | 'save' = 'save') {
+  const fallback = action === 'load'
+    ? 'Não foi possível carregar o anúncio.'
+    : 'Não foi possível salvar as alterações. Revise os dados e tente novamente.'
+  if (!(error instanceof MeusAnunciosApiError)) return fallback
   if (error.status === 401) return 'Sua sessão expirou. Entre novamente para continuar.'
   if (error.status === 403) return 'Você não tem permissão para editar este anúncio.'
   if (error.status === 404) return 'Anúncio não encontrado.'
   if (error.status === 409) return 'Este anúncio está em análise e não pode ser alterado agora.'
-  return error.message
+  return `${editValidationError(error)?.message ?? fallback}${safeRequestId(error)}`
 }
 
 function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
@@ -144,6 +190,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     updateKyc,
     setFotos,
     setVideos,
+    setEditPendingMedia,
+    setEditUploadUnconfirmed,
     setDocumentos,
     setStep,
     nextStep,
@@ -154,6 +202,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   } = store
 
   const state = wizardState.form
+  const editPendingMedia = isEdit && state.editPendingMediaScope === progressScope
+    ? state.editPendingMedia : []
+  const editUploadUnconfirmed = isEdit && state.editPendingMediaScope === progressScope
+    && state.editUploadUnconfirmed
   const kyc = wizardState.kyc
   const currentStep = wizardSteps[currentIndex]
   const [publishing, setPublishing] = useState(false)
@@ -180,6 +232,17 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [previewHintDismissed, setPreviewHintDismissed] = useState(false)
   const [createMediaProgress, setCreateMediaProgress] = useState<Record<string, number>>({})
   const [createMediaErrors, setCreateMediaErrors] = useState<Record<string, string>>({})
+  const [pendingSaveNotice, setPendingSaveNotice] = useState(false)
+  const [editFieldError, setEditFieldError] = useState<EditFieldError | null>(null)
+  const editFieldErrorRef = useRef<HTMLParagraphElement | null>(null)
+
+  useEffect(() => { setEditFieldError(null); setPendingSaveNotice(false) }, [progressScope])
+  useEffect(() => { setEditFieldError(null) }, [state.titulo, state.categoria, state.descricao,
+    state.preco, state.estadoUf, state.cidadeNome, state.bairroNome, state.pontoReferenciaTexto,
+    state.locaisAtendimento, state.servicos, state.atendimentoExclusivamenteVirtual, state.linkConteudo])
+  useEffect(() => {
+    if (editFieldError?.step === currentStep.id) editFieldErrorRef.current?.focus()
+  }, [currentStep.id, editFieldError])
   const [serverRejectedPhotos, setServerRejectedPhotos] = useState<File[]>([])
   const [photoValidation, setPhotoValidation] = useState<{
     files: File[]
@@ -423,7 +486,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
         }, editDraftSourceVersion(anuncio))
       })
       .catch((error) => {
-        if (mountedRef.current && generation === editLoadGenerationRef.current) setEditError(editErrorMessage(error))
+        if (mountedRef.current && generation === editLoadGenerationRef.current) setEditError(editErrorMessage(error, 'load'))
       })
       .finally(() => {
         if (mountedRef.current && generation === editLoadGenerationRef.current) setEditLoading(false)
@@ -695,6 +758,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       return
     }
 
+    if (editPendingMedia.length) {
+      setPendingSaveNotice(true)
+      setStep('fotos')
+      return
+    }
     const atualizado = await atualizarMeuAnuncio(slug, editPayload(state))
     if (!flowIsCurrent(generation)) return
     if (atualizado.status === 'REMOVIDO') {
@@ -845,6 +913,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       else await submitAnuncio()
     } catch (err: any) {
       if (!flowIsCurrent(generation)) return
+      const validation = isEdit ? editValidationError(err) : null
+      if (validation) {
+        setEditFieldError({ ...validation, message: `${validation.message}${safeRequestId(err)}` })
+        setStep(validation.step)
+        return
+      }
       const message = isEdit
         ? editErrorMessage(err)
         : err?.message || 'Não foi possível concluir a publicação agora.'
@@ -860,6 +934,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
 
   const requestPublish = () => {
     if (publishing || publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current || (isEdit && !editMedia)) return
+    if (isEdit && editPendingMedia.length) {
+      setPendingSaveNotice(true)
+      setStep('fotos')
+      return
+    }
     if (photoSelectionBlocked) {
       setStep('fotos')
       toast.warning(photoSelectionMessage)
@@ -900,9 +979,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           categoriasLoading={categoryLoading}
           categoriasError={categoryError}
           showProfileDescription={!isEdit}
+          invalidField={editFieldError?.step === 'perfil' ? editFieldError.field : null}
           onTituloChange={(value) => updateForm({ titulo: value })}
           onCategoriaChange={(value) => updateForm({ categoria: value })}
-          onDescricaoChange={(value) => updateForm({ descricaoPerfil: value.slice(0, 500) })}
+          onDescricaoChange={(value) => updateForm({ descricaoPerfil: value })}
           onReloadCategorias={() => void loadCategoryCatalog()}
         />
       )
@@ -930,12 +1010,14 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           onBairro={handleBairro}
           onReferencia={(value) => updateForm({ pontoReferenciaTexto: value })}
           showReference
+          invalidField={editFieldError?.step === 'localizacao' ? editFieldError.field : null}
         />
       )
     }
 
     if (currentStep.id === 'servicos') {
-      return <WizardStepServicos state={state} mode={mode} onToggle={toggle} onPatch={updateForm} />
+      return <WizardStepServicos state={state} mode={mode} onToggle={toggle} onPatch={updateForm}
+        invalidField={editFieldError?.step === 'servicos' ? editFieldError.field : null} />
     }
 
     if (currentStep.id === 'fotos') {
@@ -956,6 +1038,18 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           createProgress={createMediaProgress}
           createErrors={createMediaErrors}
           persistedState={isEdit ? editMedia : undefined}
+          pendingFiles={editPendingMedia}
+          onPendingFilesChange={(files) => {
+            if (progressScopeRef.current !== progressScope) return
+            setEditPendingMedia(progressScope, files)
+            if (!files.length) setPendingSaveNotice(false)
+          }}
+          uploadUnconfirmed={editUploadUnconfirmed}
+          onUploadUnconfirmedChange={(value) => {
+            if (progressScopeRef.current === progressScope) setEditUploadUnconfirmed(value)
+          }}
+          pendingSaveNotice={pendingSaveNotice}
+          accountScope={progressScope}
           onPersistedChange={acceptMediaResponse}
           onInteractionStart={beginMediaInteraction}
           onInteractionEnd={endMediaInteraction}
@@ -1156,6 +1250,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
               </p>
             </div>
 
+            {editFieldError?.step === currentStep.id ? (
+              <p ref={editFieldErrorRef} role="alert" tabIndex={-1}
+                className="mb-5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700">
+                {editFieldError.message}
+              </p>
+            ) : null}
             {renderCurrentStep()}
 
             <div className="mt-8 flex items-center justify-between gap-3">

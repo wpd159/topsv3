@@ -5,6 +5,9 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator.DadosAtualizacao;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Campo;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Regra;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -94,13 +97,14 @@ public class MeuAnuncioAtualizacaoService {
         }
 
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(validado.uf())
-                .orElseThrow(() -> badRequest("uf nao encontrada"));
+                .orElseThrow(() -> badRequest(Campo.UF, "uf nao encontrada"));
         CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), validator.slugify(validado.cidade()))
-                .orElseThrow(() -> badRequest("cidade nao encontrada para a uf informada"));
+                .orElseThrow(() -> badRequest(Campo.CIDADE, "cidade nao encontrada para a uf informada"));
         BairroEntity bairro = validado.bairro() == null
                 ? null
                 : bairroRepository.findByCidadeIdAndSlug(cidade.getId(), validator.slugify(validado.bairro()))
-                        .orElseThrow(() -> badRequest("bairro nao encontrado para a cidade informada"));
+                        .orElseThrow(() -> badRequest(Campo.BAIRRO,
+                                "bairro nao encontrado para a cidade informada"));
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         anuncio.atualizarPeloProprietario(
@@ -198,8 +202,8 @@ public class MeuAnuncioAtualizacaoService {
         }
     }
 
-    private ResponseStatusException badRequest(String message) {
-        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    private AnuncioAtualizacaoValidationException badRequest(Campo campo, String message) {
+        return new AnuncioAtualizacaoValidationException(campo, Regra.LOCALIDADE_NAO_ENCONTRADA, message);
     }
 
 }
