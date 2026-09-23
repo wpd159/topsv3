@@ -27,6 +27,7 @@ import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
+  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
@@ -338,8 +339,8 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
         />
       )}
 
-      {page > 0 && <link rel="prev" href={buildPublicUrl(cidadePath, page - 1)} />}
-      {page < data.paginacao.totalPaginas - 1 && <link rel="next" href={buildPublicUrl(cidadePath, page + 1)} />}
+      {page > 0 && <link rel="prev" href={new URL(buildPublicPageHref(cidadePath, page - 1, data.paginacao.ordemSeed, query), baseUrl).toString()} />}
+      {page < data.paginacao.totalPaginas - 1 && <link rel="next" href={new URL(buildPublicPageHref(cidadePath, page + 1, data.paginacao.ordemSeed, query), baseUrl).toString()} />}
     </main>
   )
 }
