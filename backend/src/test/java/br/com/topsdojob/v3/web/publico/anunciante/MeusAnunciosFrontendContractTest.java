@@ -175,14 +175,15 @@ class MeusAnunciosFrontendContractTest {
                 "features", "anuncio-wizard", "components", "wizard-step-fotos.tsx")));
         String uploadPersistido = recorte(
                 fotos,
-                "const uploadPersisted = async (files: File[]) => {",
+                "const uploadPersisted = async (entries: EditPendingMedia[]) => {",
                 "const pendingPersistedPhotos");
-        String atualizarSelecao = recorte(fotos, "function updatePendingFiles(files: File[]) {",
+        String atualizarSelecao = recorte(fotos, "function updatePendingFiles(files: EditPendingMedia[]) {",
                 "function selectPersistedFiles(");
         String selecionarERemover = recorte(fotos, "function selectPersistedFiles(", "const move = async");
         String validarSelecao = recorte(fotos, "useEffect(() => {", "const refresh = useCallback");
         String aceitarResposta = recorte(fotos, "function acceptResponse(", "function handleUnconfirmedState(");
-        String assinaturaLote = recorte(adapter, "function mediaBatchSignature(files: File[]) {",
+        String assinaturaLote = recorte(adapter,
+                "function mediaBatchSignature(files: File[], slug: string, accountScope: string) {",
                 "export async function enviarMinhasMidiasEmLote(");
         String wizard = Files.readString(FRONTEND.resolve(Path.of(
                 "features", "anuncio-wizard", "anuncio-wizard.tsx")));
@@ -216,6 +217,7 @@ class MeusAnunciosFrontendContractTest {
                 .contains("await validateMediaUploadPhotos(arquivos)")
                 .contains("parseErrorEnvelope(xhr.responseText)")
                 .contains("const unsupportedPhotoUpload = containsOnlyPhotoUploads(arquivos)")
+                .contains("const signature = mediaBatchSignature(arquivos, slug, accountScope)")
                 .contains("mediaBatchIdempotencyKeys.set(signature, idempotencyKey)")
                 .contains("mediaBatchIdempotencyKeys.delete(signature)")
                 .contains("arquivos.forEach((arquivo) => form.append('arquivos', arquivo))")
@@ -227,6 +229,7 @@ class MeusAnunciosFrontendContractTest {
         apareceAntes(lote, "const result = mapMinhasMidias(body, slug)", "mediaBatchIdempotencyKeys.delete(signature)");
         assertThat(adapter).contains("const mediaBatchFileIds = new WeakMap<File, string>()");
         assertThat(assinaturaLote)
+                .contains("return [accountScope, slug, ...files")
                 .contains("mediaBatchFileIds.get(file)")
                 .contains("identity = crypto.randomUUID()")
                 .contains("mediaBatchFileIds.set(file, identity)")
@@ -235,18 +238,21 @@ class MeusAnunciosFrontendContractTest {
                 .doesNotContain("file.name", "file.size", "file.lastModified", "file.type");
 
         assertThat(uploadPersistido)
+                .contains("const files = entries.map((entry) => entry.file)")
                 .contains("!validationReady || invalidSelection")
-                .contains("files !== pendingFilesRef.current || (errors.lote && !retryable)")
+                .contains("entries !== pendingFilesRef.current || (errors.lote && !retryable)")
                 .contains("const version = selectionVersionRef.current")
-                .contains("const results = await Promise.all(files.map((file) => validateSelectedMedia(file, photoFilesRef.current.has(file))))")
-                .contains("if (version !== selectionVersionRef.current || files !== pendingFilesRef.current || results.some((result) => !result.valid)) return")
+                .contains("const results = await Promise.all(entries.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo')))")
+                .contains("if (version !== selectionVersionRef.current || entries !== pendingFilesRef.current || results.some((result) => !result.valid)) return")
                 .contains("updatePendingFiles([])")
                 .contains("meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.')");
         apareceAntes(uploadPersistido, "const results = await Promise.all", "if (version !== selectionVersionRef.current");
         apareceAntes(uploadPersistido, "if (version !== selectionVersionRef.current", "await enviarMinhasMidiasEmLote(");
         apareceAntes(uploadPersistido, "await enviarMinhasMidiasEmLote(", "acceptResponse(latest, generation)");
         apareceAntes(uploadPersistido, "acceptResponse(latest, generation)", "updatePendingFiles([])");
-        assertThat(uploadPersistido).contains("if (acceptResponse(latest, generation)) updatePendingFiles([])");
+        assertThat(uploadPersistido)
+                .contains("if (version === selectionVersionRef.current && entries === pendingFilesRef.current")
+                .contains("&& acceptResponse(latest, generation)) updatePendingFiles([])");
         assertThat(aceitarResposta)
                 .contains("if (!mountedRef.current || generation !== operationGenerationRef.current || terminalRef.current) return false")
                 .contains("response.anuncio.slug !== slug")
@@ -265,26 +271,32 @@ class MeusAnunciosFrontendContractTest {
         assertThat(atualizarSelecao)
                 .contains("selectionVersionRef.current += 1")
                 .contains("pendingFilesRef.current = files")
-                .contains("setPendingPersistedFiles(files)")
+                .contains("if (onPendingFilesChange) onPendingFilesChange(files)")
+                .contains("else setUncontrolledPendingFiles(files)")
                 .contains("setErrors({})")
                 .contains("setProgress({})")
                 .contains("setRetryable(false)")
                 .doesNotContain("uploadPersisted(", "enviarMinhasMidiasEmLote(");
         assertThat(selecionarERemover)
-                .contains("updatePendingFiles([...pendingFilesRef.current, ...files])")
-                .contains("pendingFilesRef.current.filter((file) => photoFilesRef.current.has(file))")
-                .contains("photoFilesRef.current.delete(file)")
-                .contains("updatePendingFiles(pendingFilesRef.current.filter((item) => item !== file))")
+                .contains("updatePendingFiles([...pendingFilesRef.current, ...files.map((file) => ({ file, kind: 'photo' as const }))])")
+                .contains("pendingFilesRef.current.filter((entry) => entry.kind === 'photo')")
+                .contains("files.map((file) => ({ file, kind: 'video' as const }))")
+                .contains("function removePendingPersistedFile(entry: EditPendingMedia)")
+                .contains("updatePendingFiles(pendingFilesRef.current.filter((item) => item !== entry))")
                 .doesNotContain("uploadPersisted(", "enviarMinhasMidiasEmLote(");
         assertThat(validarSelecao)
-                .contains("const files = pendingPersistedFiles")
-                .contains("if (current) setPersistedValidation({ files, results })")
+                .contains("const files = pendingEntries")
+                .contains("files.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo'))")
+                .contains("if (current) setPersistedValidation({ selection: files, results })")
                 .contains("return () => { current = false }");
         assertThat(fotos)
-                .contains("const photoFilesRef = useRef(new WeakSet<File>())")
-                .contains("const validationReady = persistedValidation.files === pendingPersistedFiles")
+                .contains("pendingFiles?: EditPendingMedia[]")
+                .contains("useState<EditPendingMedia[]>([])")
+                .contains("const pendingEntries = controlledPendingFiles ?? uncontrolledPendingFiles")
+                .contains("const pendingPersistedFiles = pendingEntries.map((entry) => entry.file)")
+                .contains("const validationReady = persistedValidation.selection === pendingEntries")
                 .contains("validationPending || invalidSelection || Boolean(errors.lote && !retryable)")
-                .contains("uploadPersisted(pendingPersistedFiles)")
+                .contains("uploadPersisted(pendingEntries)")
                 .contains("errors.lote && retryable ? 'Tentar enviar novamente' : 'Enviar arquivos'");
         assertThat(fluxoFinal)
                 .contains("if (!isEdit) {")
