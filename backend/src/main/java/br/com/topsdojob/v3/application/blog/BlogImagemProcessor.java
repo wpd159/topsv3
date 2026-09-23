@@ -35,7 +35,7 @@ public class BlogImagemProcessor {
     this.validator = validator;
   }
 
-  public ImagemProcessada processar(MultipartFile file) {
+  public ImagemProcessada processar(MultipartFile file, String tipo) {
     MidiaValidada validada = validator.validar(file);
     if (validada.video()) {
       throw new ResponseStatusException(
@@ -51,7 +51,8 @@ public class BlogImagemProcessor {
       boolean transparencia = redimensionada.getColorModel().hasAlpha();
       String formato = transparencia ? "png" : "jpg";
       String mime = transparencia ? "image/png" : "image/jpeg";
-      byte[] bytes = transparencia ? escreverPng(redimensionada) : escreverJpeg(redimensionada);
+      byte[] bytes = transparencia ? escreverPng(redimensionada)
+          : escreverJpeg(redimensionada, "CAPA".equals(tipo) ? 0.8f : 0.9f);
       return new ImagemProcessada(
           bytes,
           mime,
@@ -102,7 +103,7 @@ public class BlogImagemProcessor {
     return output.toByteArray();
   }
 
-  private byte[] escreverJpeg(BufferedImage image) throws IOException {
+  private byte[] escreverJpeg(BufferedImage image, float quality) throws IOException {
     Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
     if (!writers.hasNext()) {
       throw invalida();
@@ -114,7 +115,7 @@ public class BlogImagemProcessor {
       ImageWriteParam param = writer.getDefaultWriteParam();
       if (param.canWriteCompressed()) {
         param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-        param.setCompressionQuality(0.9f);
+        param.setCompressionQuality(quality);
       }
       writer.write(null, new IIOImage(image, null, null), param);
       return output.toByteArray();
