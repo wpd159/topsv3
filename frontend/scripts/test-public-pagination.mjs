@@ -298,8 +298,8 @@ async function metadata(page, route, apiPage, filters = {}) {
         robots: [...document.querySelectorAll('meta[name="robots"]')].map((node) => node.content).join(','),
         prev: [...document.querySelectorAll('link[rel="prev"]')].map((node) => node.href),
         next: [...document.querySelectorAll('link[rel="next"]')].map((node) => node.href),
-        prevHref: [...document.querySelectorAll('nav[aria-label="Paginacao"] a[href]')].find((node) => /anterior/i.test(node.textContent))?.href ?? null,
-        nextHref: [...document.querySelectorAll('nav[aria-label="Paginacao"] a[href]')].find((node) => /pr[oó]xim/i.test(node.textContent))?.href ?? null,
+        prevHref: [...document.querySelectorAll('nav[aria-label*="Pagin"] a[href]')].find((node) => /anterior/i.test(node.textContent))?.href ?? null,
+        nextHref: [...document.querySelectorAll('nav[aria-label*="Pagin"] a[href]')].find((node) => /pr[oó]xim/i.test(node.textContent))?.href ?? null,
       }))
       try {
         observation = assertMetadata(snapshot, route, apiPage, filters)
