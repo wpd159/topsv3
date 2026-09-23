@@ -23,6 +23,7 @@ import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
+  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
@@ -337,11 +338,11 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
       />
 
       {page > 0 && (
-        <link rel="prev" href={buildPublicUrl(bairroPath, page - 1)} />
+        <link rel="prev" href={new URL(buildPublicPageHref(bairroPath, page - 1, data.paginacao.ordemSeed, query), baseUrl).toString()} />
       )}
 
       {page < data.paginacao.totalPaginas - 1 && (
-        <link rel="next" href={buildPublicUrl(bairroPath, page + 1)} />
+        <link rel="next" href={new URL(buildPublicPageHref(bairroPath, page + 1, data.paginacao.ordemSeed, query), baseUrl).toString()} />
       )}
     </main>
   )

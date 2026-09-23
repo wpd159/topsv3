@@ -274,15 +274,18 @@ function assertMetadata(snapshot, route, apiPage, filters) {
       assert.equal(hrefs.length, available ? 1 : 0, `${route.pathname}: incorrect rel=${rel}`)
       if (available) {
         const url = new URL(hrefs[0])
+        const anchor = snapshot[`${rel}Href`]
+        assert.ok(anchor, `${route.pathname}: rel=${rel} must have a matching HTML pagination anchor`)
         assert.equal(url.origin, siteOrigin)
         assert.equal(url.pathname, route.pathname)
         assert.equal(url.searchParams.get('page'), pageParameter(route, destination))
-        assert.equal(url.searchParams.has('ordemSeed'), false)
+        const anchorUrl = new URL(anchor, snapshot.url)
+        assert.equal(`${url.pathname}${url.search}`, `${anchorUrl.pathname}${anchorUrl.search}`, `${route.pathname}: rel=${rel} must match the HTML anchor path and query`)
         relations[rel] = url.href
       }
     }
   }
-  return { canonical: canonical.href, robots, relations, url: snapshot.url, nextHref: snapshot.nextHref }
+  return { canonical: canonical.href, robots, relations, url: snapshot.url, prevHref: snapshot.prevHref, nextHref: snapshot.nextHref }
 }
 async function metadata(page, route, apiPage, filters = {}) {
   let snapshot, observation, lastAssertion
@@ -295,7 +298,8 @@ async function metadata(page, route, apiPage, filters = {}) {
         robots: [...document.querySelectorAll('meta[name="robots"]')].map((node) => node.content).join(','),
         prev: [...document.querySelectorAll('link[rel="prev"]')].map((node) => node.href),
         next: [...document.querySelectorAll('link[rel="next"]')].map((node) => node.href),
-        nextHref: [...document.querySelectorAll('nav a[href]')].find((node) => /pr[oó]xim/i.test(node.textContent))?.href ?? null,
+        prevHref: [...document.querySelectorAll('nav[aria-label*="Pagin"] a[href]')].find((node) => /anterior/i.test(node.textContent))?.href ?? null,
+        nextHref: [...document.querySelectorAll('nav[aria-label*="Pagin"] a[href]')].find((node) => /pr[oó]xim/i.test(node.textContent))?.href ?? null,
       }))
       try {
         observation = assertMetadata(snapshot, route, apiPage, filters)
@@ -331,6 +335,25 @@ async function checkLinks(page, route, apiPage, seed, filters = {}) {
     if (available) assert.equal(new URL(navigationLinks[0].href, origin).searchParams.get('page'), pageParameter(route, destination))
   }
   return links
+}
+
+async function checkGeoHeadingOrder(page) {
+  const order = await page.evaluate(() => {
+    const h1 = document.querySelector('h1')
+    const listHeadings = [...document.querySelectorAll('h2')].filter((node) => node.textContent.trim() === 'Anúncios nesta página')
+    const cardHeading = document.querySelector('.public-anuncio-card h3')
+    const precedes = (earlier, later) => Boolean(earlier && later && (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING))
+    return {
+      h1Count: document.querySelectorAll('h1').length,
+      listHeadingCount: listHeadings.length,
+      h1BeforeList: precedes(h1, listHeadings[0]),
+      listBeforeCard: precedes(listHeadings[0], cardHeading),
+    }
+  })
+  assert.equal(order.h1Count, 1, 'Geographic listing retains one page H1.')
+  assert.equal(order.listHeadingCount, 1, 'Geographic cards need one descriptive H2 before their H3 titles.')
+  assert.equal(order.h1BeforeList, true, 'The listing H2 must follow the page H1.')
+  assert.equal(order.listBeforeCard, true, 'The listing H2 must precede the first card H3.')
 }
 
 try {
@@ -651,6 +674,7 @@ try {
         assert.match(response.headers()['x-robots-tag'], /noindex/)
         const slugs = await slugsOnPage(page)
         assert.deepEqual(slugs, expectedSlugs(seed, number, route.size))
+        if (route.urlPageBase === 0) await checkGeoHeadingOrder(page)
         assert.equal(new URL(page.url()).searchParams.get('page'), pageParameter(route, apiPage))
         serverPageRequests(requestStart, route, apiPage, number === 1 ? null : seed)
         seen.push(...slugs)

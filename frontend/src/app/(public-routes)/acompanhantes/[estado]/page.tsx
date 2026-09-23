@@ -17,6 +17,7 @@ import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { getEstadoNomePorUf } from "@/lib/seo/acompanhantes-navigation"
 import {
+  buildPublicPageHref,
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
@@ -291,11 +292,11 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       />
 
       {page > 0 && (
-        <link rel="prev" href={buildPublicUrl(estadoPath, page - 1)} />
+        <link rel="prev" href={new URL(buildPublicPageHref(estadoPath, page - 1, data.paginacao.ordemSeed, query), baseUrl).toString()} />
       )}
 
       {page < data.paginacao.totalPaginas - 1 && (
-        <link rel="next" href={buildPublicUrl(estadoPath, page + 1)} />
+        <link rel="next" href={new URL(buildPublicPageHref(estadoPath, page + 1, data.paginacao.ordemSeed, query), baseUrl).toString()} />
       )}
     </main>
   )

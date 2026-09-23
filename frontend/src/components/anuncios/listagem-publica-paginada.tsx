@@ -23,6 +23,7 @@ export function ListagemPublicaPaginada({
 
   return (
     <>
+      {data.itens.length > 0 && <h2 className="sr-only">Anúncios nesta página</h2>}
       <div className="grid scroll-mt-24 grid-cols-1 gap-4 transition-opacity md:grid-cols-2 lg:grid-cols-4 opacity-100">
         {data.itens.map((anuncio, index) => (
           <AnuncioCard
