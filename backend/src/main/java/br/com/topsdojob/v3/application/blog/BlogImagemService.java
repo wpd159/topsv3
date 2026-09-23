@@ -56,7 +56,7 @@ public class BlogImagemService {
     if (!TIPOS.contains(tipoSeguro)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tipo de imagem editorial invalido");
     }
-    ImagemProcessada imagem = processor.processar(file);
+    ImagemProcessada imagem = processor.processar(file, tipoSeguro);
     UUID id = UUID.randomUUID();
     String key = properties.getPrivateMediaPrefix()
         + "blog/"
