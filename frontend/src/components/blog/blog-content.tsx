@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { ArrowRightIcon } from "@heroicons/react/24/solid"
 import type { BlogCategoriaPublic, BlogPostSummary } from "@/lib/blog-api"
 import { slugifyCategoria } from "@/lib/blog-categories"
@@ -80,9 +81,13 @@ export function BlogContent({
             >
               <div className="relative h-56 w-full md:h-auto md:w-1/2">
                 <Link href={`/blog/${encodeURIComponent(post.slug)}`} className="block h-full">
-                  <img
+                  <Image
                     src={post.imagemUrl || FALLBACK_IMAGE}
                     alt={post.titulo}
+                    fill
+                    sizes="(min-width: 768px) 33vw, calc(100vw - 48px)"
+                    quality={85}
+                    unoptimized={!post.imagemUrl}
                     className="h-full w-full rounded-t-2xl object-cover md:rounded-l-2xl md:rounded-tr-none"
                   />
                 </Link>
@@ -150,9 +155,13 @@ export function BlogContent({
                   className="group flex items-center gap-3 border-b border-gray-200 pb-3 last:border-0"
                 >
                   <div className="relative h-12 w-12 flex-shrink-0">
-                    <img
+                    <Image
                       src={post.imagemUrl || FALLBACK_IMAGE}
                       alt={post.titulo}
+                      width={48}
+                      height={48}
+                      quality={85}
+                      unoptimized={!post.imagemUrl}
                       className="h-12 w-12 rounded-md object-cover"
                     />
                   </div>

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { ArrowLeftIcon } from "@heroicons/react/24/solid"
 import type { BlogPostDetail } from "@/lib/blog-api"
 import { SafeBlogPostBody } from "@/lib/blog/safe-blog-body"
@@ -41,9 +42,13 @@ export default function BlogPostPageClient({ post }: { post: BlogPostDetail }) {
         </header>
 
         <div className="relative mt-8 aspect-[16/9] w-full overflow-hidden rounded-lg">
-          <img
+          <Image
             src={post.imagemUrl || post.ogImageUrl || FALLBACK_IMAGE}
             alt={post.titulo}
+            fill
+            sizes="(min-width: 1024px) 976px, calc(100vw - 48px)"
+            quality={85}
+            unoptimized={!post.imagemUrl && !post.ogImageUrl}
             className="h-full w-full object-cover"
           />
         </div>

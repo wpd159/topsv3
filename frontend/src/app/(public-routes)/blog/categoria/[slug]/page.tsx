@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import Image from "next/image"
 import { notFound } from "next/navigation"
 import { cache } from "react"
 import { ArrowRightIcon } from "@heroicons/react/24/solid"
@@ -106,9 +107,13 @@ export default async function BlogCategoriaPage({
                   className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all hover:shadow-md md:flex-row"
                 >
                   <div className="relative h-48 w-full md:h-auto md:w-2/5">
-                    <img
+                    <Image
                       src={post.imagemUrl || FALLBACK_IMAGE}
                       alt={post.titulo}
+                      fill
+                      sizes="(min-width: 1024px) 360px, (min-width: 768px) 40vw, calc(100vw - 48px)"
+                      quality={85}
+                      unoptimized={!post.imagemUrl}
                       className="h-full w-full rounded-t-2xl object-cover md:rounded-l-2xl md:rounded-tr-none"
                     />
                     <div className="absolute left-3 top-3 rounded-full bg-[#FC1EAD] px-3 py-1 text-xs font-semibold text-white">
