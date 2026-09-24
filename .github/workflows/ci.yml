@@ -58,6 +58,7 @@ jobs:
           PUBLIC_SEARCH_POSTGRES17_ENABLED: "true"
           ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED: "true"
           ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED: "true"
+          ADMIN_USUARIO_UPDATE_POSTGRES17_ENABLED: "true"
           WIZARD_PROGRESS_POSTGRES17_ENABLED: "true"
           COMPLIANCE_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
