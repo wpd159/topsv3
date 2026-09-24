@@ -167,11 +167,21 @@ public class MinhaContaStoriesPublicacaoService {
     if (anuncioId == null) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncioId obrigatorio");
     }
+    UUID proprietarioId = anuncioRepository.findUsuarioIdById(anuncioId).orElse(null);
+    if (proprietarioId == null) {
+      if (!anuncioRepository.existsById(anuncioId)) {
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
+      }
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente");
+    }
+    UsuarioEntity proprietario = usuarioRepository.findByIdForUpdate(proprietarioId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente"));
     AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+    if (!Objects.equals(anuncio.getUsuarioId(), proprietarioId)) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario do anuncio alterado");
+    }
     validarAnuncioPublicavel(anuncio);
-    UsuarioEntity proprietario = usuarioRepository.findByIdForUpdate(anuncio.getUsuarioId())
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente"));
     if (proprietario.getStatus() != StatusUsuario.ATIVO) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario nao esta ativo");
     }

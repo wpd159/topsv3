@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
@@ -42,6 +43,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.Mockito;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
@@ -75,7 +78,7 @@ class SolicitarAnuncioPublicoServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuarioAutenticado);
+        when(usuarioService.usuarioAutenticadoParaAtualizacao(authentication)).thenReturn(usuarioAutenticado);
         when(usuarioAutenticado.getId()).thenReturn(usuarioId);
         when(usuarioAutenticado.getTelefoneNormalizado()).thenReturn("+5562999999999");
     }
@@ -106,6 +109,12 @@ class SolicitarAnuncioPublicoServiceTest {
         assertThat(response.pagamentoCriado()).isFalse();
         assertThat(response.creditoCriado()).isFalse();
         assertThat(response.premiumObrigatorio()).isFalse();
+
+        InOrder ordem = Mockito.inOrder(usuarioService, kycService, anuncioRepository);
+        ordem.verify(usuarioService).usuarioAutenticadoParaAtualizacao(authentication);
+        ordem.verify(kycService).garantirProntoParaAnuncio(usuarioId);
+        ordem.verify(anuncioRepository).save(any(AnuncioEntity.class));
+        verify(usuarioService, never()).usuarioAutenticado(authentication);
 
         ArgumentCaptor<AnuncioEntity> anuncio = ArgumentCaptor.forClass(AnuncioEntity.class);
         ArgumentCaptor<AnuncioLocalizacaoEntity> localizacao = ArgumentCaptor.forClass(AnuncioLocalizacaoEntity.class);
@@ -314,6 +323,19 @@ class SolicitarAnuncioPublicoServiceTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
         verify(anuncioRepository, never()).save(any());
+    }
+
+    @Test
+    void falhaAoTravarContaImpedeValidacaoKycECriacao() {
+        when(usuarioService.usuarioAutenticadoParaAtualizacao(authentication))
+                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "conta indisponivel"));
+
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+        verifyNoInteractions(kycService, anuncioRepository, localizacaoRepository,
+                documentoBuscaRepository, revisaoRepository);
     }
 
     private void assertValidationCode(ObjectNode payload, String code) {

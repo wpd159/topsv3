@@ -7,12 +7,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -28,10 +30,12 @@ import org.springframework.http.HttpStatus;
 class AdminUsuarioAtualizacaoServiceTest {
 
   private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
+  private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
   private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
   private final AdminUsuarioConsultaService consultaService = mock(AdminUsuarioConsultaService.class);
   private final AdminUsuarioAtualizacaoService service = new AdminUsuarioAtualizacaoService(
       usuarioRepository,
+      anuncioRepository,
       auditoriaRepository,
       consultaService);
 
@@ -66,6 +70,12 @@ class AdminUsuarioAtualizacaoServiceTest {
     assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+5562999998888");
     assertThat(usuario.getDataNascimento()).isEqualTo(LocalDate.of(1991, 2, 3));
     verify(usuarioRepository).saveAndFlush(usuario);
+    ArgumentCaptor<OffsetDateTime> sincronizacaoEm = ArgumentCaptor.forClass(OffsetDateTime.class);
+    verify(anuncioRepository).sincronizarTelefoneDoProprietario(
+        org.mockito.ArgumentMatchers.eq(usuarioId),
+        org.mockito.ArgumentMatchers.eq("+5562999998888"),
+        sincronizacaoEm.capture());
+    assertThat(sincronizacaoEm.getValue()).isEqualTo(usuario.getAtualizadoEm());
     ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
     verify(auditoriaRepository).save(audit.capture());
     assertThat(audit.getValue().getAcao()).isEqualTo("USUARIO_DADOS_CADASTRAIS_ATUALIZAR");
@@ -90,6 +100,8 @@ class AdminUsuarioAtualizacaoServiceTest {
     assertThat(usuario.getNome()).isEqualTo("QA");
     assertThat(usuario.getEmailNormalizado()).isEqualTo("qa-" + usuarioId + "@example.invalid");
     assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+5562999998888");
+    verify(anuncioRepository).sincronizarTelefoneDoProprietario(
+        usuarioId, "+5562999998888", usuario.getAtualizadoEm());
   }
 
   @Test
@@ -113,6 +125,7 @@ class AdminUsuarioAtualizacaoServiceTest {
     assertThat(usuario.getEmailNormalizado()).isEqualTo("qa-" + usuarioId + "@example.invalid");
     assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+556233334444");
     assertThat(usuario.getDataNascimento()).isEqualTo(LocalDate.of(1990, 1, 1));
+    verifyNoInteractions(anuncioRepository);
     ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
     verify(auditoriaRepository).save(audit.capture());
     assertThat(audit.getValue().getDepoisJson())
@@ -146,6 +159,31 @@ class AdminUsuarioAtualizacaoServiceTest {
     assertThat(usuario.getCpfNormalizado()).isEqualTo("11111111111");
     assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+5562999998888");
     verify(usuarioRepository).saveAndFlush(usuario);
+    verify(anuncioRepository).sincronizarTelefoneDoProprietario(
+        usuarioId, "+5562999998888", usuario.getAtualizadoEm());
+  }
+
+  @Test
+  void falhaNaSincronizacaoImpedeAuditoriaDaAtualizacao() {
+    UUID usuarioId = UUID.randomUUID();
+    UsuarioEntity usuario = usuario(usuarioId, "+556233334444");
+    AdminUserPrincipal ator = mock(AdminUserPrincipal.class);
+    when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+    AdminUsuarioAtualizacaoRequestDto request = request(usuario);
+    request.setTelefone("(62) 99999-8888");
+    doThrow(new IllegalStateException("falha sintetica de sincronizacao"))
+        .when(anuncioRepository).sincronizarTelefoneDoProprietario(
+            org.mockito.ArgumentMatchers.eq(usuarioId),
+            org.mockito.ArgumentMatchers.eq("+5562999998888"),
+            any(OffsetDateTime.class));
+
+    assertThatThrownBy(() -> service.atualizar(usuarioId, request, ator, "req-sync-failed"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("falha sintetica de sincronizacao");
+
+    verify(usuarioRepository).saveAndFlush(usuario);
+    verify(auditoriaRepository, never()).save(any());
+    verify(consultaService, never()).detalhar(any(), any());
   }
 
   @Test
@@ -174,6 +212,7 @@ class AdminUsuarioAtualizacaoServiceTest {
 
     verify(usuarioRepository, never()).saveAndFlush(any());
     verify(auditoriaRepository, never()).save(any());
+    verifyNoInteractions(anuncioRepository);
   }
 
   @Test
