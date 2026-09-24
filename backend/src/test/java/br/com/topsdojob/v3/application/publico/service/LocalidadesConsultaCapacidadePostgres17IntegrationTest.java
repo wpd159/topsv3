@@ -406,12 +406,20 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         try {
             long started = System.nanoTime();
             Set<String> response;
-            try { response = previewOperation(files); }
-            finally { TIMELINE.operationDone(); }
+            double operationMs;
+            try {
+                response = previewOperation(files);
+                operationMs = milliseconds(started);
+            } finally {
+                TIMELINE.operationDone();
+            }
             assertThat(response).hasSize(1311);
             assertThat(response).containsExactlyInAnyOrderElementsOf(fixture.keys());
             assertThat(verifiedKeys.get()).containsExactlyInAnyOrderElementsOf(fixture.keys());
-            assertThat(milliseconds(started)).isLessThan(3500);
+            double afterChecksMs = milliseconds(started);
+            System.out.printf(Locale.ROOT, "CAPACITY_PREVIEW_GATE operationMs=%.3f afterChecksMs=%.3f postOperationMs=%.3f%n",
+                    operationMs, afterChecksMs, afterChecksMs - operationMs);
+            assertThat(operationMs).isLessThan(3500);
             assertThat(REMOTE.lists.get()).isEqualTo(3);
             assertThat(REMOTE.bytes.get()).isGreaterThanOrEqualTo(690_000);
             assertThat(REMOTE.heads.get()).isZero();
