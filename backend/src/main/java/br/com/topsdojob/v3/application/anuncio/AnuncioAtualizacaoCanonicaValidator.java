@@ -1,6 +1,8 @@
 package br.com.topsdojob.v3.application.anuncio;
 
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Campo;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Regra;
 import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
@@ -13,9 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class AnuncioAtualizacaoCanonicaValidator {
@@ -29,36 +29,39 @@ public class AnuncioAtualizacaoCanonicaValidator {
             MeuAnuncioAtualizacaoRequestDto request,
             String whatsappCanonico) {
         if (request == null) {
-            throw badRequest("payload obrigatorio");
+            throw badRequest(Campo.PAYLOAD, Regra.PAYLOAD_OBRIGATORIO, "payload obrigatorio");
         }
-        String titulo = textoObrigatorio(request.titulo(), "titulo", 10, TITULO_MAX);
+        String titulo = textoObrigatorio(request.titulo(), Campo.TITULO, 10, TITULO_MAX);
         if (contemConteudoAtivo(titulo)) {
-            throw badRequest("titulo nao pode conter HTML ou JavaScript");
+            throw badRequest(Campo.TITULO, Regra.CONTEUDO_NAO_PERMITIDO,
+                    "titulo nao pode conter HTML ou JavaScript");
         }
         if (CONTATO_NO_TITULO.matcher(titulo).find()) {
-            throw badRequest("titulo nao pode conter contato, rede social ou URL");
+            throw badRequest(Campo.TITULO, Regra.CONTATO_NAO_PERMITIDO,
+                    "titulo nao pode conter contato, rede social ou URL");
         }
-        String descricao = textoObrigatorio(request.descricao(), "descricao", 20, DESCRICAO_MAX);
+        String descricao = textoObrigatorio(request.descricao(), Campo.DESCRICAO, 20, DESCRICAO_MAX);
         CategoriaAnuncio categoriaInformada = CategoriaAnuncio.porCodigo(request.categoria())
-                .orElseThrow(() -> badRequest("categoria invalida"));
+                .orElseThrow(() -> badRequest(Campo.CATEGORIA, Regra.CATEGORIA_INVALIDA,
+                        "categoria invalida"));
         BigDecimal preco = request.preco();
         if (preco != null) {
             if (preco.compareTo(BigDecimal.ZERO) <= 0 || preco.compareTo(new BigDecimal("999999.99")) > 0) {
-                throw badRequest("preco invalido");
+                throw badRequest(Campo.PRECO, Regra.PRECO_INVALIDO, "preco invalido");
             }
             preco = preco.setScale(2, RoundingMode.HALF_UP);
         }
-        String uf = textoObrigatorio(request.uf(), "uf", 2, 2).toUpperCase(Locale.ROOT);
+        String uf = textoObrigatorio(request.uf(), Campo.UF, 2, 2).toUpperCase(Locale.ROOT);
         if (!uf.matches("[A-Z]{2}")) {
-            throw badRequest("uf invalida");
+            throw badRequest(Campo.UF, Regra.UF_INVALIDA, "uf invalida");
         }
-        String cidade = textoObrigatorio(request.cidade(), "cidade", 2, 80);
-        String bairro = textoOpcional(request.bairro(), "bairro", 2, 80);
+        String cidade = textoObrigatorio(request.cidade(), Campo.CIDADE, 2, 80);
+        String bairro = textoOpcional(request.bairro(), Campo.BAIRRO, 2, 80);
         String enderecoResumido = validarEnderecoResumido(request.enderecoResumido());
         Set<LocalAtendimentoAnuncio> locais = enums(
-                request.locaisAtendimento(), LocalAtendimentoAnuncio.class, "locaisAtendimento");
+                request.locaisAtendimento(), LocalAtendimentoAnuncio.class, Campo.LOCAIS_ATENDIMENTO);
         Set<ServicoAnuncio> servicos = new LinkedHashSet<>(
-                enums(request.servicos(), ServicoAnuncio.class, "servicos"));
+                enums(request.servicos(), ServicoAnuncio.class, Campo.SERVICOS));
         String categoria = categoriaInformada.name();
         if (categoriaInformada == CategoriaAnuncio.VENDA_DE_CONTEUDO) {
             categoria = CategoriaAnuncio.ACOMPANHANTE_FEMININA.name();
@@ -66,7 +69,9 @@ public class AnuncioAtualizacaoCanonicaValidator {
         }
         boolean atendimentoExclusivamenteVirtual = request.atendimentoExclusivamenteVirtual();
         if (atendimentoExclusivamenteVirtual && !servicos.contains(ServicoAnuncio.VIDEOCHAMADA)) {
-            throw badRequest("atendimento exclusivamente virtual exige o servico VIDEOCHAMADA");
+            throw badRequest(Campo.ATENDIMENTO_EXCLUSIVAMENTE_VIRTUAL,
+                    Regra.EXCLUSIVIDADE_VIRTUAL_INVALIDA,
+                    "atendimento exclusivamente virtual exige o servico VIDEOCHAMADA");
         }
         return new DadosAtualizacao(
                 titulo,
@@ -100,9 +105,10 @@ public class AnuncioAtualizacaoCanonicaValidator {
     }
 
     public String validarEnderecoResumido(String value) {
-        String texto = textoOpcional(value, "enderecoResumido", 2, 120);
+        String texto = textoOpcional(value, Campo.ENDERECO_RESUMIDO, 2, 120);
         if (texto != null && contemConteudoAtivo(texto)) {
-            throw badRequest("enderecoResumido nao pode conter HTML ou JavaScript");
+            throw badRequest(Campo.ENDERECO_RESUMIDO, Regra.CONTEUDO_NAO_PERMITIDO,
+                    "enderecoResumido nao pode conter HTML ou JavaScript");
         }
         return texto;
     }
@@ -116,18 +122,20 @@ public class AnuncioAtualizacaoCanonicaValidator {
                 .replaceAll("-{2,}", "-");
     }
 
-    private String textoObrigatorio(String value, String campo, int minimo, int maximo) {
+    private String textoObrigatorio(String value, Campo campo, int minimo, int maximo) {
         String texto = sanitize(value);
         if (texto == null || texto.length() < minimo || texto.length() > maximo) {
-            throw badRequest(campo + " deve ter entre " + minimo + " e " + maximo + " caracteres");
+            throw badRequest(campo, Regra.TAMANHO_INVALIDO,
+                    campo.apiField() + " deve ter entre " + minimo + " e " + maximo + " caracteres");
         }
         return texto;
     }
 
-    private String textoOpcional(String value, String campo, int minimo, int maximo) {
+    private String textoOpcional(String value, Campo campo, int minimo, int maximo) {
         String texto = sanitize(value);
         if (texto != null && (texto.length() < minimo || texto.length() > maximo)) {
-            throw badRequest(campo + " deve ter entre " + minimo + " e " + maximo + " caracteres");
+            throw badRequest(campo, Regra.TAMANHO_INVALIDO,
+                    campo.apiField() + " deve ter entre " + minimo + " e " + maximo + " caracteres");
         }
         return texto;
     }
@@ -142,13 +150,13 @@ public class AnuncioAtualizacaoCanonicaValidator {
             normalizado = "+" + normalizado;
         }
         if (!normalizado.matches("\\+[1-9][0-9]{7,14}")) {
-            throw badRequest("whatsapp invalido");
+            throw badRequest(Campo.TELEFONE, Regra.TELEFONE_DA_CONTA_INVALIDO, "whatsapp invalido");
         }
         return normalizado;
     }
 
     private String linkConteudo(String value) {
-        String texto = textoOpcional(value, "linkConteudo", 8, 2048);
+        String texto = textoOpcional(value, Campo.LINK_CONTEUDO, 8, 2048);
         if (texto == null) {
             return null;
         }
@@ -157,15 +165,15 @@ public class AnuncioAtualizacaoCanonicaValidator {
             if (uri.getHost() == null
                     || (!"https".equalsIgnoreCase(uri.getScheme())
                     && !"http".equalsIgnoreCase(uri.getScheme()))) {
-                throw badRequest("linkConteudo invalido");
+                throw badRequest(Campo.LINK_CONTEUDO, Regra.URL_INVALIDA, "linkConteudo invalido");
             }
             return texto;
         } catch (IllegalArgumentException exception) {
-            throw badRequest("linkConteudo invalido");
+            throw badRequest(Campo.LINK_CONTEUDO, Regra.URL_INVALIDA, "linkConteudo invalido");
         }
     }
 
-    private <E extends Enum<E>> Set<E> enums(List<String> values, Class<E> enumType, String campo) {
+    private <E extends Enum<E>> Set<E> enums(List<String> values, Class<E> enumType, Campo campo) {
         if (values == null) {
             return Set.of();
         }
@@ -174,7 +182,8 @@ public class AnuncioAtualizacaoCanonicaValidator {
             try {
                 resultado.add(Enum.valueOf(enumType, value == null ? "" : value.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException exception) {
-                throw badRequest(campo + " contem valor invalido");
+                throw badRequest(campo, Regra.VALOR_INVALIDO,
+                        campo.apiField() + " contem valor invalido");
             }
         }
         return Set.copyOf(resultado);
@@ -195,8 +204,8 @@ public class AnuncioAtualizacaoCanonicaValidator {
                 || normalized.matches(".*\\bjavascript\\s*:.*");
     }
 
-    private ResponseStatusException badRequest(String message) {
-        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    private AnuncioAtualizacaoValidationException badRequest(Campo campo, Regra regra, String message) {
+        return new AnuncioAtualizacaoValidationException(campo, regra, message);
     }
 
     public record DadosAtualizacao(

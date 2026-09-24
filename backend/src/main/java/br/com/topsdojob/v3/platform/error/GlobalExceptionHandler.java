@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.platform.error;
 import java.time.Instant;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException;
 import br.com.topsdojob.v3.application.publico.pagamento.EfiWebhookAutenticacaoException;
 import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
@@ -89,6 +90,31 @@ public class GlobalExceptionHandler {
         return build(code, request);
     }
 
+    @ExceptionHandler(AnuncioAtualizacaoValidationException.class)
+    public ResponseEntity<?> handleAnuncioAtualizacaoValidation(
+            AnuncioAtualizacaoValidationException exception,
+            HttpServletRequest request) {
+        if (!isPublicEditPatch(request)) {
+            return handleResponseStatus(exception, request);
+        }
+        String requestId = RequestIdContext.current(request);
+        LOGGER.info("anuncio_edit_validation_rejected requestId={} field={} ruleCode={}",
+                requestId, exception.field(), exception.ruleCode());
+        ApiErrorCode code = ApiErrorCode.BAD_REQUEST;
+        return ResponseEntity.status(code.status())
+                .cacheControl(CacheControl.noStore())
+                .body(new ApiEditValidationErrorResponse(
+                        Instant.now(),
+                        code.status().value(),
+                        code.status().getReasonPhrase(),
+                        code,
+                        exception.safeMessage(),
+                        request.getRequestURI(),
+                        requestId,
+                        exception.field(),
+                        exception.ruleCode()));
+    }
+
     @ExceptionHandler(StoryJaAtivoException.class)
     public ResponseEntity<ApiErrorResponse> handleStoryJaAtivo(
             StoryJaAtivoException exception,
@@ -167,6 +193,13 @@ public class GlobalExceptionHandler {
         return request != null
                 && request.getRequestURI() != null
                 && request.getRequestURI().startsWith("/api/admin/");
+    }
+
+    private boolean isPublicEditPatch(HttpServletRequest request) {
+        return request != null
+                && "PATCH".equals(request.getMethod())
+                && request.getRequestURI() != null
+                && request.getRequestURI().matches("^/api/public/minha-conta/anuncios/[^/]+$");
     }
 
     private ApiErrorCode fromStatus(int statusCode) {

@@ -21,7 +21,7 @@ const emptyState = {
     descricao: '', linkConteudo: '',
     estadoId: '', cidadeId: '', bairroId: '', estadoNome: '', estadoUf: '',
     cidadeNome: '', bairroNome: '', pontoReferenciaTexto: '', fotos: [], fotoNomes: [],
-    videos: [], videoNomes: [],
+    videos: [], videoNomes: [], editPendingMedia: [], editPendingMediaScope: '', editUploadUnconfirmed: false,
     premiumChoice: 'gratis',
   },
   kyc: {
@@ -80,6 +80,15 @@ saveWizardCache(userACreate, { ...emptyState, form: { ...emptyState.form, titulo
 saveWizardCache(userBCreate, { ...emptyState, form: { ...emptyState.form, titulo: 'Rascunho B' } }, null)
 saveWizardCache(userAEditOne, { ...emptyState, form: { ...emptyState.form, titulo: 'Edicao um' } }, 'source-1')
 saveWizardCache(userAEditTwo, { ...emptyState, form: { ...emptyState.form, titulo: 'Edicao dois' } }, 'source-2')
+const selectedFile = { name: 'private-photo.jpg', contents: 'PRIVATE_FILE_BYTES_MUST_NOT_PERSIST' }
+saveWizardCache(userAEditOne, { ...emptyState, form: { ...emptyState.form, titulo: 'Edicao um',
+  editPendingMedia: [{ file: selectedFile, kind: 'photo' }],
+  editPendingMediaScope: 'user-a:edit:anuncio-um', editUploadUnconfirmed: true,
+} }, 'source-1')
+const persistedEdit = localStorage.getItem(wizardCacheKey(userAEditOne))
+assert.doesNotMatch(persistedEdit, /private-photo|PRIVATE_FILE_BYTES|editPendingMedia|editUploadUnconfirmed|editPendingMediaScope/)
+assert.equal(loadWizardCache(userAEditOne).state.form.editPendingMedia.length, 0)
+assert.equal(loadWizardCache(userAEditOne).state.form.editUploadUnconfirmed, false)
 
 assert.equal(loadWizardCache(userACreate).state.form.titulo, 'Rascunho A')
 assert.equal(loadWizardCache(userBCreate).state.form.titulo, 'Rascunho B')

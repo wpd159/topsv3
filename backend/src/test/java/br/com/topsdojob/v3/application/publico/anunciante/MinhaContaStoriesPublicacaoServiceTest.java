@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -50,6 +51,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.HttpStatus;
@@ -249,6 +251,7 @@ class MinhaContaStoriesPublicacaoServiceTest {
   @Test
   void adminPublicaPor24HorasSemDuplicarStoryDireitoOuAuditoria() {
     AnuncioEntity anuncio = anuncio(ANUNCIO_A);
+    when(anuncioRepository.findUsuarioIdById(ANUNCIO_A)).thenReturn(Optional.of(USUARIO_ID));
     when(anuncioRepository.findByIdForModeration(ANUNCIO_A)).thenReturn(Optional.of(anuncio));
     AdminUserPrincipal admin = admin();
 
@@ -272,12 +275,19 @@ class MinhaContaStoriesPublicacaoServiceTest {
         eq(anuncio), eq(ADMIN_ID), any(), any());
     verify(direitoService, never()).reservarParaPublicacao(any(), any(), any(), any());
     verify(auditoriaRepository).save(any());
+    InOrder ordemLocks = inOrder(anuncioRepository, usuarioRepository);
+    for (int tentativa = 0; tentativa < 3; tentativa++) {
+      ordemLocks.verify(anuncioRepository).findUsuarioIdById(ANUNCIO_A);
+      ordemLocks.verify(usuarioRepository).findByIdForUpdate(USUARIO_ID);
+      ordemLocks.verify(anuncioRepository).findByIdForModeration(ANUNCIO_A);
+    }
   }
 
   @Test
   void adminNaoPublicaAnuncioInelegivel() {
     AnuncioEntity anuncio = anuncio(ANUNCIO_A);
     when(anuncio.getStatus()).thenReturn(StatusAnuncio.PAUSADO);
+    when(anuncioRepository.findUsuarioIdById(ANUNCIO_A)).thenReturn(Optional.of(USUARIO_ID));
     when(anuncioRepository.findByIdForModeration(ANUNCIO_A)).thenReturn(Optional.of(anuncio));
 
     assertStatus(() -> service.publicarAdministrativamente(
@@ -286,6 +296,29 @@ class MinhaContaStoriesPublicacaoServiceTest {
     verify(direitoService, never()).criarDireitoAdministrativoParaPublicacao(
         any(), any(), any(), any());
     verify(storyRepository, never()).save(any());
+    InOrder ordemLocks = inOrder(anuncioRepository, usuarioRepository);
+    ordemLocks.verify(anuncioRepository).findUsuarioIdById(ANUNCIO_A);
+    ordemLocks.verify(usuarioRepository).findByIdForUpdate(USUARIO_ID);
+    ordemLocks.verify(anuncioRepository).findByIdForModeration(ANUNCIO_A);
+  }
+
+  @Test
+  void adminRecusaTrocaDeProprietarioEntreConsultaETravaDoAnuncio() {
+    AnuncioEntity anuncio = anuncio(ANUNCIO_A);
+    when(anuncio.getUsuarioId()).thenReturn(UUID.randomUUID());
+    when(anuncioRepository.findUsuarioIdById(ANUNCIO_A)).thenReturn(Optional.of(USUARIO_ID));
+    when(anuncioRepository.findByIdForModeration(ANUNCIO_A)).thenReturn(Optional.of(anuncio));
+
+    assertStatus(() -> service.publicarAdministrativamente(
+        ANUNCIO_A, "admin-story-proprietario-alterado", admin(), "req-admin"), HttpStatus.CONFLICT);
+
+    InOrder ordemLocks = inOrder(anuncioRepository, usuarioRepository);
+    ordemLocks.verify(anuncioRepository).findUsuarioIdById(ANUNCIO_A);
+    ordemLocks.verify(usuarioRepository).findByIdForUpdate(USUARIO_ID);
+    ordemLocks.verify(anuncioRepository).findByIdForModeration(ANUNCIO_A);
+    verify(direitoService, never()).criarDireitoAdministrativoParaPublicacao(any(), any(), any(), any());
+    verify(storyRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
   }
 
   @Test

@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioErroCampoDt
 import br.com.topsdojob.v3.domain.usuario.CpfValidator;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
@@ -32,14 +33,17 @@ public class AdminUsuarioAtualizacaoService {
   private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
   private final UsuarioRepository usuarioRepository;
+  private final AnuncioRepository anuncioRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
   private final AdminUsuarioConsultaService consultaService;
 
   public AdminUsuarioAtualizacaoService(
       UsuarioRepository usuarioRepository,
+      AnuncioRepository anuncioRepository,
       AuditoriaEventoRepository auditoriaRepository,
       AdminUsuarioConsultaService consultaService) {
     this.usuarioRepository = usuarioRepository;
+    this.anuncioRepository = anuncioRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.consultaService = consultaService;
   }
@@ -128,6 +132,9 @@ public class AdminUsuarioAtualizacaoService {
           "DADOS_DUPLICADOS",
           "Um dos dados unicos ja pertence a outra conta.",
           HttpStatus.CONFLICT);
+    }
+    if (camposAlterados.contains("telefone")) {
+      anuncioRepository.sincronizarTelefoneDoProprietario(usuarioId, telefone, agora);
     }
     auditoriaRepository.save(AuditoriaEventoEntity.registrar(
         UUID.randomUUID(),

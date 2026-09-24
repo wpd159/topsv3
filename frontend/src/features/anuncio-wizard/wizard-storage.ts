@@ -22,7 +22,8 @@ type PersistedWizardState = {
   sourceVersion: string | null
   state: {
     currentStep: WizardState['currentStep']
-    form: Omit<WizardState['form'], 'fotos' | 'videos'> & { fotos?: never; videos?: never }
+    form: Omit<WizardState['form'], 'fotos' | 'videos' | 'editPendingMedia' | 'editPendingMediaScope' | 'editUploadUnconfirmed'>
+      & { fotos?: never; videos?: never; editPendingMedia?: never }
   }
 }
 
@@ -87,7 +88,14 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
 }
 
 function toPersistedState(state: WizardState, sourceVersion: string | null): PersistedWizardState {
-  const { fotos: _fotos, videos: _videos, ...form } = state.form
+  const {
+    fotos: _fotos,
+    videos: _videos,
+    editPendingMedia: _editPendingMedia,
+    editPendingMediaScope: _editPendingMediaScope,
+    editUploadUnconfirmed: _editUploadUnconfirmed,
+    ...form
+  } = state.form
 
   return {
     version: STORAGE_VERSION,

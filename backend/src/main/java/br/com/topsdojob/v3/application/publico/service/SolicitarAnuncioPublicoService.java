@@ -129,7 +129,7 @@ public class SolicitarAnuncioPublicoService {
 
     @Transactional
     public SolicitarAnuncioPublicoResponseDto solicitar(JsonNode payload, Authentication authentication) {
-        UsuarioEntity usuario = usuarioService.usuarioAutenticado(authentication);
+        UsuarioEntity usuario = usuarioService.usuarioAutenticadoParaAtualizacao(authentication);
         kycService.garantirProntoParaAnuncio(usuario.getId());
         ValidatedRequest validated = validar(payload, usuario.getTelefoneNormalizado());
         OffsetDateTime now = OffsetDateTime.now();

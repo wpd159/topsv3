@@ -19,6 +19,7 @@ export function WizardStepPerfil({
   onCategoriaChange,
   onDescricaoChange,
   onReloadCategorias,
+  invalidField = null,
 }: {
   titulo: string
   categoria: string
@@ -34,12 +35,14 @@ export function WizardStepPerfil({
   onCategoriaChange: (value: string) => void
   onDescricaoChange: (value: string) => void
   onReloadCategorias: () => void
+  invalidField?: string | null
 }) {
   return (
     <StepPanel>
       <div className="space-y-5 rounded-[26px] border border-zinc-200 bg-[linear-gradient(180deg,#ffffff_0%,#fff8fb_100%)] p-5 shadow-sm">
-          <Field label="Nome do anúncio">
+          <Field label="Nome do anúncio" invalid={invalidField === 'titulo'}>
             <Input
+              aria-invalid={invalidField === 'titulo'}
               value={titulo}
               onChange={(event) => onTituloChange(event.target.value)}
               placeholder="Ex: Alice Loira"
@@ -49,8 +52,9 @@ export function WizardStepPerfil({
             />
           </Field>
 
-          <Field label="Categoria">
+          <Field label="Categoria" invalid={invalidField === 'categoria'}>
             <select
+              aria-invalid={invalidField === 'categoria'}
               className="h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
               value={categoria}
               disabled={categoriasLoading || Boolean(categoriasError)}

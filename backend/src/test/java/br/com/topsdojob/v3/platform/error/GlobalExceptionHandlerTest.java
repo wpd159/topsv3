@@ -1,20 +1,107 @@
 package br.com.topsdojob.v3.platform.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Campo;
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Regra;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
+import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
+import br.com.topsdojob.v3.web.publico.anunciante.MeusAnunciosController;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 
 class GlobalExceptionHandlerTest {
+
+    @Test
+    void edicaoConhecidaExpoeSomenteCampoRegraMensagemControladaERequestId() throws Exception {
+        String response = editorComErro("edicao-conhecida", new AnuncioAtualizacaoValidationException(
+                Campo.DESCRICAO, Regra.TAMANHO_INVALIDO, "CPF-SEGREDO payload privado"))
+                .perform(patch("/api/public/minha-conta/anuncios/edicao-conhecida")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .requestAttr(RequestIdContext.ATTRIBUTE_NAME, "request-edit-123456"))
+                .andExpect(status().isBadRequest())
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Cache-Control"))
+                        .contains("no-store"))
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.field").value("descricao"))
+                .andExpect(jsonPath("$.ruleCode").value("TAMANHO_INVALIDO"))
+                .andExpect(jsonPath("$.message").value("A descrição deve ter entre 20 e 500 caracteres."))
+                .andExpect(jsonPath("$.requestId").value("request-edit-123456"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain("CPF-SEGREDO", "payload privado");
+    }
+
+    @Test
+    void edicaoDesconhecidaPermaneceGenerica() throws Exception {
+        editorComErro("edicao-desconhecida",
+                new ResponseStatusException(HttpStatus.BAD_REQUEST, "CPF-SEGREDO payload privado"))
+                .perform(patch("/api/public/minha-conta/anuncios/edicao-desconhecida")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .requestAttr(RequestIdContext.ATTRIBUTE_NAME, "request-edit-unknown"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Requisição inválida."))
+                .andExpect(jsonPath("$.field").doesNotExist())
+                .andExpect(jsonPath("$.ruleCode").doesNotExist())
+                .andExpect(jsonPath("$.requestId").value("request-edit-unknown"));
+    }
+
+    @Test
+    void validacaoTipadaForaDoPatchPublicoNaoExpoeCampoOuRegra() {
+        AnuncioAtualizacaoValidationException exception = new AnuncioAtualizacaoValidationException(
+                Campo.DESCRICAO, Regra.TAMANHO_INVALIDO, "motivo legado seguro");
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        var outraRota = handler.handleAnuncioAtualizacaoValidation(exception,
+                new MockHttpServletRequest("PATCH", "/api/public/outra-rota"));
+        assertThat(outraRota.getBody()).isInstanceOf(ApiErrorResponse.class);
+        assertThat(((ApiErrorResponse) outraRota.getBody()).message()).isEqualTo("Requisição inválida.");
+
+        var admin = handler.handleAnuncioAtualizacaoValidation(exception,
+                new MockHttpServletRequest("PUT", "/api/admin/anuncios/1"));
+        assertThat(admin.getBody()).isInstanceOf(ApiErrorResponse.class);
+        assertThat(((ApiErrorResponse) admin.getBody()).message()).isEqualTo("motivo legado seguro");
+    }
+
+    private MockMvc editorComErro(String slug, RuntimeException exception) {
+        MeuAnuncioAtualizacaoService service = mock(MeuAnuncioAtualizacaoService.class);
+        when(service.atualizar(eq(slug), any(MeuAnuncioAtualizacaoRequestDto.class),
+                nullable(Authentication.class))).thenThrow(exception);
+        return MockMvcBuilders.standaloneSetup(new MeusAnunciosController(
+                        mock(MeusAnunciosConsultaService.class),
+                        service,
+                        mock(MeuAnuncioCicloVidaService.class),
+                        mock(MinhasMidiasService.class)))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+    }
 
     @Test
     void authorizationDeniedRetornaForbiddenSemVirarErroInterno() {

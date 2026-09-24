@@ -18,6 +18,38 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
     private final AnuncioAtualizacaoCanonicaValidator validator =
             new AnuncioAtualizacaoCanonicaValidator();
 
+    @ParameterizedTest
+    @ValueSource(ints = {492, 500})
+    void descricaoValidaAteLimiteCanonico(int tamanho) {
+        String descricao = "x".repeat(tamanho);
+
+        var validado = validator.validar(requestComDescricao(descricao), "+5562999999999");
+
+        assertThat(validado.descricao()).isEqualTo(descricao);
+    }
+
+    @Test
+    void descricaoRestauradaCom501CaracteresEhRecusadaSemTruncamento() {
+        String descricao = "x".repeat(501);
+
+        assertThatThrownBy(() -> validator.validar(requestComDescricao(descricao), "+5562999999999"))
+                .isInstanceOfSatisfying(AnuncioAtualizacaoValidationException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.field()).isEqualTo("descricao");
+                    assertThat(exception.ruleCode()).isEqualTo("TAMANHO_INVALIDO");
+                });
+        assertThat(descricao).hasSize(501);
+    }
+
+    @Test
+    void descricaoEhContadaDepoisDaNormalizacaoCanonica() {
+        String descricaoComQuebras = "x".repeat(498) + "\r\n" + "x";
+
+        var validado = validator.validar(requestComDescricao(descricaoComQuebras), "+5562999999999");
+
+        assertThat(validado.descricao()).isEqualTo("x".repeat(498) + " x").hasSize(500);
+    }
+
     @Test
     void preservaCategoriaBaseQuandoSexoVirtualTambemFoiSelecionado() {
         var resultado = validator.validar(request(
@@ -158,5 +190,23 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
                 servicos,
                 exclusivamenteVirtual,
                 "https://example.invalid/conteudo");
+    }
+
+    private MeuAnuncioAtualizacaoRequestDto requestComDescricao(String descricao) {
+        MeuAnuncioAtualizacaoRequestDto base = request(
+                "ACOMPANHANTE_FEMININA", List.of("ORAL"), false);
+        return new MeuAnuncioAtualizacaoRequestDto(
+                base.titulo(),
+                descricao,
+                base.categoria(),
+                base.preco(),
+                base.uf(),
+                base.cidade(),
+                base.bairro(),
+                base.enderecoResumido(),
+                base.locaisAtendimento(),
+                base.servicos(),
+                base.atendimentoExclusivamenteVirtual(),
+                base.linkConteudo());
     }
 }

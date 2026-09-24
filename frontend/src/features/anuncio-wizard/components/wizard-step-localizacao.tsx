@@ -26,6 +26,7 @@ export function WizardStepLocalizacao({
   onBairro,
   onReferencia,
   showReference = true,
+  invalidField = null,
 }: {
   estadoId: string
   cidadeId: string
@@ -46,6 +47,7 @@ export function WizardStepLocalizacao({
   onBairro: (value: string) => void
   onReferencia: (value: string) => void
   showReference?: boolean
+  invalidField?: string | null
 }) {
   return (
     <StepPanel>
@@ -68,8 +70,9 @@ export function WizardStepLocalizacao({
               {errorMessage}
             </p>
           ) : null}
-          <Field label="Estado">
+          <Field label="Estado" invalid={invalidField === 'uf'}>
             <SearchableSelect
+              invalid={invalidField === 'uf'}
               value={estadoId}
               label={selectedStateLabel}
               placeholder="Selecione o estado"
@@ -82,8 +85,9 @@ export function WizardStepLocalizacao({
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Cidade">
+            <Field label="Cidade" invalid={invalidField === 'cidade'}>
               <SearchableSelect
+                invalid={invalidField === 'cidade'}
                 value={cidadeId}
                 label={cidadeNome || 'Selecione a cidade'}
                 placeholder={estadoId ? 'Selecione a cidade' : 'Escolha o estado antes'}
@@ -101,8 +105,9 @@ export function WizardStepLocalizacao({
               />
             </Field>
 
-            <Field label="Bairro">
+            <Field label="Bairro" invalid={invalidField === 'bairro'}>
               <SearchableSelect
+                invalid={invalidField === 'bairro'}
                 value={bairroId}
                 label={bairroNome || 'Selecione o bairro'}
                 placeholder={cidadeId ? 'Selecione o bairro' : 'Escolha a cidade antes'}
@@ -122,8 +127,9 @@ export function WizardStepLocalizacao({
           </div>
 
           {showReference ? (
-            <Field label="Complemento ou ponto de referência">
+            <Field label="Complemento ou ponto de referência" invalid={invalidField === 'enderecoResumido'}>
               <Input
+                aria-invalid={invalidField === 'enderecoResumido'}
                 value={pontoReferenciaTexto}
                 onChange={(event) => onReferencia(event.target.value)}
                 placeholder="Ex.: próximo ao Flamboyant"

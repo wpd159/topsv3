@@ -13,16 +13,30 @@ public class R2VerificacaoAgrupadaPreviews {
   private static final String DIRECTORY = "restritas-borradas/v1/";
   private final R2StorageProperties properties;
   private final HttpClient suppliedHttpClient;
+  private final ListDiagnostic listDiagnostic;
   private volatile R2SigV4Client client;
 
+  /** Optional timing observer supplied only by an isolated synthetic test. */
+  public interface ListDiagnostic {
+    boolean enabled();
+    void mark(String operationId, int page, String phase, long nanoTime, int value);
+  }
+
   public R2VerificacaoAgrupadaPreviews(R2StorageProperties properties) {
-    this(properties, null);
+    this(properties, null, null);
   }
 
   /** Explicit transport seam; configuration validation is identical for both constructors. */
   public R2VerificacaoAgrupadaPreviews(R2StorageProperties properties, HttpClient httpClient) {
+    this(properties, httpClient, null);
+  }
+
+  /** Test-only observer; the default runtime never records list timing events. */
+  public R2VerificacaoAgrupadaPreviews(R2StorageProperties properties, HttpClient httpClient,
+      ListDiagnostic listDiagnostic) {
     this.properties = properties;
     this.suppliedHttpClient = httpClient;
+    this.listDiagnostic = listDiagnostic;
   }
 
   public Set<String> verificar(Set<String> chaves) {
@@ -85,7 +99,7 @@ public class R2VerificacaoAgrupadaPreviews {
                 .followRedirects(HttpClient.Redirect.NEVER).build()
             : suppliedHttpClient;
         client = new R2SigV4Client(transport, endpoint, properties.getRegion(),
-            properties.getAccessKey(), properties.getSigningValue());
+            properties.getAccessKey(), properties.getSigningValue(), listDiagnostic);
       }
       return client;
     }

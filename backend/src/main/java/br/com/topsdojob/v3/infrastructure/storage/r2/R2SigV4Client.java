@@ -64,6 +64,7 @@ final class R2SigV4Client implements R2Operations {
   private final String accessKey;
   private final String signingValue;
   private final String host;
+  private final R2VerificacaoAgrupadaPreviews.ListDiagnostic listDiagnostic;
 
   R2SigV4Client(
       HttpClient httpClient,
@@ -71,12 +72,29 @@ final class R2SigV4Client implements R2Operations {
       String region,
       String accessKey,
       String signingValue) {
+    this(httpClient, endpoint, region, accessKey, signingValue, null);
+  }
+
+  R2SigV4Client(
+      HttpClient httpClient,
+      URI endpoint,
+      String region,
+      String accessKey,
+      String signingValue,
+      R2VerificacaoAgrupadaPreviews.ListDiagnostic listDiagnostic) {
     this.httpClient = httpClient;
     this.endpoint = endpoint;
     this.region = region == null || region.isBlank() ? "auto" : region;
     this.accessKey = accessKey;
     this.signingValue = signingValue;
     this.host = endpoint.getRawAuthority();
+    this.listDiagnostic = listDiagnostic;
+  }
+
+  private void mark(LocalidadesConsultaOrcamento budget, int page, String phase, int value) {
+    if (listDiagnostic != null && listDiagnostic.enabled()) {
+      listDiagnostic.mark(budget.operacaoId(), page, phase, System.nanoTime(), value);
+    }
   }
 
   @Override
@@ -150,6 +168,7 @@ final class R2SigV4Client implements R2Operations {
       return new LocalidadesConsultaOrcamento(Duration.ofMillis(3500))
           .executar(() -> listarExistentes(bucket, prefix, requested));
     }
+    mark(budget, 0, "list_start", requested == null ? -1 : requested.size());
     budget.conferir();
     if (bucket == null || bucket.isBlank() || prefix == null || prefix.isBlank()
         || requested == null || requested.size() > 4096) throw invalidList();
@@ -166,6 +185,8 @@ final class R2SigV4Client implements R2Operations {
     int totalItems = 0;
     int totalBytes = 0;
     for (int pageNumber = 0; pageNumber < LIST_MAX_PAGES; pageNumber++) {
+      int tracedPage = pageNumber + 1;
+      mark(budget, tracedPage, "page_start", pending.size());
       budget.conferir();
       Map<String, String> query = new TreeMap<>();
       query.put("list-type", "2");
@@ -179,33 +200,41 @@ final class R2SigV4Client implements R2Operations {
           .GET().header("x-amz-date", signature.amzDate())
           .header("x-amz-content-sha256", EMPTY_PAYLOAD_HASH)
           .header("Authorization", signature.authorization()).build();
-      byte[] body = budget.medir("storage_list", () -> receiveList(request, budget));
+      mark(budget, tracedPage, "request_ready", 0);
+      byte[] body = budget.medir("storage_list", () -> receiveList(request, budget, tracedPage));
       totalBytes += body.length;
       if (totalBytes > LIST_MAX_PAGES * LIST_PAGE_BYTES) throw invalidList();
+      mark(budget, tracedPage, "parse_start", body.length);
       ListPage page = parseList(body, bucket, prefix, cursor, budget);
+      mark(budget, tracedPage, "parse_done", page.keys().size());
       totalItems += page.keys().size();
       if (totalItems > LIST_MAX_PAGES * LIST_PAGE_ITEMS) throw invalidList();
       if (page.truncated() && (page.nextToken() == null || page.nextToken().isBlank()
           || !tokens.add(page.nextToken()))) throw invalidList();
+      mark(budget, tracedPage, "match_start", pending.size());
       for (String key : page.keys()) {
         budget.conferir();
         if (pending.remove(key)) found.add(key);
       }
+      mark(budget, tracedPage, "match_done", found.size());
       budget.conferir();
       // A complete set of positive proofs can stop early; a missing key cannot.
       if (pending.isEmpty() || !page.truncated()) return Set.copyOf(found);
       cursor = page.nextToken();
+      mark(budget, tracedPage, "next_ready", pending.size());
     }
     throw new R2StorageException("Limite de paginas da listagem R2 excedido");
   }
 
-  private byte[] receiveList(HttpRequest request, LocalidadesConsultaOrcamento budget) {
-    LimitedListBody body = new LimitedListBody(budget);
+  private byte[] receiveList(HttpRequest request, LocalidadesConsultaOrcamento budget, int page) {
+    LimitedListBody body = new LimitedListBody(budget, listDiagnostic, page);
     CompletableFuture<HttpResponse<byte[]>> future = null;
     boolean completed = false;
     try {
       budget.conferir();
+      mark(budget, page, "send_start", 0);
       future = httpClient.sendAsync(request, info -> {
+        mark(budget, page, "headers", info.statusCode());
         if (info.statusCode() != 200) {
           body.fail(statusException("LIST", info.statusCode()));
         } else {
@@ -221,6 +250,7 @@ final class R2SigV4Client implements R2Operations {
         return body;
       });
       HttpResponse<byte[]> response = future.get(budget.restanteMillis(), TimeUnit.MILLISECONDS);
+      mark(budget, page, "future_done", response.body().length);
       budget.conferir();
       requireStatus(response.statusCode(), "LIST", 200);
       completed = true;
@@ -372,10 +402,23 @@ final class R2SigV4Client implements R2Operations {
     private final CompletableFuture<byte[]> result = new CompletableFuture<>();
     private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     private final LocalidadesConsultaOrcamento budget;
+    private final R2VerificacaoAgrupadaPreviews.ListDiagnostic diagnostic;
+    private final int page;
     private Flow.Subscription subscription;
     private R2StorageException failure;
+    private boolean firstChunk = true;
 
-    private LimitedListBody(LocalidadesConsultaOrcamento budget) { this.budget = budget; }
+    private LimitedListBody(LocalidadesConsultaOrcamento budget,
+        R2VerificacaoAgrupadaPreviews.ListDiagnostic diagnostic, int page) {
+      this.budget = budget;
+      this.diagnostic = diagnostic;
+      this.page = page;
+    }
+    private void mark(String phase, int value) {
+      if (diagnostic != null && diagnostic.enabled()) {
+        diagnostic.mark(budget.operacaoId(), page, phase, System.nanoTime(), value);
+      }
+    }
     @Override public CompletionStage<byte[]> getBody() { return result; }
     @Override public synchronized void onSubscribe(Flow.Subscription incoming) {
       if (subscription != null || result.isDone()) { incoming.cancel(); return; }
@@ -386,6 +429,7 @@ final class R2SigV4Client implements R2Operations {
       if (result.isDone()) return;
       try {
         budget.conferir();
+        if (firstChunk) { firstChunk = false; mark("body_first", bytes.size()); }
         for (ByteBuffer buffer : buffers) {
           if (buffer.remaining() > LIST_PAGE_BYTES - bytes.size()) throw invalidList();
           byte[] chunk = new byte[buffer.remaining()];
@@ -401,11 +445,17 @@ final class R2SigV4Client implements R2Operations {
       fail(new R2StorageException("Falha de transporte na listagem R2"));
     }
     @Override public synchronized void onComplete() {
-      if (!result.isDone()) result.complete(bytes.toByteArray());
+      if (!result.isDone()) {
+        mark("body_received", bytes.size());
+        byte[] response = bytes.toByteArray();
+        mark("body_materialized", response.length);
+        result.complete(response);
+      }
     }
     private synchronized void fail(R2StorageException exception) {
       if (result.isDone()) return;
       failure = exception;
+      mark("body_failed", bytes.size());
       if (subscription != null) subscription.cancel();
       result.completeExceptionally(exception);
     }

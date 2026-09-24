@@ -157,6 +157,8 @@ export class MeusAnunciosApiError extends Error {
     readonly code: string | null = null,
     readonly requestId: string | null = null,
     readonly unsupportedPhotoUpload = false,
+    readonly field: string | null = null,
+    readonly ruleCode: string | null = null,
   ) {
     super(message)
     this.name = 'MeusAnunciosApiError'
@@ -170,6 +172,8 @@ type MeusAnunciosErrorEnvelope = {
   error?: unknown
   code?: unknown
   requestId?: unknown
+  field?: unknown
+  ruleCode?: unknown
 }
 
 function nonBlankString(value: unknown) {
@@ -245,6 +249,8 @@ function uploadErrorFromXhr(
     nonBlankString(envelope?.code),
     nonBlankString(envelope?.requestId) || xhr.getResponseHeader('X-Request-Id'),
     xhr.status === 415 && unsupportedPhotoUpload,
+    nonBlankString(envelope?.field),
+    nonBlankString(envelope?.ruleCode),
   )
 }
 
@@ -308,13 +314,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     let message = `Não foi possível concluir a solicitação (HTTP ${response.status}).`
     let code: string | null = null
     let bodyRequestId: string | null = null
+    let field: string | null = null
+    let ruleCode: string | null = null
     try {
-      const body = (await response.json()) as { message?: unknown; code?: unknown; requestId?: unknown }
+      const body = (await response.json()) as MeusAnunciosErrorEnvelope
       if (typeof body.message === 'string' && body.message.trim()) message = body.message
       if (typeof body.code === 'string' && body.code.trim()) code = body.code
       bodyRequestId = typeof body.requestId === 'string' && body.requestId.trim()
         ? body.requestId.trim()
         : null
+      field = nonBlankString(body.field)
+      ruleCode = nonBlankString(body.ruleCode)
     } catch {
       // A resposta sem JSON preserva o status HTTP real no erro abaixo.
     }
@@ -322,7 +332,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       message,
       response.status,
       code,
-      bodyRequestId || response.headers.get('X-Request-Id')
+      bodyRequestId || response.headers.get('X-Request-Id'),
+      false,
+      field,
+      ruleCode,
     )
   }
 
@@ -640,8 +653,8 @@ export async function enviarMinhaMidia(
 const mediaBatchIdempotencyKeys = new Map<string, string>()
 const mediaBatchFileIds = new WeakMap<File, string>()
 
-function mediaBatchSignature(files: File[]) {
-  return files
+function mediaBatchSignature(files: File[], slug: string, accountScope: string) {
+  return [accountScope, slug, ...files
     .map((file) => {
       let identity = mediaBatchFileIds.get(file)
       if (!identity) {
@@ -649,19 +662,19 @@ function mediaBatchSignature(files: File[]) {
         mediaBatchFileIds.set(file, identity)
       }
       return identity
-    })
-    .join('|')
+    })].join('|')
 }
 
 export async function enviarMinhasMidiasEmLote(
   slug: string,
   arquivos: File[],
-  onProgress?: (percentual: number) => void
+  onProgress?: (percentual: number) => void,
+  accountScope = '',
 ) {
   if (!arquivos.length) throw new MeusAnunciosApiError('Selecione ao menos um arquivo.', 400)
   await validateMediaUploadPhotos(arquivos)
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
-  const signature = mediaBatchSignature(arquivos)
+  const signature = mediaBatchSignature(arquivos, slug, accountScope)
   const idempotencyKey = mediaBatchIdempotencyKeys.get(signature) || crypto.randomUUID()
   mediaBatchIdempotencyKeys.set(signature, idempotencyKey)
   const unsupportedPhotoUpload = containsOnlyPhotoUploads(arquivos)

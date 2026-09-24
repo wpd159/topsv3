@@ -24,6 +24,7 @@ export function SearchableSelect({
   emptyText,
   options,
   disabled,
+  invalid = false,
   onSelect,
 }: {
   value: string
@@ -33,6 +34,7 @@ export function SearchableSelect({
   emptyText: string
   options: SearchableSelectOption[]
   disabled?: boolean
+  invalid?: boolean
   onSelect: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -60,10 +62,12 @@ export function SearchableSelect({
           role="combobox"
           aria-expanded={open}
           aria-disabled={disabled ? 'true' : 'false'}
+          aria-invalid={invalid}
           disabled={disabled}
           className={cn(
             'h-12 w-full justify-between rounded-xl border-zinc-200 bg-white px-4 text-left text-base font-normal text-zinc-900 shadow-none hover:bg-white sm:text-sm',
-            disabled && 'text-zinc-400'
+            disabled && 'text-zinc-400',
+            invalid && 'border-red-600'
           )}
         >
           <span className={cn('truncate', !value && 'text-zinc-500')}>

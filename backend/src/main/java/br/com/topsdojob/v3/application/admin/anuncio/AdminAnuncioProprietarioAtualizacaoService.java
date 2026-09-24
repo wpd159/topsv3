@@ -9,6 +9,7 @@ import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,14 +41,20 @@ public class AdminAnuncioProprietarioAtualizacaoService {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "payload obrigatorio");
         }
-        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
-        UUID usuarioId = anuncio.getUsuarioId();
+        UUID usuarioId = anuncioRepository.findUsuarioIdById(anuncioId).orElse(null);
         if (usuarioId == null) {
+            if (!anuncioRepository.existsById(anuncioId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio sem proprietario canonico");
         }
         UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(usuarioId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        if (!Objects.equals(anuncio.getUsuarioId(), usuarioId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario do anuncio alterado");
+        }
 
         AdminUsuarioAtualizacaoRequestDto atualizacao = new AdminUsuarioAtualizacaoRequestDto();
         atualizacao.setVersao(usuario.getVersao());
