@@ -10,6 +10,6 @@ class PackagedMigrationCatalogTest {
     void derivaVersaoMinimaDoSchemaDasMigrationsEmpacotadas() {
         var catalog = new PackagedMigrationCatalog();
 
-        assertThat(catalog.minimumCompatibleVersion()).isEqualTo(53);
+        assertThat(catalog.minimumCompatibleVersion()).isEqualTo(55);
     }
 }
