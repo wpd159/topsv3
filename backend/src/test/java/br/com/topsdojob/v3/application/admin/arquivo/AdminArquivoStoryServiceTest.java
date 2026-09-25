@@ -126,7 +126,7 @@ class AdminArquivoStoryServiceTest {
     when(rs.getString("chave_privada")).thenReturn(chave);
     when(storage.get(StorageArea.PRIVATE_MEDIA, chave)).thenReturn(new StoredObject(bytes, "image/png"));
     assertEquals(bytes.length, service.midia(veiculacao, midia, ator, "req-2", finalidade).bytes().length);
-    verify(audit).registrar(ator, veiculacao, "ARQUIVO_PUBLICIDADE_STORY_MIDIA_PREPARADA",
-        "req-2", finalidade);
+    verify(audit).registrarMidia(ator, veiculacao, midia,
+        "ARQUIVO_PUBLICIDADE_STORY_MIDIA_PREPARADA", "req-2", finalidade);
   }
 }

@@ -35,4 +35,27 @@ class AdminArquivoStoryAccessAuditServiceTest {
     assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"APURACAO_INCIDENTE\""));
     assertFalse(evento.getDepoisJson().contains(atorId.toString()));
   }
+
+  @Test
+  void registraMidiaEspecificaSemDadosPrivados() {
+    AuditoriaEventoRepository repository = mock(AuditoriaEventoRepository.class);
+    var service = new AdminArquivoStoryAccessAuditService(repository);
+    UUID atorId = UUID.randomUUID();
+    UUID veiculacaoId = UUID.randomUUID();
+    UUID midiaId = UUID.randomUUID();
+
+    service.registrarMidia(atorId, veiculacaoId, midiaId,
+        "ARQUIVO_PUBLICIDADE_STORY_MIDIA_PREPARADA", "request-story-2",
+        FinalidadeAcessoArquivoPublicidade.APURACAO_INCIDENTE);
+
+    ArgumentCaptor<AuditoriaEventoEntity> captor =
+        ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(repository).save(captor.capture());
+    AuditoriaEventoEntity evento = captor.getValue();
+    assertEquals(veiculacaoId, evento.getRecursoId());
+    assertEquals("request-story-2", evento.getRequestId());
+    assertTrue(evento.getDepoisJson().contains("\"midiaId\":\"" + midiaId + "\""));
+    assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"APURACAO_INCIDENTE\""));
+    assertFalse(evento.getDepoisJson().contains(atorId.toString()));
+  }
 }

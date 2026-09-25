@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { ContractState } from '@/components/feedback/contract-state'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { getAdminSession } from '@/lib/admin-auth-api'
 import {
   baixarMidiaPublicidade,
   baixarMidiaStory,
@@ -70,7 +71,7 @@ function salvarArquivo(blob: Blob, nome: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
-function StoryArchiveSection({ finalidade }: { finalidade: FinalidadeAcessoArquivo | '' }) {
+function StoryArchiveSection({ finalidade, podeExportar }: { finalidade: FinalidadeAcessoArquivo | ''; podeExportar: boolean }) {
   const [page, setPage] = useState(0)
   const [tentativa, setTentativa] = useState(0)
   const [pagina, setPagina] = useState<StoryRegistrosPagina | null>(null)
@@ -134,7 +135,7 @@ function StoryArchiveSection({ finalidade }: { finalidade: FinalidadeAcessoArqui
   }, [selecionadoId, finalidade])
 
   const exportar = async (id: string) => {
-    if (!finalidade || exportando) return
+    if (!finalidade || !podeExportar || exportando) return
     setExportando(true)
     setErroArquivo(null)
     try {
@@ -147,7 +148,7 @@ function StoryArchiveSection({ finalidade }: { finalidade: FinalidadeAcessoArqui
   }
 
   const baixarMidia = async (registroId: string, midiaId: string, mimeType: string) => {
-    if (!finalidade || baixandoMidiaId) return
+    if (!finalidade || !podeExportar || baixandoMidiaId) return
     setBaixandoMidiaId(midiaId)
     setErroArquivo(null)
     try {
@@ -231,7 +232,7 @@ function StoryArchiveSection({ finalidade }: { finalidade: FinalidadeAcessoArqui
                   <li key={versao.id} className="rounded-md border bg-white p-3 text-sm">
                     <p className="font-medium">Versão {versao.numero}: {tituloVersao(versao.conteudo)}</p>
                     <p className="mt-1 text-gray-600">{dataHora(versao.vigenteDesde)} até {dataHora(versao.vigenteAte)} · {versao.motivo} · {versao.midias.length} mídia(s)</p>
-                    {versao.midias.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{versao.midias.map((midia) => (
+                    {podeExportar && versao.midias.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{versao.midias.map((midia) => (
                       <Button key={midia.id} type="button" size="sm" variant="outline" disabled={baixandoMidiaId !== null} onClick={() => void baixarMidia(detalhe.id, midia.id, midia.mimeType)}>
                         {baixandoMidiaId === midia.id ? 'Baixando mídia...' : `Baixar mídia ${midia.variante} (${midia.ordem})`}
                       </Button>
@@ -239,7 +240,7 @@ function StoryArchiveSection({ finalidade }: { finalidade: FinalidadeAcessoArqui
                   </li>
                 ))}
               </ol>
-              <Button className="mt-4" type="button" variant="outline" disabled={exportando} onClick={() => void exportar(detalhe.id)}>{exportando ? 'Preparando exportação...' : 'Exportar JSON deste Story'}</Button>
+              {podeExportar ? <Button className="mt-4" type="button" variant="outline" disabled={exportando} onClick={() => void exportar(detalhe.id)}>{exportando ? 'Preparando exportação...' : 'Exportar JSON deste Story'}</Button> : null}
               {erroArquivo ? <div className="mt-3"><ContractState error={erroArquivo} /></div> : null}
             </>
           ) : null}
@@ -250,6 +251,7 @@ function StoryArchiveSection({ finalidade }: { finalidade: FinalidadeAcessoArqui
 }
 
 export default function AdminRegistrosPage() {
+  const [podeExportar, setPodeExportar] = useState(false)
   const [page, setPage] = useState(0)
   const [pagina, setPagina] = useState<PublicidadeRegistrosPagina | null>(null)
   const [carregando, setCarregando] = useState(false)
@@ -264,6 +266,18 @@ export default function AdminRegistrosPage() {
   const [exportando, setExportando] = useState(false)
   const [baixandoMidiaId, setBaixandoMidiaId] = useState<string | null>(null)
   const [erroMidia, setErroMidia] = useState<unknown>(null)
+
+  useEffect(() => {
+    let ativo = true
+    void getAdminSession()
+      .then((sessao) => {
+        if (ativo) setPodeExportar(sessao?.permissoes.includes('ARQUIVO_PUBLICIDADE_EXPORTAR') ?? false)
+      })
+      .catch(() => {
+        if (ativo) setPodeExportar(false)
+      })
+    return () => { ativo = false }
+  }, [])
 
   useEffect(() => {
     if (!finalidade) {
@@ -311,7 +325,7 @@ export default function AdminRegistrosPage() {
   }, [selecionadoId, finalidade])
 
   const exportar = async (id: string) => {
-    if (exportando || !finalidade) return
+    if (exportando || !finalidade || !podeExportar) return
     setExportando(true)
     setErroExportacao(null)
     try {
@@ -325,7 +339,7 @@ export default function AdminRegistrosPage() {
   }
 
   const baixarMidia = async (registroId: string, midiaId: string, mimeType: string) => {
-    if (baixandoMidiaId || !finalidade) return
+    if (baixandoMidiaId || !finalidade || !podeExportar) return
     setBaixandoMidiaId(midiaId)
     setErroMidia(null)
     try {
@@ -343,6 +357,7 @@ export default function AdminRegistrosPage() {
       <div>
         <h1 className="text-2xl font-bold">Registros e arquivo de publicidade</h1>
         <p className="mt-1 text-sm text-gray-600">Consulta privada das veiculações preservadas e acesso às trilhas já disponíveis em cada módulo.</p>
+        {!podeExportar ? <p className="mt-1 text-sm text-gray-600">A exportação e o download das mídias exigem permissão adicional.</p> : null}
       </div>
 
       <section className="rounded-lg border bg-white p-4" aria-labelledby="arquivo-publicidade-title">
@@ -451,7 +466,7 @@ export default function AdminRegistrosPage() {
                         <p className="font-medium">Versão {versao.numero}: {tituloVersao(versao.conteudo)}</p>
                         {slugVersao(versao.conteudo) ? <p className="mt-1 break-all font-mono text-xs text-gray-600">Slug: {slugVersao(versao.conteudo)}</p> : null}
                         <p className="mt-1 text-gray-600">{dataHora(versao.vigenteDesde)} até {dataHora(versao.vigenteAte)} · {versao.motivo} · {versao.midias.length} mídia(s)</p>
-                        {versao.midias.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{versao.midias.map((midia) => (
+                        {podeExportar && versao.midias.length > 0 ? <div className="mt-2 flex flex-wrap gap-2">{versao.midias.map((midia) => (
                           <Button key={midia.id} type="button" size="sm" variant="outline" disabled={baixandoMidiaId !== null || !finalidade} onClick={() => void baixarMidia(detalhe.id, midia.id, midia.mimeType)}>
                             {baixandoMidiaId === midia.id ? 'Baixando mídia...' : `Baixar mídia ${midia.variante} (${midia.ordem})`}
                           </Button>
@@ -461,7 +476,7 @@ export default function AdminRegistrosPage() {
                   </ol>
                   {erroMidia ? <div className="mt-3"><ContractState error={erroMidia} /></div> : null}
                 </div>
-                <Button className="mt-4" type="button" variant="outline" disabled={exportando || !finalidade} onClick={() => void exportar(detalhe.id)}>{exportando ? 'Preparando exportação...' : 'Exportar JSON deste registro'}</Button>
+                {podeExportar ? <Button className="mt-4" type="button" variant="outline" disabled={exportando || !finalidade} onClick={() => void exportar(detalhe.id)}>{exportando ? 'Preparando exportação...' : 'Exportar JSON deste registro'}</Button> : null}
                 {erroExportacao ? <div className="mt-3"><ContractState error={erroExportacao} /></div> : null}
               </>
             ) : null}
@@ -469,7 +484,7 @@ export default function AdminRegistrosPage() {
         ) : null}
       </section>
 
-      <StoryArchiveSection finalidade={finalidade} />
+      <StoryArchiveSection finalidade={finalidade} podeExportar={podeExportar} />
 
       <section className="grid gap-3 sm:grid-cols-2" aria-label="Outras trilhas disponíveis">
         {TRILHAS.map((trilha) => (

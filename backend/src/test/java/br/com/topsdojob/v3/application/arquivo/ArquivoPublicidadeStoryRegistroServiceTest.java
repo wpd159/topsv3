@@ -94,6 +94,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     Map<String, Object> midia = midia();
     when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
       String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
       if (sql.contains("FROM story_anuncio s")) return List.of(story);
       if (sql.contains("FROM arquivo_midia ar")) return List.of(midia);
       return List.of();
@@ -126,6 +127,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     story.put("encerrado_em", INICIO.plusHours(2));
     when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
       String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
       if (sql.contains("FROM story_anuncio s")) return List.of(story);
       if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(Map.of(
           "id", JANELA_ID, "inicio_em", INICIO, "fim_em", FIM,
@@ -142,9 +144,78 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
   }
 
   @Test
+  void encerramentoAtrasadoNaoFechaAntesDaVersaoMaisRecente() {
+    OffsetDateTime pedido = INICIO.plusMinutes(1);
+    OffsetDateTime ultimoInicio = INICIO.plusMinutes(3);
+    OffsetDateTime observado = INICIO.plusMinutes(4);
+    Map<String, Object> story = story("REMOVIDO");
+    story.put("encerrado_em", pedido);
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return List.of(Map.of(
+          "observado", observado, "ultimo_inicio", ultimoInicio));
+      if (sql.contains("FROM story_anuncio s")) return List.of(story);
+      if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(Map.of(
+          "id", JANELA_ID, "inicio_em", INICIO, "fim_em", FIM,
+          "encerramento_motivo", "LIMITE_AUTOMATICO_STORY"));
+      return List.of();
+    });
+
+    service.registrarEstado(STORY_ID, "STORY_ENCERRADO_PELO_USUARIO", "req-atrasado", pedido);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> versao = ArgumentCaptor.forClass(Map.class);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> janela = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "UPDATE arquivo_publicidade_story_versao"), versao.capture());
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "UPDATE arquivo_publicidade_story_veiculacao"), janela.capture());
+    assertThat(versao.getValue().get("fim")).isEqualTo(ultimoInicio);
+    assertThat(janela.getValue().get("fim")).isEqualTo(ultimoInicio);
+    verify(jdbc).queryForList(org.mockito.ArgumentMatchers.contains("clock_timestamp()"), anyMap());
+    verify(storage, never()).putIfAbsent(any(), anyString(), any(), anyString());
+  }
+
+  @Test
+  void mudancaAtrasadaUsaMarcoPosteriorAoLockParaNovaVersao() {
+    OffsetDateTime pedido = INICIO.plusMinutes(1);
+    OffsetDateTime ultimoInicio = INICIO.plusMinutes(3);
+    OffsetDateTime observado = INICIO.plusMinutes(4);
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return List.of(Map.of(
+          "observado", observado, "ultimo_inicio", ultimoInicio));
+      if (sql.contains("FROM story_anuncio s")) return List.of(story("PUBLICADO"));
+      if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(Map.of(
+          "id", JANELA_ID, "inicio_em", INICIO, "fim_em", FIM,
+          "encerramento_motivo", "LIMITE_AUTOMATICO_STORY"));
+      if (sql.contains("FROM arquivo_publicidade_story_versao")) return List.of(Map.of(
+          "id", UUID.randomUUID(), "numero", 1, "conteudo_sha256", "0".repeat(64)));
+      if (sql.contains("FROM arquivo_midia ar")) return List.of(midia());
+      return List.of();
+    });
+    when(storage.get(eq(StorageArea.PRIVATE_MEDIA), anyString()))
+        .thenReturn(new StoredObject(BYTES, "image/jpeg"));
+    when(storage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), anyString(), any(), eq("image/jpeg")))
+        .thenReturn(ObjectWriteResult.CREATED);
+
+    service.registrarEstado(STORY_ID, "STORY_ATUALIZADO", "req-atrasado", pedido);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> versao = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_versao"), versao.capture());
+    assertThat(versao.getValue().get("inicio")).isEqualTo(observado);
+    assertThat(versao.getValue().get("numero")).isEqualTo(2);
+    verify(jdbc).queryForList(org.mockito.ArgumentMatchers.contains("clock_timestamp()"), anyMap());
+  }
+
+  @Test
   void rollbackLimpaSomenteCopiaCriada() {
     when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
       String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
       if (sql.contains("FROM story_anuncio s")) return List.of(story("PUBLICADO"));
       if (sql.contains("FROM arquivo_midia ar")) return List.of(midia());
       return List.of();
@@ -170,6 +241,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     AtomicReference<Map<String, Object>> versao = new AtomicReference<>();
     when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
       String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
       if (sql.contains("FROM story_anuncio s")) return List.of(story);
       if (sql.contains("FROM arquivo_midia ar")) return List.of(midia());
       if (sql.contains("FROM arquivo_publicidade_story_veiculacao"))
@@ -238,6 +310,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     localizacao.put("endereco_resumido", null);
     when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
       String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
       if (sql.contains("FROM story_anuncio s")) return List.of(story);
       if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) return List.of(media);
       if (sql.contains("FROM anuncio_localizacao l")) return List.of(localizacao);
@@ -309,6 +382,13 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     row.put("beneficio_escopo", "MIDIA");
     row.put("movimento_credito_id", UUID.randomUUID());
     return row;
+  }
+
+  private List<Map<String, Object>> marcos(Map<String, Object> parametros) {
+    OffsetDateTime pedido = (OffsetDateTime) parametros.get("instante");
+    OffsetDateTime inicio = (OffsetDateTime) parametros.get("inicioStory");
+    return List.of(Map.of("observado", pedido.isAfter(inicio) ? pedido : inicio,
+        "ultimo_inicio", inicio));
   }
 
   private Map<String, Object> midia() {

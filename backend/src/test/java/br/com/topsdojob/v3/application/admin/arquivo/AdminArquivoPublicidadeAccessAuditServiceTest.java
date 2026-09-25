@@ -35,4 +35,27 @@ class AdminArquivoPublicidadeAccessAuditServiceTest {
     assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"ATENDIMENTO_FISCALIZACAO\""));
     assertFalse(evento.getDepoisJson().contains(atorId.toString()));
   }
+
+  @Test
+  void registraMidiaEspecificaSemCopiarDadosPrivados() {
+    AuditoriaEventoRepository repository = mock(AuditoriaEventoRepository.class);
+    var service = new AdminArquivoPublicidadeAccessAuditService(repository);
+    UUID atorId = UUID.randomUUID();
+    UUID veiculacaoId = UUID.randomUUID();
+    UUID midiaId = UUID.randomUUID();
+
+    service.registrarMidia(atorId, veiculacaoId, midiaId,
+        "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA", "request-2",
+        FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA);
+
+    ArgumentCaptor<AuditoriaEventoEntity> captor =
+        ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(repository).save(captor.capture());
+    AuditoriaEventoEntity evento = captor.getValue();
+    assertEquals(veiculacaoId, evento.getRecursoId());
+    assertEquals("request-2", evento.getRequestId());
+    assertTrue(evento.getDepoisJson().contains("\"midiaId\":\"" + midiaId + "\""));
+    assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"AUDITORIA_INTERNA\""));
+    assertFalse(evento.getDepoisJson().contains(atorId.toString()));
+  }
 }

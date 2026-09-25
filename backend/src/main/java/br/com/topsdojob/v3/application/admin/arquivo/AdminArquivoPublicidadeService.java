@@ -188,8 +188,8 @@ public class AdminArquivoPublicidadeService {
       throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
           "Integridade da midia arquivada nao comprovada");
     }
-    audit.registrar(atorId, veiculacaoId, "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA", requestId,
-        finalidade);
+    audit.registrarMidia(atorId, veiculacaoId, midiaId,
+        "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA", requestId, finalidade);
     return new Arquivo(bytes, meta.mimeType());
   }
 

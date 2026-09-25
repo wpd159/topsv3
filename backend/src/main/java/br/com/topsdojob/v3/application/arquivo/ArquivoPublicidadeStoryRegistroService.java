@@ -166,11 +166,12 @@ public class ArquivoPublicidadeStoryRegistroService {
     if (inicioStory == null || fimStory == null || !fimStory.isAfter(inicioStory)) {
       throw new IllegalStateException("Story sem janela temporal valida: " + storyId);
     }
-    OffsetDateTime observado = instante.isBefore(inicioStory) ? inicioStory : instante;
+    MarcosCaptura marcos = marcosAposLocks(instante, inicioStory, janela);
+    OffsetDateTime observado = marcos.observado();
     boolean publicavel = elegivel(story, observado);
     if (!publicavel) {
       if (janela != null) {
-        encerrar(janela, story, observado, motivo);
+        encerrar(janela, story, observado, marcos.ultimoInicio(), motivo);
       }
       return;
     }
@@ -187,6 +188,27 @@ public class ArquivoPublicidadeStoryRegistroService {
       janela = abrirJanela(story, observado);
     }
     criarVersaoSeMudou(story, janela, midias, motivo, requestId, observado);
+  }
+
+  private MarcosCaptura marcosAposLocks(
+      OffsetDateTime instante, OffsetDateTime inicioStory, Map<String, Object> janela) {
+    Map<String, Object> parametros = new HashMap<>();
+    parametros.put("instante", instante);
+    parametros.put("inicioStory", inicioStory);
+    parametros.put("janelaId", janela == null ? null : janela.get("id"));
+    // A fresh statement after both row locks sees versions committed while this
+    // command waited. Never date a post-lock state before an existing version.
+    Map<String, Object> marcos = unico("""
+        SELECT COALESCE(v.ultimo_inicio, CAST(:inicioStory AS timestamptz)) AS ultimo_inicio,
+               GREATEST(clock_timestamp(), CAST(:instante AS timestamptz),
+                 CAST(:inicioStory AS timestamptz),
+                 COALESCE(v.ultimo_inicio, CAST(:inicioStory AS timestamptz))) AS observado
+        FROM (SELECT max(vigente_desde) AS ultimo_inicio
+              FROM arquivo_publicidade_story_versao
+              WHERE veiculacao_id = :janelaId) v
+        """, parametros);
+    return new MarcosCaptura(
+        instanteJdbc(marcos.get("observado")), instanteJdbc(marcos.get("ultimo_inicio")));
   }
 
   private boolean elegivel(Map<String, Object> story, OffsetDateTime observado) {
@@ -241,7 +263,8 @@ public class ArquivoPublicidadeStoryRegistroService {
   }
 
   private void encerrar(
-      Map<String, Object> janela, Map<String, Object> story, OffsetDateTime instante, String motivo) {
+      Map<String, Object> janela, Map<String, Object> story, OffsetDateTime instante,
+      OffsetDateTime ultimoInicio, String motivo) {
     OffsetDateTime limite = instanteJdbc(janela.get("fim_em"));
     OffsetDateTime encerrado = instanteJdbc(story.get("encerrado_em"));
     OffsetDateTime fim = encerrado != null && encerrado.isBefore(instante) ? encerrado : instante;
@@ -249,6 +272,9 @@ public class ArquivoPublicidadeStoryRegistroService {
       fim = limite;
     }
     OffsetDateTime inicio = instanteJdbc(janela.get("inicio_em"));
+    if (ultimoInicio.isAfter(inicio)) {
+      inicio = ultimoInicio;
+    }
     if (fim.isBefore(inicio)) {
       fim = inicio;
     }
@@ -546,20 +572,20 @@ public class ArquivoPublicidadeStoryRegistroService {
         && !hash.equals(midia.get("sha256"))) {
       throw new IllegalStateException("hash da fonte de Story divergente: " + midia.get("arquivo_midia_id"));
     }
-    String chavePrivada = storageProperties.getPrivateMediaPrefix()
+    String caminhoArquivoPrivado = storageProperties.getPrivateMediaPrefix()
         + "arquivo-publicidade/stories/" + versaoId + "/"
         + (midia.get("anuncio_midia_id") == null ? "direta" : midia.get("anuncio_midia_id"))
         + "/" + midia.get("arquivo_midia_id")
         + "/" + variante.toLowerCase(java.util.Locale.ROOT);
     ObjectWriteResult resultado = storage.putIfAbsent(
-        StorageArea.PRIVATE_MEDIA, chavePrivada, original.content(), original.contentType());
+        StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado, original.content(), original.contentType());
     if (resultado == ObjectWriteResult.CREATED) {
       TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
         @Override
         public void afterCompletion(int status) {
           if (status == STATUS_ROLLED_BACK) {
             try {
-              storage.delete(StorageArea.PRIVATE_MEDIA, chavePrivada);
+              storage.delete(StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado);
             } catch (RuntimeException exception) {
               LOG.error("Falha ao limpar copia privada de Story apos rollback: versao={}, arquivo={}, variante={}",
                   versaoId, midia.get("arquivo_midia_id"), variante, exception);
@@ -568,14 +594,14 @@ public class ArquivoPublicidadeStoryRegistroService {
         }
       });
     }
-    StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, chavePrivada);
+    StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado);
     if (confirmada == null || confirmada.content() == null
         || !hash.equals(sha256(confirmada.content()))
         || !Objects.equals(original.contentType(), confirmada.contentType())) {
       throw new IllegalStateException("copia privada do Story nao confirmou integridade: " + midia.get("arquivo_midia_id"));
     }
     return new MidiaCopiada(UUID.randomUUID(), (UUID) midia.get("anuncio_midia_id"),
-        (UUID) midia.get("arquivo_midia_id"), variante, chavePrivada,
+        (UUID) midia.get("arquivo_midia_id"), variante, caminhoArquivoPrivado,
         hash, original.contentType(), original.content().length,
         ((Number) midia.get("ordem")).intValue());
   }
@@ -658,5 +684,8 @@ public class ArquivoPublicidadeStoryRegistroService {
 
   private record MidiaCopiada(UUID id, UUID anuncioMidiaId, UUID arquivoMidiaId,
       String variante, String chave, String sha256, String mimeType, long bytes, int ordem) {
+  }
+
+  private record MarcosCaptura(OffsetDateTime observado, OffsetDateTime ultimoInicio) {
   }
 }

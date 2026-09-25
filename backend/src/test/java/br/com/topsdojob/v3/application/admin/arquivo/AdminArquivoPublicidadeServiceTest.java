@@ -136,7 +136,7 @@ class AdminArquivoPublicidadeServiceTest {
     when(provider.getIfAvailable()).thenReturn(storage);
     when(storage.get(StorageArea.PRIVATE_MEDIA, chave)).thenReturn(new StoredObject(bytes, "image/png"));
     assertEquals(bytes.length, service.midia(veiculacao, midia, ator, "req-4", finalidade).bytes().length);
-    verify(audit).registrar(ator, veiculacao, "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA",
-        "req-4", finalidade);
+    verify(audit).registrarMidia(ator, veiculacao, midia,
+        "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA", "req-4", finalidade);
   }
 }

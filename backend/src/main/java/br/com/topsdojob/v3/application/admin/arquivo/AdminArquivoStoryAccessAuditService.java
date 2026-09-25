@@ -21,7 +21,20 @@ public class AdminArquivoStoryAccessAuditService {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void registrar(UUID atorId, UUID veiculacaoId, String acao, String requestId,
       FinalidadeAcessoArquivoPublicidade finalidade) {
-    String dados = "{\"dadosPrivadosOcultos\":true,\"finalidade\":\"" + finalidade.name() + "\"}";
+    registrarInterno(atorId, veiculacaoId, null, acao, requestId, finalidade);
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void registrarMidia(UUID atorId, UUID veiculacaoId, UUID midiaId, String acao,
+      String requestId, FinalidadeAcessoArquivoPublicidade finalidade) {
+    registrarInterno(atorId, veiculacaoId, midiaId, acao, requestId, finalidade);
+  }
+
+  private void registrarInterno(UUID atorId, UUID veiculacaoId, UUID midiaId, String acao,
+      String requestId, FinalidadeAcessoArquivoPublicidade finalidade) {
+    String dados = "{\"dadosPrivadosOcultos\":true,\"finalidade\":\"" + finalidade.name() + "\"";
+    if (midiaId != null) dados += ",\"midiaId\":\"" + midiaId + "\"";
+    dados += "}";
     repository.save(AuditoriaEventoEntity.registrar(
         UUID.randomUUID(), atorId, acao, "ARQUIVO_PUBLICIDADE_STORY", veiculacaoId,
         null, dados, requestId, OffsetDateTime.now(ZoneOffset.UTC)));
