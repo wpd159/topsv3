@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoReposito
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
@@ -76,7 +77,8 @@ class MeuAnuncioCicloVidaServiceTest {
                 mock(AnuncioStatusHistoricoRepository.class),
                 mock(DocumentoBuscaAnuncioRepository.class),
                 mock(RevisaoAnuncioRepository.class),
-                fotoElegivelPolicy);
+                fotoElegivelPolicy,
+                mock(ArquivoPublicidadeRegistroService.class));
     }
 
     @Test

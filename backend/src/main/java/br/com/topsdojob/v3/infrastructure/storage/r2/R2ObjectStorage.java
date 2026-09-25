@@ -21,6 +21,7 @@ final class R2ObjectStorage implements ObjectStorage {
 
   @Override
   public void put(StorageArea area, String key, byte[] content, String contentType) {
+    forbidPreservedWrite(area);
     if (content == null || content.length == 0) {
       throw new IllegalArgumentException("Conteudo do objeto obrigatorio");
     }
@@ -34,6 +35,7 @@ final class R2ObjectStorage implements ObjectStorage {
       String key,
       byte[] content,
       String contentType) {
+    forbidPreservedWrite(area);
     if (content == null || content.length == 0) {
       throw new IllegalArgumentException("Conteudo do objeto obrigatorio");
     }
@@ -55,12 +57,16 @@ final class R2ObjectStorage implements ObjectStorage {
 
   @Override
   public void delete(StorageArea area, String key) {
+    forbidPreservedWrite(area);
     Location location = location(area, key);
     operations.delete(location.bucket(), key);
   }
 
   @Override
   public URI temporaryGetUrl(StorageArea area, String key, Duration ttl) {
+    if (area == StorageArea.PRESERVED_PUBLIC_MEDIA) {
+      throw new IllegalArgumentException("origem publica preservada nao permite URL temporaria");
+    }
     Location location = location(area, key);
     Duration effectiveTtl = ttl == null
         ? Duration.ofSeconds(properties.getSignedUrlTtlSeconds())
@@ -110,6 +116,8 @@ final class R2ObjectStorage implements ObjectStorage {
     Location location = switch (area) {
       case PUBLIC_MEDIA -> new Location(
           properties.getPublicMediaBucket(), properties.getPublicMediaPrefix());
+      case PRESERVED_PUBLIC_MEDIA -> new Location(
+          properties.getPreservedPublicMediaBucket(), properties.getPreservedPublicMediaPrefix());
       case PRIVATE_MEDIA -> new Location(
           properties.getPrivateMediaBucket(), properties.getPrivateMediaPrefix());
       case PRIVATE_DOCUMENT -> new Location(
@@ -130,6 +138,8 @@ final class R2ObjectStorage implements ObjectStorage {
     Location location = switch (area) {
       case PUBLIC_MEDIA -> new Location(
           properties.getPublicMediaBucket(), properties.getPublicMediaPrefix());
+      case PRESERVED_PUBLIC_MEDIA -> new Location(
+          properties.getPreservedPublicMediaBucket(), properties.getPreservedPublicMediaPrefix());
       case PRIVATE_MEDIA -> new Location(
           properties.getPrivateMediaBucket(), properties.getPrivateMediaPrefix());
       case PRIVATE_DOCUMENT -> new Location(
@@ -142,5 +152,11 @@ final class R2ObjectStorage implements ObjectStorage {
   }
 
   private record Location(String bucket, String prefix) {
+  }
+
+  private void forbidPreservedWrite(StorageArea area) {
+    if (area == StorageArea.PRESERVED_PUBLIC_MEDIA) {
+      throw new IllegalArgumentException("origem publica preservada e somente leitura");
+    }
   }
 }

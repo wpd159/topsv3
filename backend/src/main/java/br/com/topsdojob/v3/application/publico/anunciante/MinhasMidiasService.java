@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMid
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService.CapacidadeProprietario;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
@@ -53,6 +54,7 @@ public class MinhasMidiasService {
     private final AnuncioMidiaUploadCoreService uploadCoreService;
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
     private final MeuAnuncioCicloVidaService cicloVidaService;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public MinhasMidiasService(
             MeusAnunciosConsultaService consultaService,
@@ -64,7 +66,8 @@ public class MinhasMidiasService {
             MinhaMidiaPreviewService previewService,
             AnuncioMidiaUploadCoreService uploadCoreService,
             FotoElegivelAnuncioPolicy fotoElegivelPolicy,
-            MeuAnuncioCicloVidaService cicloVidaService) {
+            MeuAnuncioCicloVidaService cicloVidaService,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.consultaService = consultaService;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
@@ -75,6 +78,7 @@ public class MinhasMidiasService {
         this.uploadCoreService = uploadCoreService;
         this.fotoElegivelPolicy = fotoElegivelPolicy;
         this.cicloVidaService = cicloVidaService;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional(readOnly = true)
@@ -159,6 +163,7 @@ public class MinhasMidiasService {
             porId.get(ids.get(index)).reordenar(index, agora);
         }
         anuncioMidiaRepository.flush();
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "MIDIAS_REORDENADAS_PELO_PROPRIETARIO", null, agora);
         return resposta(anuncio);
     }
 
@@ -207,6 +212,8 @@ public class MinhasMidiasService {
         anuncioMidiaRepository.flush();
         if (encerrar) {
             cicloVidaService.encerrarPorUltimaFoto(anuncio, midiaId, requestId, agora);
+        } else {
+            arquivoPublicidade.registrarEstado(anuncio.getId(), "MIDIA_REMOVIDA_PELO_PROPRIETARIO", requestId, agora);
         }
         return resposta(anuncio);
     }

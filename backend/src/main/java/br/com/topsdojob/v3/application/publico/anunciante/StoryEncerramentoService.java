@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.application.admin.stories.dto.AdminStoryRemocaoRequest;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.StoryEncerramentoDto;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -47,6 +48,7 @@ public class StoryEncerramentoService {
   private final GrupoAtivacaoBeneficioRepository grupoRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
   private final StoryMidiaCleanupService cleanupService;
+  private final ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory;
   private final ObjectMapper objectMapper;
   private final Clock clock;
 
@@ -59,7 +61,8 @@ public class StoryEncerramentoService {
       GrupoAtivacaoBeneficioRepository grupoRepository,
       AuditoriaEventoRepository auditoriaRepository,
       StoryMidiaCleanupService cleanupService,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory) {
     this(
         usuarioService,
         storyRepository,
@@ -69,6 +72,7 @@ public class StoryEncerramentoService {
         auditoriaRepository,
         cleanupService,
         objectMapper,
+        arquivoPublicidadeStory,
         Clock.systemUTC());
   }
 
@@ -81,6 +85,7 @@ public class StoryEncerramentoService {
       AuditoriaEventoRepository auditoriaRepository,
       StoryMidiaCleanupService cleanupService,
       ObjectMapper objectMapper,
+      ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory,
       Clock clock) {
     this.usuarioService = usuarioService;
     this.storyRepository = storyRepository;
@@ -89,6 +94,7 @@ public class StoryEncerramentoService {
     this.grupoRepository = grupoRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.cleanupService = cleanupService;
+    this.arquivoPublicidadeStory = arquivoPublicidadeStory;
     this.objectMapper = objectMapper;
     this.clock = clock;
   }
@@ -191,6 +197,8 @@ public class StoryEncerramentoService {
       return resposta(story, true);
     }
     storyRepository.save(story);
+    arquivoPublicidadeStory.registrarEstado(
+        story.getId(), "STORY_ENCERRADO_" + motivo, requestId, agora);
     auditoriaRepository.save(AuditoriaEventoEntity.registrarSistema(
         UUID.randomUUID(),
         atorId,

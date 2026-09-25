@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
@@ -96,7 +97,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 cidadeRepository,
                 bairroRepository,
                 new ObjectMapper(),
-                new AnuncioAtualizacaoCanonicaValidator());
+                new AnuncioAtualizacaoCanonicaValidator(),
+                mock(ArquivoPublicidadeRegistroService.class));
     }
 
     @Test

@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequ
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoFotoLoteAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminResultadoFotoLoteItemDto;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -32,18 +33,21 @@ public class AdminModeracaoFotosLoteItemService {
     private final AnuncioRepository anuncioRepository;
     private final AuditoriaEventoRepository auditoriaRepository;
     private final ObjectMapper objectMapper;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public AdminModeracaoFotosLoteItemService(
             AdminModeracaoAcaoService moderacaoAcaoService,
             AdminAnuncioMidiaCleanupService midiaCleanupService,
             AnuncioRepository anuncioRepository,
             AuditoriaEventoRepository auditoriaRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.moderacaoAcaoService = moderacaoAcaoService;
         this.midiaCleanupService = midiaCleanupService;
         this.anuncioRepository = anuncioRepository;
         this.auditoriaRepository = auditoriaRepository;
         this.objectMapper = objectMapper;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -118,6 +122,7 @@ public class AdminModeracaoFotosLoteItemService {
                 json(depois),
                 requestId,
                 agora));
+        arquivoPublicidade.registrarEstado(anuncioId, "MODERACAO_FOTO_EXCLUIDA", requestId, agora);
         return new AdminResultadoFotoLoteItemDto(
                 item.mediaId(),
                 item.decisao().name(),

@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
@@ -38,6 +39,7 @@ public class MeuAnuncioCicloVidaService {
     private final DocumentoBuscaAnuncioRepository buscaRepository;
     private final RevisaoAnuncioRepository revisaoRepository;
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public MeuAnuncioCicloVidaService(
             MeusAnunciosConsultaService consultaService,
@@ -47,7 +49,8 @@ public class MeuAnuncioCicloVidaService {
             AnuncioStatusHistoricoRepository historicoRepository,
             DocumentoBuscaAnuncioRepository buscaRepository,
             RevisaoAnuncioRepository revisaoRepository,
-            FotoElegivelAnuncioPolicy fotoElegivelPolicy) {
+            FotoElegivelAnuncioPolicy fotoElegivelPolicy,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.consultaService = consultaService;
         this.anuncioRepository = anuncioRepository;
         this.auditoriaRepository = auditoriaRepository;
@@ -56,6 +59,7 @@ public class MeuAnuncioCicloVidaService {
         this.buscaRepository = buscaRepository;
         this.revisaoRepository = revisaoRepository;
         this.fotoElegivelPolicy = fotoElegivelPolicy;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional
@@ -139,6 +143,7 @@ public class MeuAnuncioCicloVidaService {
         auditoriaRepository.save(AuditoriaEventoEntity.registrarSistema(
                 UUID.randomUUID(), anuncio.getUsuarioId(), "ANUNCIO_ENCERRADO_SEM_FOTOS", "ANUNCIO",
                 anuncio.getId(), antes, json(depois), requestId, agora));
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "ULTIMA_FOTO_REMOVIDA", requestId, agora);
     }
 
     private MeuAnuncioCicloVidaDto executar(
@@ -171,6 +176,7 @@ public class MeuAnuncioCicloVidaService {
                 snapshot(anuncio),
                 requestId,
                 agora));
+        arquivoPublicidade.registrarEstado(anuncio.getId(), acaoAuditoria, requestId, agora);
         return resposta(anuncio);
     }
 

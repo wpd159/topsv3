@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
@@ -63,6 +64,7 @@ class MinhasMidiasServiceTest {
 
     private final MeusAnunciosConsultaService consultaService = mock(MeusAnunciosConsultaService.class);
     private final MeuAnuncioCicloVidaService cicloVidaService = mock(MeuAnuncioCicloVidaService.class);
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade = mock(ArquivoPublicidadeRegistroService.class);
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
@@ -84,7 +86,7 @@ class MinhasMidiasServiceTest {
             consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
             new MidiaUploadProperties(), new MinhaMidiaPreviewService(storageProperties, storageProvider,
                     Clock.fixed(AGORA_PREVIEW.toInstant(), ZoneOffset.UTC)),
-            uploadCoreService, fotoElegivelPolicy, cicloVidaService);
+            uploadCoreService, fotoElegivelPolicy, cicloVidaService, arquivoPublicidade);
 
     @BeforeEach
     void setUp() {
@@ -372,6 +374,8 @@ class MinhasMidiasServiceTest {
         assertThat(segunda.getOrdem()).isZero();
         assertThat(primeira.getOrdem()).isEqualTo(1);
         verify(midiaRepository, org.mockito.Mockito.times(2)).flush();
+        verify(arquivoPublicidade).registrarEstado(eq(ANUNCIO_ID),
+                eq("MIDIAS_REORDENADAS_PELO_PROPRIETARIO"), eq(null), any(OffsetDateTime.class));
     }
 
     @Test
@@ -386,6 +390,22 @@ class MinhasMidiasServiceTest {
         verify(cicloVidaService).encerrarPorUltimaFoto(any(AnuncioEntity.class), eq(vinculo.getId()), eq("request-remocao"), any());
         verify(fotoElegivelPolicy, never()).validarRemocaoIndividual(any(), any());
         verify(storage, never()).delete(any(), any());
+    }
+
+    @Test
+    void remocaoDeFotoNaoFinalAtualizaArquivoDaVeiculacao() {
+        AnuncioMidiaEntity primeira = vinculo(TipoAnuncioMidia.FOTO, 0);
+        AnuncioMidiaEntity segunda = vinculo(TipoAnuncioMidia.FOTO, 1);
+        vinculos.addAll(List.of(primeira, segunda));
+
+        service.remover(SLUG, primeira.getId(), authentication, "request-remocao-nao-final");
+
+        assertThat(primeira.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+        assertThat(segunda.getStatus()).isNotEqualTo(StatusAnuncioMidia.REMOVIDA);
+        verify(cicloVidaService, never()).encerrarPorUltimaFoto(any(), any(), any(), any());
+        verify(arquivoPublicidade).registrarEstado(eq(ANUNCIO_ID),
+                eq("MIDIA_REMOVIDA_PELO_PROPRIETARIO"), eq("request-remocao-nao-final"),
+                any(OffsetDateTime.class));
     }
 
     @Test
@@ -406,6 +426,7 @@ class MinhasMidiasServiceTest {
         assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
         verify(midiaRepository).findByAnuncioIdForUpdate(ANUNCIO_ID);
         verify(midiaRepository, never()).flush();
+        verify(arquivoPublicidade, never()).registrarEstado(any(), any(), any(), any());
     }
 
     @Test

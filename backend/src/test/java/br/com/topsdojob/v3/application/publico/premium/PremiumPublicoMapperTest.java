@@ -84,6 +84,22 @@ class PremiumPublicoMapperTest {
     }
 
     @Test
+    void idsDeAtivacoesComEfeitoPublicoExcluemInconsistentesEExpiradas() {
+        UUID anuncioId = UUID.randomUUID();
+        PremiumBeneficioCalculado ativo = calculado(ANUNCIO_TOPO,
+                PremiumBeneficioStatusCalculado.ATIVO);
+        PremiumBeneficioCalculado inconsistente = calculado(FOTOS_EXTRA_5,
+                PremiumBeneficioStatusCalculado.INCONSISTENTE);
+        PremiumBeneficioCalculado expirado = calculado(VIDEO_1,
+                PremiumBeneficioStatusCalculado.EXPIRADO);
+        when(beneficioService.consultarCalculados(anuncioId)).thenReturn(
+                List.of(ativo, inconsistente, expirado));
+
+        assertThat(mapper.idsAtivacoesComEfeitoPublico(anuncioId))
+                .containsExactly(ativo.ativacao().getId());
+    }
+
+    @Test
     void leituraPorIdsPreservaBeneficiosERecalculaSemCache() {
         AnuncioEntity anuncio = anuncio();
         var ids = List.of(anuncio.getId());

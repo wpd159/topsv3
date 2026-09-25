@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLotePrevalidacaoService.ItemValidado;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoFotoLoteAcao;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -32,13 +33,16 @@ class AdminModeracaoFotosLoteItemServiceTest {
   private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
   private final AuditoriaEventoRepository auditoriaRepository =
       mock(AuditoriaEventoRepository.class);
+  private final ArquivoPublicidadeRegistroService arquivoPublicidade =
+      mock(ArquivoPublicidadeRegistroService.class);
   private final AdminModeracaoFotosLoteItemService service =
       new AdminModeracaoFotosLoteItemService(
           moderacaoAcaoService,
           cleanupService,
           anuncioRepository,
           auditoriaRepository,
-          new ObjectMapper());
+          new ObjectMapper(),
+          arquivoPublicidade);
 
   @Test
   void estadoStaleRetornaIdempotenteSemDuplicarAuditoriaDeSucesso() {
@@ -62,6 +66,10 @@ class AdminModeracaoFotosLoteItemServiceTest {
     assertThat(primeira.resultado()).isEqualTo("EXCLUIDA");
     assertThat(retry.resultado()).isEqualTo("JA_PROCESSADA");
     verify(auditoriaRepository, times(1)).save(any());
+    verify(arquivoPublicidade, times(1)).registrarEstado(
+        org.mockito.ArgumentMatchers.eq(anuncioId),
+        org.mockito.ArgumentMatchers.eq("MODERACAO_FOTO_EXCLUIDA"),
+        org.mockito.ArgumentMatchers.eq("request-stale"), any());
   }
 
   private AdminUserPrincipal principal() {

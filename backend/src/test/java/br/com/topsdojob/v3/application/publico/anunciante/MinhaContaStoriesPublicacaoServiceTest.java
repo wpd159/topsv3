@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -82,6 +83,7 @@ class MinhaContaStoriesPublicacaoServiceTest {
   @SuppressWarnings("unchecked")
   private final ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
   private final StoryUploadCleanupAuditService cleanupAuditService = mock(StoryUploadCleanupAuditService.class);
+  private final ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory = mock(ArquivoPublicidadeStoryRegistroService.class);
   private final Authentication authentication = mock(Authentication.class);
   private final List<StoryAnuncioEntity> stories = new ArrayList<>();
   private final Map<String, StoredObject> objects = new HashMap<>();
@@ -156,6 +158,7 @@ class MinhaContaStoriesPublicacaoServiceTest {
         properties(),
         storageProvider,
         cleanupAuditService,
+        arquivoPublicidadeStory,
         Clock.fixed(AGORA.toInstant(), ZoneOffset.UTC));
   }
 
@@ -173,6 +176,7 @@ class MinhaContaStoriesPublicacaoServiceTest {
       context.registerBean(FotoUploadProcessor.class, () -> fotoProcessor);
       context.registerBean(R2StorageProperties.class, this::properties);
       context.registerBean(StoryUploadCleanupAuditService.class, () -> cleanupAuditService);
+      context.registerBean(ArquivoPublicidadeStoryRegistroService.class, () -> arquivoPublicidadeStory);
       context.registerBean(MinhaContaStoriesPublicacaoService.class);
       context.registerBean(UsuarioRepository.class, () -> usuarioRepository);
 
@@ -275,6 +279,8 @@ class MinhaContaStoriesPublicacaoServiceTest {
         eq(anuncio), eq(ADMIN_ID), any(), any());
     verify(direitoService, never()).reservarParaPublicacao(any(), any(), any(), any());
     verify(auditoriaRepository).save(any());
+    verify(arquivoPublicidadeStory).registrarEstado(
+        eq(primeira.storyId()), eq("STORY_PUBLICADO"), eq("req-admin-1"), any());
     InOrder ordemLocks = inOrder(anuncioRepository, usuarioRepository);
     for (int tentativa = 0; tentativa < 3; tentativa++) {
       ordemLocks.verify(anuncioRepository).findUsuarioIdById(ANUNCIO_A);
@@ -391,6 +397,8 @@ class MinhaContaStoriesPublicacaoServiceTest {
     assertThat(stories).hasSize(1);
     verify(direitoService).reservarParaPublicacao(any(), any(), eq(USUARIO_ID), any());
     verify(storage).putIfAbsent(any(), any(), any(), any());
+    verify(arquivoPublicidadeStory).registrarEstado(
+        eq(primeira.storyId()), eq("STORY_PUBLICADO"), eq("req-1"), any());
   }
 
   @Test

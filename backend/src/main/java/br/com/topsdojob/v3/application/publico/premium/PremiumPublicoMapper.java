@@ -12,11 +12,13 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -72,6 +74,19 @@ public class PremiumPublicoMapper {
                 java.util.function.Function.identity(),
                 id -> flags(calculados.getOrDefault(id, List.of())),
                 (primeiro, ignorado) -> primeiro));
+    }
+
+    /** Identifies the same activations that are allowed to affect public ad rendering. */
+    @Transactional(readOnly = true)
+    public Set<UUID> idsAtivacoesComEfeitoPublico(UUID anuncioId) {
+        if (anuncioId == null) return Set.of();
+        return beneficioService.consultarCalculados(anuncioId).stream()
+                .filter(this::publicavel)
+                .map(PremiumBeneficioCalculado::ativacao)
+                .filter(Objects::nonNull)
+                .map(AtivacaoBeneficioEntity::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     /** Scalar preselection only. Validity/status/consistency still belong to the original premium policy. */
