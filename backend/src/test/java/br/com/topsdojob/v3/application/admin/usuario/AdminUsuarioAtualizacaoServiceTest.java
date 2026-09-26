@@ -37,7 +37,9 @@ class AdminUsuarioAtualizacaoServiceTest {
       usuarioRepository,
       anuncioRepository,
       auditoriaRepository,
-      consultaService);
+      consultaService,
+      mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService.class),
+      mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService.class));
 
   @Test
   void atualizaTodosOsCamposEmUmaOperacaoSemExporValoresNaAuditoria() {
@@ -125,7 +127,7 @@ class AdminUsuarioAtualizacaoServiceTest {
     assertThat(usuario.getEmailNormalizado()).isEqualTo("qa-" + usuarioId + "@example.invalid");
     assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+556233334444");
     assertThat(usuario.getDataNascimento()).isEqualTo(LocalDate.of(1990, 1, 1));
-    verifyNoInteractions(anuncioRepository);
+    verify(anuncioRepository).findByUsuarioIdAndRemovidoEmIsNull(usuarioId);
     ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
     verify(auditoriaRepository).save(audit.capture());
     assertThat(audit.getValue().getDepoisJson())

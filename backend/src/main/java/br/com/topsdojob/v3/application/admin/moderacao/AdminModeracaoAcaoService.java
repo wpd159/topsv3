@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRe
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService.PreviewGenerationException;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -79,6 +80,7 @@ public class AdminModeracaoAcaoService {
     private final MidiaStorageAprovacaoService midiaStorageAprovacaoService;
     private final BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService;
     private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
     private final String canonicalDomain;
     private final Clock clock;
 
@@ -98,6 +100,7 @@ public class AdminModeracaoAcaoService {
             MidiaStorageAprovacaoService midiaStorageAprovacaoService,
             BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService,
             FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy,
+            ArquivoPublicidadeRegistroService arquivoPublicidade,
             @Value("${app.canonical-domain:http://localhost}") String canonicalDomain) {
         this(
                 revisaoRepository,
@@ -114,6 +117,7 @@ public class AdminModeracaoAcaoService {
                 midiaStorageAprovacaoService,
                 fotosExtrasModeracaoService,
                 fotoElegivelAnuncioPolicy,
+                arquivoPublicidade,
                 canonicalDomain,
                 Clock.systemUTC());
     }
@@ -133,6 +137,7 @@ public class AdminModeracaoAcaoService {
             MidiaStorageAprovacaoService midiaStorageAprovacaoService,
             BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService,
             FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy,
+            ArquivoPublicidadeRegistroService arquivoPublicidade,
             String canonicalDomain,
             Clock clock) {
         this.revisaoRepository = revisaoRepository;
@@ -149,6 +154,7 @@ public class AdminModeracaoAcaoService {
         this.midiaStorageAprovacaoService = midiaStorageAprovacaoService;
         this.fotosExtrasModeracaoService = fotosExtrasModeracaoService;
         this.fotoElegivelAnuncioPolicy = fotoElegivelAnuncioPolicy;
+        this.arquivoPublicidade = arquivoPublicidade;
         this.canonicalDomain = canonicalDomain;
         this.clock = clock;
     }
@@ -340,6 +346,11 @@ public class AdminModeracaoAcaoService {
                 requestId,
                 agora));
 
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
+                || decisao == AdminDecisaoModeracaoAcao.REPROVAR) {
+            arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_REVISAO_" + decisao.name(), requestId, agora);
+        }
+
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
                 "REVISAO_ANUNCIO",
@@ -497,6 +508,8 @@ public class AdminModeracaoAcaoService {
                 requestId,
                 agora));
 
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_MIDIA_" + decisao.name(), requestId, agora);
+
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
                 "ANUNCIO_MIDIA",
@@ -535,6 +548,10 @@ public class AdminModeracaoAcaoService {
                 request.motivo(),
                 null,
                 "motivo obrigatorio para reclassificar midia");
+        AnuncioMidiaRepository.ReferenciaMidiaProjection referencia = anuncioMidiaRepository.findReferenciaById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
+        anuncioRepository.findByIdForModeration(referencia.getAnuncioId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         AnuncioMidiaEntity midia = anuncioMidiaRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
         if (midia.getTipo() == TipoAnuncioMidia.STORY) {
@@ -593,6 +610,8 @@ public class AdminModeracaoAcaoService {
                 depois,
                 requestId,
                 agora));
+
+        arquivoPublicidade.registrarEstado(midia.getAnuncioId(), "MODERACAO_MIDIA_RECLASSIFICADA", requestId, agora);
 
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
@@ -665,6 +684,8 @@ public class AdminModeracaoAcaoService {
                 depois,
                 requestId,
                 agora));
+
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_REMETEU_REVISAO", requestId, agora);
 
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
@@ -832,6 +853,7 @@ public class AdminModeracaoAcaoService {
                     snapshotRevisao(revisao, anuncio, AdminDecisaoModeracaoAcao.APROVAR, null),
                     requestId,
                     agora));
+            arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_PUBLICACAO_REGULARIZADA", requestId, agora);
         } else if (anuncio.getStatus() != StatusAnuncio.PUBLICADO) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -879,6 +901,7 @@ public class AdminModeracaoAcaoService {
                 snapshotAnuncio(anuncio, null, null),
                 requestId,
                 agora));
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_PUBLICACAO_REGULARIZADA", requestId, agora);
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
                 "ANUNCIO",

@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsu
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator.DadosAtualizacao;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
@@ -46,6 +47,7 @@ public class AdminAnuncioAtualizacaoService {
     private final AdminAnuncioDetalhadoConsultaService consultaService;
     private final AnuncioAtualizacaoCanonicaValidator validator;
     private final ObjectMapper objectMapper;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public AdminAnuncioAtualizacaoService(
             AnuncioRepository anuncioRepository,
@@ -57,7 +59,8 @@ public class AdminAnuncioAtualizacaoService {
             AuditoriaEventoRepository auditoriaRepository,
             AdminAnuncioDetalhadoConsultaService consultaService,
             AnuncioAtualizacaoCanonicaValidator validator,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.documentoBuscaRepository = documentoBuscaRepository;
@@ -68,6 +71,7 @@ public class AdminAnuncioAtualizacaoService {
         this.consultaService = consultaService;
         this.validator = validator;
         this.objectMapper = objectMapper;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional
@@ -175,6 +179,7 @@ public class AdminAnuncioAtualizacaoService {
                 json(snapshot(anuncio, localizacao)),
                 requestId,
                 agora));
+        arquivoPublicidade.registrarEstado(anuncioId, "ANUNCIO_EDITADO_ADMINISTRATIVAMENTE", requestId, agora);
         return consultaService.detalhar(anuncioId, false);
     }
 

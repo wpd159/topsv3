@@ -129,6 +129,28 @@ class R2ObjectStorageTest {
   }
 
   @Test
+  void origemPublicaLegadaEhSomenteLeituraSemUrlOuExclusao() {
+    R2StorageProperties properties = configuredProperties();
+    properties.setPreservedPublicMediaBucket("legacy-public");
+    properties.setPreservedPublicMediaPrefix("anuncios/fotos/original/");
+    properties.setPreservedPublicBaseUrl("https://public-origin.invalid");
+    R2ObjectStorage legado = new R2ObjectStorage(properties, operations);
+    String chave = "anuncios/fotos/original/abcdef.jpg";
+
+    legado.get(StorageArea.PRESERVED_PUBLIC_MEDIA, chave);
+    assertThat(legado.publicUrl(StorageArea.PRESERVED_PUBLIC_MEDIA, chave)).isEmpty();
+    assertThatThrownBy(() -> legado.put(StorageArea.PRESERVED_PUBLIC_MEDIA, chave,
+        new byte[] {1}, "image/jpeg")).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> legado.putIfAbsent(StorageArea.PRESERVED_PUBLIC_MEDIA, chave,
+        new byte[] {1}, "image/jpeg")).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> legado.delete(StorageArea.PRESERVED_PUBLIC_MEDIA, chave))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> legado.temporaryGetUrl(StorageArea.PRESERVED_PUBLIC_MEDIA, chave,
+        Duration.ofMinutes(1))).isInstanceOf(IllegalArgumentException.class);
+    assertThat(operations.calls).containsExactly("GET:legacy-public:" + chave);
+  }
+
+  @Test
   void limitaValidadeDaUrlTemporaria() {
     assertThatThrownBy(() -> storage.temporaryGetUrl(
         StorageArea.PRIVATE_MEDIA,

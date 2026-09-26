@@ -186,7 +186,9 @@ class AuthSmokeFixtureServiceTest {
                 mock(PublicAccountLifecycleService.class),
                 mock(PublicSessionRegistry.class),
                 mock(br.com.topsdojob.v3.persistence.repository.AnuncioRepository.class),
-                mock(br.com.topsdojob.v3.application.publico.auth.PublicAuthSecurityService.class));
+                mock(br.com.topsdojob.v3.application.publico.auth.PublicAuthSecurityService.class),
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService.class),
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService.class));
     }
 
     private void assertUnauthorized(PublicAuthenticationService authentication, String email, String value) {

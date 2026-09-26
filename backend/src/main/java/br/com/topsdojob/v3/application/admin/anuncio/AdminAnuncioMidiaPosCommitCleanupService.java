@@ -256,6 +256,8 @@ public class AdminAnuncioMidiaPosCommitCleanupService {
       case PUBLIC_MEDIA -> storageProperties.getPublicMediaBucket();
       case PRIVATE_MEDIA -> storageProperties.getPrivateMediaBucket();
       case PRIVATE_DOCUMENT -> storageProperties.getDocumentBucket();
+      case PRESERVED_PUBLIC_MEDIA -> throw new IllegalArgumentException(
+          "arquivo publico legado preservado nao pode ser limpo");
     };
   }
 

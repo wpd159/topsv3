@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoService;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteItemRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -68,7 +69,8 @@ class AdminPremiumOperacaoServiceTest {
             grupoRepository,
             anuncioRepository,
             bloqueioJuridicoRepository,
-            consultaService);
+            consultaService,
+            mock(ArquivoPublicidadeRegistroService.class));
 
     @BeforeEach
     void salvarEntidadesSemAlterarArgumentos() {

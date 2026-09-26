@@ -6,6 +6,8 @@ import br.com.topsdojob.v3.application.publico.auth.dto.PublicLoginRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicProfileUpdateRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicRegisterRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicUserDto;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -58,6 +60,8 @@ public class PublicAuthenticationService {
     private final PublicSessionRegistry sessionRegistry;
     private final AnuncioRepository anuncioRepository;
     private final PublicAuthSecurityService authSecurity;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
+    private final ArquivoPublicidadeStoryRegistroService arquivoStories;
     private final String dummyPasswordHash;
 
     public PublicAuthenticationService(
@@ -69,7 +73,9 @@ public class PublicAuthenticationService {
             PublicAccountLifecycleService accountLifecycleService,
             PublicSessionRegistry sessionRegistry,
             AnuncioRepository anuncioRepository,
-            PublicAuthSecurityService authSecurity) {
+            PublicAuthSecurityService authSecurity,
+            ArquivoPublicidadeRegistroService arquivoPublicidade,
+            ArquivoPublicidadeStoryRegistroService arquivoStories) {
         this.usuarioRepository = usuarioRepository;
         this.credencialRepository = credencialRepository;
         this.papelRepository = papelRepository;
@@ -79,6 +85,8 @@ public class PublicAuthenticationService {
         this.sessionRegistry = sessionRegistry;
         this.anuncioRepository = anuncioRepository;
         this.authSecurity = authSecurity;
+        this.arquivoPublicidade = arquivoPublicidade;
+        this.arquivoStories = arquivoStories;
         this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
@@ -206,6 +214,13 @@ public class PublicAuthenticationService {
             if (telefoneAlterado) {
                 anuncioRepository.sincronizarTelefoneDoProprietario(usuario.getId(), telefone, agora);
             }
+            anuncioRepository.findByUsuarioIdAndRemovidoEmIsNull(usuario.getId()).stream()
+                    .map(br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity::getId)
+                    .sorted()
+                    .forEach(anuncioId -> arquivoPublicidade.registrarEstado(anuncioId,
+                            "CONTRATANTE_ATUALIZOU_PERFIL", null, agora));
+            arquivoStories.registrarEstadoPorUsuario(usuario.getId(),
+                    "CONTRATANTE_ATUALIZOU_PERFIL", null, agora);
         }
         return toDto(usuario);
     }

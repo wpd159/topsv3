@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.credito.CreditoLancamentoResultado;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
 import br.com.topsdojob.v3.application.premium.dto.PlanoCreditoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
@@ -79,7 +80,8 @@ class MinhaContaPremiumServiceTest {
             anuncios,
             consulta,
             auditoria,
-            new ObjectMapper());
+            new ObjectMapper(),
+            mock(ArquivoPublicidadeRegistroService.class));
 
     private UUID usuarioId;
     private AnuncioEntity anuncio;

@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.TopsDoJobBackendApplication;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAtualizacaoRequestDto;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.persistence.repository.FotoElegivelAnuncioRepositoryPostgres17IntegrationTest.PostgresInitializer;
 import br.com.topsdojob.v3.persistence.repository.FotoElegivelAnuncioRepositoryPostgres17IntegrationTest.PostgresSupport;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -43,6 +45,8 @@ class AdminUsuarioTelefonePostgres17IntegrationTest {
   @Autowired private AdminUsuarioAtualizacaoService service;
   @Autowired private JdbcTemplate jdbc;
   @MockBean private AdminUsuarioConsultaService consultaService;
+  @MockBean private ArquivoPublicidadeRegistroService arquivoPublicidade;
+  @MockBean private ArquivoPublicidadeStoryRegistroService arquivoStories;
 
   private UUID usuarioId;
   private UUID outroUsuarioId;

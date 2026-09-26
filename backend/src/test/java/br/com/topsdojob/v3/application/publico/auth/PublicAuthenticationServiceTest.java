@@ -75,7 +75,9 @@ class PublicAuthenticationServiceTest {
                 accountLifecycleService,
                 sessionRegistry,
                 mock(AnuncioRepository.class),
-                authSecurity);
+                authSecurity,
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService.class),
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService.class));
     }
 
     @AfterEach

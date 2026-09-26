@@ -4,6 +4,8 @@ import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioOperacaoJur
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminBloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminDesbloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -60,6 +62,8 @@ public class AdminAnuncioJuridicoService {
   private final PublicSessionRegistry sessionRegistry;
   private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy;
   private final ObjectMapper objectMapper;
+  private final ArquivoPublicidadeRegistroService arquivoPublicidade;
+  private final ArquivoPublicidadeStoryRegistroService arquivoStories;
 
   public AdminAnuncioJuridicoService(
       AnuncioRepository anuncioRepository,
@@ -71,7 +75,9 @@ public class AdminAnuncioJuridicoService {
       AuditoriaEventoRepository auditoriaRepository,
       PublicSessionRegistry sessionRegistry,
       FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      ArquivoPublicidadeRegistroService arquivoPublicidade,
+      ArquivoPublicidadeStoryRegistroService arquivoStories) {
     this.anuncioRepository = anuncioRepository;
     this.usuarioRepository = usuarioRepository;
     this.bloqueioRepository = bloqueioRepository;
@@ -82,6 +88,8 @@ public class AdminAnuncioJuridicoService {
     this.sessionRegistry = sessionRegistry;
     this.fotoElegivelAnuncioPolicy = fotoElegivelAnuncioPolicy;
     this.objectMapper = objectMapper;
+    this.arquivoPublicidade = arquivoPublicidade;
+    this.arquivoStories = arquivoStories;
   }
 
   @Transactional
@@ -115,6 +123,7 @@ public class AdminAnuncioJuridicoService {
         estado(statusAnterior, contexto.usuario().getStatus()),
         estado(anuncio.getStatus(), contexto.usuario().getStatus()),
         agora);
+    arquivoPublicidade.registrarEstado(anuncioId, "REATIVACAO_ADMINISTRATIVA", requestId, agora);
     return resultado(anuncio, contexto.usuario(), "REATIVAR", 0, StorySuspension.vazia(), agora);
   }
 
@@ -181,6 +190,7 @@ public class AdminAnuncioJuridicoService {
         estado(statusAnterior, contexto.usuario().getStatus()),
         depois,
         agora);
+    arquivoPublicidade.registrarEstado(anuncioId, "DESBLOQUEIO_JURIDICO", requestId, agora);
     return resultado(anuncio, contexto.usuario(), "DESBLOQUEAR_ANUNCIO", 0, StorySuspension.vazia(), agora);
   }
 
@@ -225,6 +235,10 @@ public class AdminAnuncioJuridicoService {
         antes,
         depois,
         agora);
+    for (AnuncioEntity anuncioUsuario : contexto.anunciosUsuario()) {
+      arquivoPublicidade.registrarEstado(anuncioUsuario.getId(), "USUARIO_DESBLOQUEIO_JURIDICO", requestId, agora);
+    }
+    arquivoStories.registrarEstadoPorUsuario(usuario.getId(), "USUARIO_DESBLOQUEIO_JURIDICO", requestId, agora);
     return resultado(
         contexto.anuncio(), usuario, "DESBLOQUEAR_USUARIO", 0, StorySuspension.vazia(), agora);
   }
@@ -255,6 +269,8 @@ public class AdminAnuncioJuridicoService {
     }
 
     OffsetDateTime agora = agora();
+    List<AnuncioEntity> candidatosArquivo = escopo == EscopoBloqueioJuridico.ANUNCIO_E_USUARIO
+        ? contexto.anunciosUsuario() : List.of(anuncio);
     StatusAnuncio statusAnterior = anuncio.getStatus();
     StatusUsuario statusUsuarioAnterior = null;
     try {
@@ -349,6 +365,12 @@ public class AdminAnuncioJuridicoService {
           depois,
           agora);
       invalidarSessoesAposCommit(usuario.getId());
+    }
+    for (AnuncioEntity candidato : candidatosArquivo) {
+      arquivoPublicidade.registrarEstado(candidato.getId(), "BLOQUEIO_JURIDICO", requestId, agora);
+    }
+    if (escopo == EscopoBloqueioJuridico.ANUNCIO_E_USUARIO) {
+      arquivoStories.registrarEstadoPorUsuario(usuario.getId(), "USUARIO_BLOQUEIO_JURIDICO", requestId, agora);
     }
     return resultado(anuncio, usuario, "BLOQUEAR_" + escopo.name(), anunciosPausados, stories, agora);
   }

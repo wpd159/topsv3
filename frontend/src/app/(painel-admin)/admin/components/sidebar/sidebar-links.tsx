@@ -97,6 +97,12 @@ export const sidebarLinks: SidebarLink[] = [
     section: 'Moderação e Segurança',
   },
   {
+    label: 'Registros',
+    icon: <DocumentTextIcon className="h-5 w-5" />,
+    href: '/admin/registros',
+    section: 'Moderação e Segurança',
+  },
+  {
     label: 'Logs visitantes',
     icon: <DocumentTextIcon className="h-5 w-5" />,
     href: '/admin/compliance#visitor-logs',

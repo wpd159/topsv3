@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupSer
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.Resultado;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioRemocaoDto;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioRemocaoRequest;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -39,6 +40,7 @@ public class AdminAnuncioRemocaoService {
   private final AdminAnuncioMidiaCleanupService midiaCleanupService;
   private final AdminAnuncioRemocaoFalhaAuditService falhaAuditService;
   private final ObjectMapper objectMapper;
+  private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
   public AdminAnuncioRemocaoService(
       AnuncioRepository anuncioRepository,
@@ -46,13 +48,15 @@ public class AdminAnuncioRemocaoService {
       AuditoriaEventoRepository auditoriaRepository,
       AdminAnuncioMidiaCleanupService midiaCleanupService,
       AdminAnuncioRemocaoFalhaAuditService falhaAuditService,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      ArquivoPublicidadeRegistroService arquivoPublicidade) {
     this.anuncioRepository = anuncioRepository;
     this.statusHistoricoRepository = statusHistoricoRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.midiaCleanupService = midiaCleanupService;
     this.falhaAuditService = falhaAuditService;
     this.objectMapper = objectMapper;
+    this.arquivoPublicidade = arquivoPublicidade;
   }
 
   @Transactional
@@ -105,6 +109,7 @@ public class AdminAnuncioRemocaoService {
 
     anuncio.removerLogicamente(agora);
     anuncioRepository.save(anuncio);
+    arquivoPublicidade.registrarEstado(anuncioId, "ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE", requestIdValidado, agora);
     statusHistoricoRepository.save(AnuncioStatusHistoricoEntity.registrar(
         UUID.randomUUID(),
         anuncio.getId(),

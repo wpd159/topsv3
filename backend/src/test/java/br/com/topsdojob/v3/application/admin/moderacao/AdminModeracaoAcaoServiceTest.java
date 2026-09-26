@@ -13,6 +13,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracao
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -95,6 +96,7 @@ class AdminModeracaoAcaoServiceTest {
                 storageAprovacaoService,
                 fotosExtrasService,
                 fotoElegivelAnuncioPolicy,
+                mock(ArquivoPublicidadeRegistroService.class),
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }

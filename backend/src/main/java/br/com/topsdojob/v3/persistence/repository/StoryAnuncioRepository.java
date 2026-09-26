@@ -158,4 +158,8 @@ public interface StoryAnuncioRepository extends JpaRepository<StoryAnuncioEntity
         """)
     List<StoryAnuncioEntity> findByAnuncioIdsForUpdate(
         @Param("anuncioIds") Collection<UUID> anuncioIds);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select story from StoryAnuncioEntity story where story.criadoPor = :usuarioId order by story.id")
+    List<StoryAnuncioEntity> findByCriadoPorForUpdate(@Param("usuarioId") UUID usuarioId);
 }

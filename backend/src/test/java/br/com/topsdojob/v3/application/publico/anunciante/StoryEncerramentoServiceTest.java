@@ -1,8 +1,10 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -55,6 +57,7 @@ class StoryEncerramentoServiceTest {
   private final GrupoAtivacaoBeneficioRepository grupoRepository = mock(GrupoAtivacaoBeneficioRepository.class);
   private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
   private final StoryMidiaCleanupService cleanupService = mock(StoryMidiaCleanupService.class);
+  private final ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory = mock(ArquivoPublicidadeStoryRegistroService.class);
   private final Authentication authentication = mock(Authentication.class);
   private final AdminUserPrincipal admin = mock(AdminUserPrincipal.class);
   private StoryEncerramentoService service;
@@ -87,6 +90,7 @@ class StoryEncerramentoServiceTest {
         auditoriaRepository,
         cleanupService,
         new ObjectMapper().findAndRegisterModules(),
+        arquivoPublicidadeStory,
         Clock.fixed(AGORA.toInstant(), ZoneOffset.UTC));
   }
 
@@ -107,6 +111,9 @@ class StoryEncerramentoServiceTest {
     assertThat(story.getEncerradoEm()).isEqualTo(AGORA);
     verify(storyRepository).save(story);
     verify(auditoriaRepository).save(any());
+    verify(arquivoPublicidadeStory).registrarEstado(
+        eq(story.getId()), eq("STORY_ENCERRADO_EXCLUSAO_VOLUNTARIA"),
+        eq("request-exclusao"), eq(AGORA));
     verify(cleanupService, times(2)).limpar(any(), any(), any());
     verifyNoDireitoRestaurado();
   }

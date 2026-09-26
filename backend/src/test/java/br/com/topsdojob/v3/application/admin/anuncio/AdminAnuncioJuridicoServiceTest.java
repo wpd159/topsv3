@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminBloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminDesbloqueioJuridicoRequest;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -67,6 +68,8 @@ class AdminAnuncioJuridicoServiceTest {
   private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
   private final PublicSessionRegistry sessionRegistry = mock(PublicSessionRegistry.class);
   private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy = mock(FotoElegivelAnuncioPolicy.class);
+  private final ArquivoPublicidadeRegistroService arquivoPublicidade =
+      mock(ArquivoPublicidadeRegistroService.class);
   private AdminAnuncioJuridicoService service;
 
   @BeforeEach
@@ -81,7 +84,9 @@ class AdminAnuncioJuridicoServiceTest {
         auditoriaRepository,
         sessionRegistry,
         fotoElegivelAnuncioPolicy,
-        new ObjectMapper());
+        new ObjectMapper(),
+        arquivoPublicidade,
+        mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService.class));
     when(bloqueioRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(statusHistoricoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -193,6 +198,10 @@ class AdminAnuncioJuridicoServiceTest {
     assertThat(bloqueio.getValue().getEscopo()).isEqualTo(EscopoBloqueioJuridico.ANUNCIO);
     assertThat(bloqueio.getValue().getCategoria()).isEqualTo(CategoriaBloqueioJuridico.FRAUDE);
     assertThat(bloqueio.getValue().getObservacaoInterna()).isEqualTo("nota interna sanitizada");
+    verify(arquivoPublicidade).registrarEstado(
+        org.mockito.ArgumentMatchers.eq(fixture.anuncio().getId()),
+        org.mockito.ArgumentMatchers.eq("BLOQUEIO_JURIDICO"),
+        org.mockito.ArgumentMatchers.eq("req-bloqueio-anuncio"), any(OffsetDateTime.class));
     verify(sessionRegistry, never()).invalidateAll(any());
   }
 

@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.application.admin.usuario;
 
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
@@ -24,6 +26,8 @@ public class AdminUsuarioEncerramentoConteudoService {
     private final DocumentoBuscaAnuncioRepository busca;
     private final StoryAnuncioRepository stories;
     private final StorySelecaoAdministrativaRepository storyAdministrativo;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
+    private final ArquivoPublicidadeStoryRegistroService arquivoStory;
 
     public AdminUsuarioEncerramentoConteudoService(
             AnuncioRepository anuncios,
@@ -31,13 +35,17 @@ public class AdminUsuarioEncerramentoConteudoService {
             AnuncioLocalizacaoRepository localizacoes,
             DocumentoBuscaAnuncioRepository busca,
             StoryAnuncioRepository stories,
-            StorySelecaoAdministrativaRepository storyAdministrativo) {
+            StorySelecaoAdministrativaRepository storyAdministrativo,
+            ArquivoPublicidadeRegistroService arquivoPublicidade,
+            ArquivoPublicidadeStoryRegistroService arquivoStory) {
         this.anuncios = anuncios;
         this.historicos = historicos;
         this.localizacoes = localizacoes;
         this.busca = busca;
         this.stories = stories;
         this.storyAdministrativo = storyAdministrativo;
+        this.arquivoPublicidade = arquivoPublicidade;
+        this.arquivoStory = arquivoStory;
     }
 
     public Resultado encerrar(UUID usuarioId, UUID atorId, OffsetDateTime agora) {
@@ -47,6 +55,8 @@ public class AdminUsuarioEncerramentoConteudoService {
                 .collect(Collectors.toSet());
         int removidos = 0;
         for (var anuncio : anunciosUsuario) {
+            // A captura prospectiva ja ocorreu na entrada em veiculacao.
+            // A retirada nao depende de nova leitura do storage privado.
             StatusAnuncio anterior = anuncio.getStatus();
             if (anuncio.removerPorExclusaoDaConta(agora)) {
                 removidos++;
@@ -59,6 +69,8 @@ public class AdminUsuarioEncerramentoConteudoService {
                         atorId,
                         agora));
             }
+            arquivoPublicidade.registrarEstado(
+                    anuncio.getId(), "CONTA_EXCLUIDA", null, agora);
         }
         anuncios.saveAll(anunciosUsuario);
 
@@ -72,13 +84,13 @@ public class AdminUsuarioEncerramentoConteudoService {
             localizacoes.saveAll(locais);
         }
 
-        var storiesUsuario = anuncioIds.isEmpty()
-                ? List.<br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity>of()
-                : stories.findByAnuncioIdsForUpdate(anuncioIds);
+        var storiesUsuario = stories.findByCriadoPorForUpdate(usuarioId);
         var storiesEncerrados = storiesUsuario.stream()
                 .filter(item -> item.suspenderPorBloqueio(agora))
                 .toList();
         stories.saveAll(storiesEncerrados);
+        arquivoStory.registrarEstadoPorUsuario(
+                usuarioId, "CONTA_EXCLUIDA_STORY", null, agora);
 
         storyAdministrativo.bloquearOperacao();
         var selecoes = anuncioIds.isEmpty()

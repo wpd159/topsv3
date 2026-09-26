@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteI
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
@@ -56,6 +57,7 @@ public class AdminPremiumOperacaoService {
     private final AnuncioRepository anuncioRepository;
     private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository;
     private final BeneficioAnuncioConsultaService beneficioConsultaService;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public AdminPremiumOperacaoService(
             AtivacaoBeneficioRepository ativacaoRepository,
@@ -66,7 +68,8 @@ public class AdminPremiumOperacaoService {
             GrupoAtivacaoBeneficioRepository grupoRepository,
             AnuncioRepository anuncioRepository,
             AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository,
-            BeneficioAnuncioConsultaService beneficioConsultaService) {
+            BeneficioAnuncioConsultaService beneficioConsultaService,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.ativacaoRepository = ativacaoRepository;
         this.movimentoRepository = movimentoRepository;
         this.creditoService = creditoService;
@@ -76,6 +79,7 @@ public class AdminPremiumOperacaoService {
         this.anuncioRepository = anuncioRepository;
         this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
         this.beneficioConsultaService = beneficioConsultaService;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +202,7 @@ public class AdminPremiumOperacaoService {
                         "creditosDebitados", 0,
                         "observacaoRegistrada", observacao != null),
                 requestId);
+        arquivoPublicidade.registrarEstado(anuncioId, "PREMIUM_ATIVACAO_ADMINISTRATIVA", requestId, agora);
         return toDto(ativacao, 0, false);
     }
 
@@ -305,6 +310,7 @@ public class AdminPremiumOperacaoService {
                     requestId);
             resultado.add(toDto(ativacao, 0, false));
         }
+        arquivoPublicidade.registrarEstado(anuncioId, "PREMIUM_ATIVACAO_ADMINISTRATIVA_LOTE", requestId, agora);
         return new AdminPremiumAtivacaoLoteDto(List.copyOf(resultado), false);
     }
 
@@ -381,6 +387,9 @@ public class AdminPremiumOperacaoService {
                 Map.of("status", statusAntes, "creditos", valor(ativacao.getCustoCreditosSnapshot())),
                 Map.of("status", ativacao.getStatus().name(), "creditosEstornados", estornado),
                 requestId);
+        if (ativacao.getAnuncioId() != null) {
+            arquivoPublicidade.registrarEstado(ativacao.getAnuncioId(), "PREMIUM_ATIVACAO_CANCELADA", requestId, agora);
+        }
         return toDto(ativacao, estornado, false);
     }
 
