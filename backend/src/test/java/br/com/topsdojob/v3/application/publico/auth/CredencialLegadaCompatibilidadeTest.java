@@ -129,7 +129,9 @@ class CredencialLegadaCompatibilidadeTest {
                 mock(PublicAccountLifecycleService.class),
                 mock(PublicSessionRegistry.class),
                 mock(br.com.topsdojob.v3.persistence.repository.AnuncioRepository.class),
-                mock(PublicAuthSecurityService.class));
+                mock(PublicAuthSecurityService.class),
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService.class),
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService.class));
     }
 
     private UsuarioEntity activeUser() {

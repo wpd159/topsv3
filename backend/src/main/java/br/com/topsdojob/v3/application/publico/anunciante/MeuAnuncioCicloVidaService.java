@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
@@ -17,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
@@ -38,6 +40,7 @@ public class MeuAnuncioCicloVidaService {
     private final DocumentoBuscaAnuncioRepository buscaRepository;
     private final RevisaoAnuncioRepository revisaoRepository;
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public MeuAnuncioCicloVidaService(
             MeusAnunciosConsultaService consultaService,
@@ -47,7 +50,8 @@ public class MeuAnuncioCicloVidaService {
             AnuncioStatusHistoricoRepository historicoRepository,
             DocumentoBuscaAnuncioRepository buscaRepository,
             RevisaoAnuncioRepository revisaoRepository,
-            FotoElegivelAnuncioPolicy fotoElegivelPolicy) {
+            FotoElegivelAnuncioPolicy fotoElegivelPolicy,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.consultaService = consultaService;
         this.anuncioRepository = anuncioRepository;
         this.auditoriaRepository = auditoriaRepository;
@@ -56,6 +60,7 @@ public class MeuAnuncioCicloVidaService {
         this.buscaRepository = buscaRepository;
         this.revisaoRepository = revisaoRepository;
         this.fotoElegivelPolicy = fotoElegivelPolicy;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional
@@ -104,6 +109,33 @@ public class MeuAnuncioCicloVidaService {
             UUID midiaId,
             String requestId,
             OffsetDateTime agora) {
+        encerrarPorAusenciaDeFotoPublica(anuncio, anuncio.getUsuarioId(), midiaId, List.of(),
+                "ULTIMA_FOTO_REMOVIDA", "ANUNCIO_ENCERRADO_SEM_FOTOS", requestId, agora);
+    }
+
+    /** Closes an ad whose only remaining photos were withheld for missing private archive copies. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void encerrarPorFaltaDeMidiaArquivavel(
+            AnuncioEntity anuncio,
+            UUID atorId,
+            UUID midiaRemovidaId,
+            List<UUID> midiasSuprimidas,
+            String requestId,
+            OffsetDateTime agora) {
+        encerrarPorAusenciaDeFotoPublica(anuncio, atorId, midiaRemovidaId, midiasSuprimidas,
+                "MIDIA_PROMOVIDA_SEM_COPIA_PRIVADA", "ANUNCIO_ENCERRADO_SEM_MIDIA_ARQUIVAVEL",
+                requestId, agora);
+    }
+
+    private void encerrarPorAusenciaDeFotoPublica(
+            AnuncioEntity anuncio,
+            UUID atorId,
+            UUID midiaRemovidaId,
+            List<UUID> midiasSuprimidas,
+            String motivo,
+            String acaoAuditoria,
+            String requestId,
+            OffsetDateTime agora) {
         var revisoes = revisaoRepository.findByAnuncioId(anuncio.getId());
         if (revisoes.stream().anyMatch(revisao -> revisao.getStatus() == StatusRevisaoAnuncio.EM_ANALISE)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio possui revisao em analise");
@@ -118,7 +150,7 @@ public class MeuAnuncioCicloVidaService {
         anuncioRepository.save(anuncio);
         historicoRepository.save(AnuncioStatusHistoricoEntity.registrar(
                 UUID.randomUUID(), anuncio.getId(), anterior, anuncio.getStatus(),
-                "ULTIMA_FOTO_REMOVIDA", anuncio.getUsuarioId(), agora));
+                motivo, atorId, agora));
         for (var revisao : revisoes) {
             if (revisao.getStatus() == StatusRevisaoAnuncio.ABERTA) {
                 revisao.finalizar(StatusRevisaoAnuncio.CANCELADA, agora);
@@ -135,10 +167,14 @@ public class MeuAnuncioCicloVidaService {
         depois.put("status", anuncio.getStatus().name());
         depois.put("statusModeracao", anuncio.getStatusModeracao().name());
         depois.put("removido", true);
-        depois.put("midiaId", midiaId);
+        depois.put("midiaId", midiaRemovidaId);
+        if (!midiasSuprimidas.isEmpty()) {
+            depois.put("midiasSuprimidasSemCopia", midiasSuprimidas);
+        }
         auditoriaRepository.save(AuditoriaEventoEntity.registrarSistema(
-                UUID.randomUUID(), anuncio.getUsuarioId(), "ANUNCIO_ENCERRADO_SEM_FOTOS", "ANUNCIO",
+                UUID.randomUUID(), atorId, acaoAuditoria, "ANUNCIO",
                 anuncio.getId(), antes, json(depois), requestId, agora));
+        arquivoPublicidade.registrarEstado(anuncio.getId(), motivo, requestId, agora);
     }
 
     private MeuAnuncioCicloVidaDto executar(
@@ -171,6 +207,7 @@ public class MeuAnuncioCicloVidaService {
                 snapshot(anuncio),
                 requestId,
                 agora));
+        arquivoPublicidade.registrarEstado(anuncio.getId(), acaoAuditoria, requestId, agora);
         return resposta(anuncio);
     }
 

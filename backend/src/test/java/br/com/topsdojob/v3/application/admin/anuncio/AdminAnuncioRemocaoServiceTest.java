@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.CleanupException;
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.Resultado;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioRemocaoRequest;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -58,7 +59,8 @@ class AdminAnuncioRemocaoServiceTest {
         auditoriaRepository,
         cleanupService,
         falhaAuditService,
-        new ObjectMapper());
+        new ObjectMapper(),
+        mock(ArquivoPublicidadeRegistroService.class));
     when(anuncioRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(statusHistoricoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));

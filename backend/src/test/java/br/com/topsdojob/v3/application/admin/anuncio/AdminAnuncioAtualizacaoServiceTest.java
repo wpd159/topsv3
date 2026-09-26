@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsu
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator.DadosAtualizacao;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
@@ -64,7 +65,8 @@ class AdminAnuncioAtualizacaoServiceTest {
             auditoriaRepository,
             consultaService,
             validator,
-            new ObjectMapper());
+            new ObjectMapper(),
+            mock(ArquivoPublicidadeRegistroService.class));
 
     @Test
     void adminEditaCamposCanonicosSemPersonificarProprietarioNemAlterarModeracao() {

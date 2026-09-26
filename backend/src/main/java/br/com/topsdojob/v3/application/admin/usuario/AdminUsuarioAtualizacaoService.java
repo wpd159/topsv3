@@ -3,6 +3,8 @@ package br.com.topsdojob.v3.application.admin.usuario;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioErroCampoDto;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.domain.usuario.CpfValidator;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -36,16 +38,22 @@ public class AdminUsuarioAtualizacaoService {
   private final AnuncioRepository anuncioRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
   private final AdminUsuarioConsultaService consultaService;
+  private final ArquivoPublicidadeRegistroService arquivoPublicidade;
+  private final ArquivoPublicidadeStoryRegistroService arquivoStories;
 
   public AdminUsuarioAtualizacaoService(
       UsuarioRepository usuarioRepository,
       AnuncioRepository anuncioRepository,
       AuditoriaEventoRepository auditoriaRepository,
-      AdminUsuarioConsultaService consultaService) {
+      AdminUsuarioConsultaService consultaService,
+      ArquivoPublicidadeRegistroService arquivoPublicidade,
+      ArquivoPublicidadeStoryRegistroService arquivoStories) {
     this.usuarioRepository = usuarioRepository;
     this.anuncioRepository = anuncioRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.consultaService = consultaService;
+    this.arquivoPublicidade = arquivoPublicidade;
+    this.arquivoStories = arquivoStories;
   }
 
   @Transactional
@@ -146,6 +154,16 @@ public class AdminUsuarioAtualizacaoService {
         auditoria(camposAlterados),
         requestId,
         agora));
+    if (camposAlterados.stream().anyMatch(campo -> List.of(
+        "nome", "nomeCivil", "email", "cpf", "telefone").contains(campo))) {
+      anuncioRepository.findByUsuarioIdAndRemovidoEmIsNull(usuarioId).stream()
+          .map(br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity::getId)
+          .sorted()
+          .forEach(anuncioId -> arquivoPublicidade.registrarEstado(anuncioId,
+              "CONTRATANTE_ATUALIZADO_ADMINISTRATIVAMENTE", requestId, agora));
+      arquivoStories.registrarEstadoPorUsuario(usuarioId,
+          "CONTRATANTE_ATUALIZADO_ADMINISTRATIVAMENTE", requestId, agora);
+    }
     return consultaService.detalhar(usuarioId, ator);
   }
 

@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaSer
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
@@ -70,6 +71,7 @@ public class MinhaContaPremiumService {
     private final BeneficioAnuncioConsultaService beneficioConsultaService;
     private final AuditoriaEventoRepository auditoriaRepository;
     private final ObjectMapper objectMapper;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public MinhaContaPremiumService(
             MeusAnunciosConsultaService meusAnunciosService,
@@ -83,7 +85,8 @@ public class MinhaContaPremiumService {
             AnuncioRepository anuncioRepository,
             BeneficioAnuncioConsultaService beneficioConsultaService,
             AuditoriaEventoRepository auditoriaRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.meusAnunciosService = meusAnunciosService;
         this.ledgerService = ledgerService;
         this.movimentoRepository = movimentoRepository;
@@ -96,6 +99,7 @@ public class MinhaContaPremiumService {
         this.beneficioConsultaService = beneficioConsultaService;
         this.auditoriaRepository = auditoriaRepository;
         this.objectMapper = objectMapper;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional(readOnly = true)
@@ -233,6 +237,7 @@ public class MinhaContaPremiumService {
                 json(Map.of("saldo", saldoCorrente, "totalDebitado", total, "quantidadeBeneficios", ativacoes.size())),
                 requestId,
                 agora));
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "PREMIUM_COMPRA_CREDITOS", requestId, agora);
         return new MinhaCompraPremiumResultadoDto(
                 grupo.getId(),
                 saldoAtual,

@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidat
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Campo;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoValidationException.Regra;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -53,6 +54,7 @@ public class MeuAnuncioAtualizacaoService {
     private final BairroRepository bairroRepository;
     private final ObjectMapper objectMapper;
     private final AnuncioAtualizacaoCanonicaValidator validator;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public MeuAnuncioAtualizacaoService(
             MeusAnunciosConsultaService consultaService,
@@ -65,7 +67,8 @@ public class MeuAnuncioAtualizacaoService {
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             ObjectMapper objectMapper,
-            AnuncioAtualizacaoCanonicaValidator validator) {
+            AnuncioAtualizacaoCanonicaValidator validator,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.consultaService = consultaService;
         this.kycService = kycService;
         this.anuncioRepository = anuncioRepository;
@@ -77,6 +80,7 @@ public class MeuAnuncioAtualizacaoService {
         this.bairroRepository = bairroRepository;
         this.objectMapper = objectMapper;
         this.validator = validator;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional
@@ -173,6 +177,7 @@ public class MeuAnuncioAtualizacaoService {
             revisaoRepository.save(revisaoAberta);
         }
 
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "ANUNCIO_EDITADO_PELO_PROPRIETARIO", null, agora);
         return consultaService.detalhar(anuncio.getSlug(), authentication);
     }
 

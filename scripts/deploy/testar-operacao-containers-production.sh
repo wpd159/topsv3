@@ -34,6 +34,8 @@ legacy_sha=a60b1e74978017a5bba1577f58804933b347c790
 new_base_sha=cccccccccccccccccccccccccccccccccccccccc
 previous_sha="$legacy_sha"
 candidate_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+fixture_flyway_version="$(bash "${script_dir}/validar-gate-flyway-production.sh" expected "${repo_root}/backend/src/main/resources/db/migration")"
+export TEST_FLYWAY_VERSION="$fixture_flyway_version"
 previous_key=INDEXNOW-SYNTHETIC-PREVIOUS
 candidate_key=INDEXNOW-SYNTHETIC-CANDIDATE
 attached=0
@@ -269,7 +271,7 @@ if [[ "${args[0]:-}" == exec && "$joined" == *' psql '* ]]; then
     printf 'CONTROLLED_BOUNDARY preview_public_sql_synthetic\n' >> "$TEST_EVENTS"
     exit 0
   fi
-  if [[ "$joined" == *' --command '* ]]; then printf '053|0|1\n'; else cat >/dev/null; cat "$TEST_SNAPSHOT"; fi
+  if [[ "$joined" == *' --command '* ]]; then printf '%s|0|1\n' "$TEST_FLYWAY_VERSION"; else cat >/dev/null; cat "$TEST_SNAPSHOT"; fi
   printf 'CONTROLLED_BOUNDARY psql\n' >> "$TEST_EVENTS"
   exit 0
 fi
@@ -560,7 +562,7 @@ COMPOSE_HEALTH
     } > "${release}/deploy/production/docker-compose.yml"
   done
   ln -s "releases/${previous_sha}" "${test_root}/current"
-  write_snapshot "${case_dir}/database.snapshot" 100 100 70 30 35000 053 UP 1000 500
+  write_snapshot "${case_dir}/database.snapshot" 100 100 70 30 35000 "$fixture_flyway_version" UP 1000 500
   sed -i '/^META|health|/d' "${case_dir}/database.snapshot"
   export TEST_ROOT="$test_root" TEST_SCENARIO="$scenario" TEST_SNAPSHOT="${case_dir}/database.snapshot" TEST_EVENTS="${case_dir}/events"
   export TEST_CANDIDATE_IMAGE="$candidate_image"

@@ -25,6 +25,9 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
     private static final UUID WITH_HISTORY = UUID.fromString("10000000-0000-0000-0000-000000000003");
     private static final UUID REUSED = UUID.fromString("10000000-0000-0000-0000-000000000004");
     private static final UUID AUDIT_ONLY = UUID.fromString("10000000-0000-0000-0000-000000000005");
+    private static final UUID ARCHIVED_AD = UUID.fromString("20000000-0000-0000-0000-000000000003");
+    private static final UUID ARCHIVED_VEICULATION = UUID.fromString("30000000-0000-0000-0000-000000000003");
+    private static final UUID ARCHIVED_VERSION = UUID.fromString("40000000-0000-0000-0000-000000000003");
     private static final Path MIGRATIONS = Path.of(
             "src", "main", "resources", "db", "migration").toAbsolutePath().normalize();
 
@@ -74,7 +77,13 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
             assertThat(repository.analisar(ELIGIBLE).exigeAnonimizacao()).isFalse();
             assertThat(repository.analisar(WITH_HISTORY).exigeAnonimizacao()).isTrue();
             assertThat(repository.analisar(WITH_HISTORY).tiposVinculo())
-                    .contains("POSSUI_SALDO_OU_LEDGER");
+                    .contains("POSSUI_SALDO_OU_LEDGER", "POSSUI_ANUNCIOS");
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*) FROM pg_constraint
+                    WHERE contype = 'f'
+                      AND conrelid = 'arquivo_publicidade_veiculacao'::regclass
+                      AND confrelid = 'usuario'::regclass
+                    """, Long.class)).isOne();
             assertThat(repository.analisar(AUDIT_ONLY).exigeAnonimizacao()).isTrue();
             assertThat(repository.analisar(AUDIT_ONLY).tiposVinculo())
                     .contains("POSSUI_HISTORICO_OPERACIONAL");
@@ -138,6 +147,8 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
 
             transaction.executeWithoutResult(status -> {
                 repository.deleteTechnicalLinks(WITH_HISTORY);
+                repository.anonymizeAuxiliaryData(
+                        WITH_HISTORY, List.of(ARCHIVED_AD), OffsetDateTime.now());
                 jdbc.update("""
                         UPDATE usuario
                         SET nome = 'Conta excluida',
@@ -165,6 +176,27 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
                     String.class,
                     WITH_HISTORY)).isEqualTo("EXCLUIDO");
             assertThat(count(jdbc, "saldo_credito_usuario", "usuario_id", WITH_HISTORY)).isOne();
+            assertThat(count(jdbc, "arquivo_publicidade_veiculacao",
+                    "contratante_usuario_id", WITH_HISTORY)).isOne();
+            assertThat(count(jdbc, "arquivo_publicidade_versao",
+                    "veiculacao_id", ARCHIVED_VEICULATION)).isOne();
+            assertThat(jdbc.queryForObject("""
+                    SELECT nome_civil FROM usuario WHERE id = ?
+                    """, String.class, WITH_HISTORY)).isNull();
+            assertThat(jdbc.queryForObject("""
+                    SELECT contratante_json ->> 'nomeCivil'
+                    FROM arquivo_publicidade_versao WHERE id = ?
+                    """, String.class, ARCHIVED_VERSION)).isEqualTo("QA Historico");
+            assertThat(jdbc.queryForObject("""
+                    SELECT contratante_json ->> 'cpf'
+                    FROM arquivo_publicidade_versao WHERE id = ?
+                    """, String.class, ARCHIVED_VERSION)).isEqualTo("12345678909");
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*)
+                    FROM arquivo_publicidade_veiculacao v
+                    JOIN usuario u ON u.id = v.contratante_usuario_id
+                    WHERE v.id = ? AND u.status = 'EXCLUIDO'
+                    """, Long.class, ARCHIVED_VEICULATION)).isOne();
 
             jdbc.update("""
                     INSERT INTO usuario (
@@ -231,6 +263,39 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
                   usuario_id, saldo_atual, atualizado_em, versao
                 ) VALUES (?, 0, now(), 0), (?, 1, now(), 0)
                 """, ELIGIBLE, WITH_HISTORY);
+        jdbc.update("""
+                INSERT INTO anuncio (
+                  id, usuario_id, slug, titulo, status, status_moderacao,
+                  categoria, criado_em, atualizado_em, versao
+                ) VALUES (
+                  ?, ?, 'qa-arquivo-exclusao', 'Anuncio historico QA',
+                  'PAUSADO', 'APROVADO', 'MASSAGENS', now(), now(), 0
+                )
+                """, ARCHIVED_AD, WITH_HISTORY);
+        jdbc.update("""
+                INSERT INTO arquivo_publicidade_veiculacao (
+                  id, anuncio_id, contratante_usuario_id, classificacao,
+                  relacao_material, cobertura, inicio_em, fim_em, retencao_ate,
+                  encerramento_motivo, criado_em, atualizado_em
+                ) VALUES (
+                  ?, ?, ?, 'GRATUITA', 'DESCONHECIDA', 'PREVENTIVA',
+                  now() - interval '20 days', now() - interval '10 days',
+                  now() + interval '2 years', 'ENCERRAMENTO_QA', now(), now()
+                )
+                """, ARCHIVED_VEICULATION, ARCHIVED_AD, WITH_HISTORY);
+        jdbc.update("""
+                INSERT INTO arquivo_publicidade_versao (
+                  id, veiculacao_id, numero, vigente_desde, vigente_ate,
+                  capturado_em, motivo, conteudo_json, contratante_json,
+                  comercial_json, segmentacao_json, alcance_json, conteudo_sha256
+                ) VALUES (
+                  ?, ?, 1, now() - interval '20 days', now() - interval '10 days',
+                  now() - interval '20 days', 'PUBLICACAO',
+                  '{"titulo":"Anuncio historico QA"}',
+                  '{"nomeCivil":"QA Historico","cpf":"12345678909"}',
+                  '{}', '{}', '{}', repeat('a', 64)
+                )
+                """, ARCHIVED_VERSION, ARCHIVED_VEICULATION);
         jdbc.update("""
                 INSERT INTO outbox_evento (
                   id, aggregate_tipo, aggregate_id, tipo_evento, payload_json,

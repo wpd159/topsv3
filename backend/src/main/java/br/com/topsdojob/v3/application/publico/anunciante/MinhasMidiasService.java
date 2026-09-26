@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMid
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService.CapacidadeProprietario;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
@@ -30,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -53,6 +55,7 @@ public class MinhasMidiasService {
     private final AnuncioMidiaUploadCoreService uploadCoreService;
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
     private final MeuAnuncioCicloVidaService cicloVidaService;
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade;
 
     public MinhasMidiasService(
             MeusAnunciosConsultaService consultaService,
@@ -64,7 +67,8 @@ public class MinhasMidiasService {
             MinhaMidiaPreviewService previewService,
             AnuncioMidiaUploadCoreService uploadCoreService,
             FotoElegivelAnuncioPolicy fotoElegivelPolicy,
-            MeuAnuncioCicloVidaService cicloVidaService) {
+            MeuAnuncioCicloVidaService cicloVidaService,
+            ArquivoPublicidadeRegistroService arquivoPublicidade) {
         this.consultaService = consultaService;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
@@ -75,6 +79,7 @@ public class MinhasMidiasService {
         this.uploadCoreService = uploadCoreService;
         this.fotoElegivelPolicy = fotoElegivelPolicy;
         this.cicloVidaService = cicloVidaService;
+        this.arquivoPublicidade = arquivoPublicidade;
     }
 
     @Transactional(readOnly = true)
@@ -159,6 +164,7 @@ public class MinhasMidiasService {
             porId.get(ids.get(index)).reordenar(index, agora);
         }
         anuncioMidiaRepository.flush();
+        arquivoPublicidade.registrarEstado(anuncio.getId(), "MIDIAS_REORDENADAS_PELO_PROPRIETARIO", null, agora);
         return resposta(anuncio);
     }
 
@@ -202,11 +208,24 @@ public class MinhasMidiasService {
             // while the advertisement stays operational.
             fotoElegivelPolicy.validarRemocaoIndividual(anuncio, midiaId);
         }
+        Set<UUID> exibidasAntes = encerrar ? Set.of()
+                : arquivoPublicidade.midiasExibidasAntesDaRetirada(anuncio.getId());
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         midia.removerLogicamente(agora);
         anuncioMidiaRepository.flush();
         if (encerrar) {
             cicloVidaService.encerrarPorUltimaFoto(anuncio, midiaId, requestId, agora);
+        } else {
+            List<UUID> suprimidas = arquivoPublicidade.prepararRetiradaSemNovaCopia(
+                    anuncio.getId(), anuncio.getUsuarioId(), requestId, agora, exibidasAntes);
+            if (fotoDoAnuncio && !suprimidas.isEmpty()
+                    && !arquivoPublicidade.possuiFotoPublicaSelecionada(anuncio.getId())) {
+                cicloVidaService.encerrarPorFaltaDeMidiaArquivavel(
+                        anuncio, anuncio.getUsuarioId(), midiaId, suprimidas, requestId, agora);
+            } else {
+                arquivoPublicidade.registrarEstado(
+                        anuncio.getId(), "MIDIA_REMOVIDA_PELO_PROPRIETARIO", requestId, agora);
+            }
         }
         return resposta(anuncio);
     }

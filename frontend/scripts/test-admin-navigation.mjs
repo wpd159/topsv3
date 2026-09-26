@@ -75,8 +75,8 @@ assert.equal(navigation.activeAdminSidebarHref(hrefs, '/admin/creditos', ''), '/
 const menuEntries = [...sidebarSource.matchAll(/label:\s*'([^']+)'[\s\S]*?href:\s*'([^']+)'[\s\S]*?section:\s*'([^']+)'/g)]
   .map((match) => ({ label: match[1], href: match[2], section: match[3] }))
 
-assert.equal(menuEntries.length, 19, 'O menu administrativo deve manter os 19 itens canônicos.')
-assert.equal(new Set(menuEntries.map((item) => item.href)).size, 19, 'Os destinos do menu devem ser únicos.')
+assert.equal(menuEntries.length, 20, 'O menu administrativo deve manter os 20 itens canônicos.')
+assert.equal(new Set(menuEntries.map((item) => item.href)).size, 20, 'Os destinos do menu devem ser únicos.')
 assert.deepEqual(
   menuEntries.filter((item) => item.section === 'Operação').slice(0, 5).map((item) => item.label),
   ['Anúncios', 'Gestão de Stories', 'Usuários', 'Tickets', 'Denúncias'],
@@ -95,12 +95,17 @@ assert.deepEqual(menuEntries.find((item) => item.label === 'Monetização'), {
 })
 assert.ok(!menuEntries.some((item) => item.label === 'Planos e créditos'))
 assert.ok(!menuEntries.some((item) => item.label === 'Benefícios premium'))
+assert.deepEqual(menuEntries.find((item) => item.label === 'Registros'), {
+  label: 'Registros',
+  href: '/admin/registros',
+  section: 'Moderação e Segurança',
+})
 
 const adminMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'ADMIN')
 const moderatorMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'MODERADOR')
-assert.equal(adminMenu.length, 19)
+assert.equal(adminMenu.length, 20)
 assert.equal(moderatorMenu.length, 10)
-for (const restricted of ['/admin/financeiro', '/admin/creditos', '/admin/termos-footer', '/admin/blog', '/admin/staff', '/admin/stories', '/admin/compliance']) {
+for (const restricted of ['/admin/financeiro', '/admin/creditos', '/admin/termos-footer', '/admin/blog', '/admin/staff', '/admin/stories', '/admin/compliance', '/admin/registros']) {
   assert.ok(!moderatorMenu.some((item) => item.href === restricted))
 }
 assert.equal(sidebarUtils.canAccessRoute('/admin/anuncios', 'MODERADOR'), true)

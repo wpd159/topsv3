@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
@@ -71,6 +72,7 @@ public class MinhaContaStoriesPublicacaoService {
   private final R2StorageProperties storageProperties;
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final StoryUploadCleanupAuditService cleanupAuditService;
+  private final ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory;
   private final Clock clock;
 
   @Autowired
@@ -87,7 +89,8 @@ public class MinhaContaStoriesPublicacaoService {
       FotoUploadProcessor fotoProcessor,
       R2StorageProperties storageProperties,
       ObjectProvider<ObjectStorage> storageProvider,
-      StoryUploadCleanupAuditService cleanupAuditService) {
+      StoryUploadCleanupAuditService cleanupAuditService,
+      ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory) {
     this(
         usuarioService,
         consultaService,
@@ -102,6 +105,7 @@ public class MinhaContaStoriesPublicacaoService {
         storageProperties,
         storageProvider,
         cleanupAuditService,
+        arquivoPublicidadeStory,
         Clock.systemUTC());
   }
 
@@ -119,6 +123,7 @@ public class MinhaContaStoriesPublicacaoService {
       R2StorageProperties storageProperties,
       ObjectProvider<ObjectStorage> storageProvider,
       StoryUploadCleanupAuditService cleanupAuditService,
+      ArquivoPublicidadeStoryRegistroService arquivoPublicidadeStory,
       Clock clock) {
     this.usuarioService = usuarioService;
     this.consultaService = consultaService;
@@ -133,6 +138,7 @@ public class MinhaContaStoriesPublicacaoService {
     this.storageProperties = storageProperties;
     this.storageProvider = storageProvider;
     this.cleanupAuditService = cleanupAuditService;
+    this.arquivoPublicidadeStory = arquivoPublicidadeStory;
     this.clock = clock;
   }
 
@@ -236,6 +242,12 @@ public class MinhaContaStoriesPublicacaoService {
           .reduce(false, Boolean::logicalOr);
       if (expirou) {
         storyRepository.flush();
+        for (StoryAnuncioEntity existente : existentes) {
+          if (existente.getStatus() == StatusStoryAnuncio.EXPIRADO) {
+            arquivoPublicidadeStory.registrarEstado(
+                existente.getId(), "STORY_EXPIRADO_POR_LIMITE", requestId, agora);
+          }
+        }
       }
       StoryAnuncioEntity ativo = existentes.stream()
           .filter(item -> ativoDoAnuncio(item, agora))
@@ -303,6 +315,7 @@ public class MinhaContaStoriesPublicacaoService {
             requestId,
             publicadoEm));
     storyRepository.flush();
+    arquivoPublicidadeStory.registrarEstado(storyId, "STORY_PUBLICADO", requestId, publicadoEm);
     return consultaService.consultar(story);
   }
 
