@@ -308,6 +308,58 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
       assertThat(admin.midia(fixture.firstPeriod(), firstArchivedMedia, fixture.user(),
           "req-bytes-legado", finalidade).bytes()).isEqualTo(fixture.bytes());
 
+      doReturn(selected.get()).when(publicMapper)
+          .publicas(any(), anyMap(), eq(true), anyInt(), eq(false));
+      clearInvocations(provider, storage, publicMapper);
+      int objectsBeforeText = privateObjects.size();
+      tx.executeWithoutResult(ignored -> {
+        jdbc.update("UPDATE anuncio SET titulo='Story com texto atualizado', atualizado_em=now() WHERE id=?",
+            fixture.ad());
+        writer.registrarEstado(fixture.story(), "STORY_ATUALIZADO", "req-texto-apos-retirada",
+            OffsetDateTime.now(ZoneOffset.UTC));
+      });
+      verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+      verify(storage, never()).delete(any(), any());
+      assertThat(privateObjects).hasSize(objectsBeforeText);
+      UUID thirdVersion = jdbc.queryForObject("""
+          SELECT id FROM arquivo_publicidade_story_versao
+          WHERE veiculacao_id=? AND numero=3
+          """, UUID.class, secondPeriod);
+      UUID textReference = jdbc.queryForObject("""
+          SELECT id FROM arquivo_publicidade_story_midia_referencia WHERE versao_id=?
+          """, UUID.class, thirdVersion);
+      assertThat(jdbc.queryForObject("""
+          SELECT origem.versao_id FROM arquivo_publicidade_story_midia_referencia r
+          JOIN arquivo_publicidade_story_midia origem ON origem.id=r.origem_midia_id
+          WHERE r.id=?
+          """, UUID.class, textReference)).isEqualTo(secondFirstVersion);
+      assertThat(jdbc.queryForObject(
+          "SELECT count(*) FROM arquivo_publicidade_story_midia WHERE versao_id=?",
+          Long.class, thirdVersion)).isZero();
+      verify(storage).get(StorageArea.PRIVATE_MEDIA,
+          key(secondFirstVersion, fixture.firstLink(), fixture.firstMedia()));
+      var textExport = admin.detalhar(secondPeriod, fixture.user(), "req-export-texto", finalidade, true);
+      assertThat(textExport.versoes()).hasSize(3);
+      assertThat(textExport.versoes().get(0).conteudo().path("titulo").asText())
+          .isEqualTo("Story de teste");
+      assertThat(textExport.versoes().get(1).conteudo().path("titulo").asText())
+          .isEqualTo("Story de teste");
+      assertThat(textExport.versoes().get(2).conteudo().path("titulo").asText())
+          .isEqualTo("Story com texto atualizado");
+      assertThat(textExport.versoes().get(2).midias()).extracting("id").containsExactly(textReference);
+      clearInvocations(storage);
+      assertThat(admin.midia(secondPeriod, textReference, fixture.user(), "req-texto-bytes", finalidade)
+          .bytes()).isEqualTo(fixture.bytes());
+      verify(storage).get(StorageArea.PRIVATE_MEDIA,
+          key(secondFirstVersion, fixture.firstLink(), fixture.firstMedia()));
+      verify(storage, never()).get(eq(StorageArea.PUBLIC_MEDIA), any());
+      verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+      assertThat(jdbc.queryForObject(
+          "SELECT count(*) FROM arquivo_publicidade_story_hold WHERE veiculacao_id=?", Long.class,
+          fixture.firstPeriod())).isEqualTo(1L);
+      assertThat(selecionarPublicasPersistidas(jdbc, fixture.ad()))
+          .extracting(MidiaVinculoLeitura::id).containsExactly(fixture.firstLink());
+
       UUID directFile = UUID.randomUUID();
       UUID directStory = seedDirectStory(jdbc, fixture.user(), directFile,
           fixture.bytes());

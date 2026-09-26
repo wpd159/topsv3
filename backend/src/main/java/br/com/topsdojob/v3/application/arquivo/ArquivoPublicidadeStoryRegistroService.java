@@ -479,11 +479,15 @@ public class ArquivoPublicidadeStoryRegistroService {
       return;
     }
     UUID versaoId = UUID.randomUUID();
-    boolean reutilizar = retiradaDeMidia(motivo) && "ANUNCIO".equals(story.get("modo_conteudo"))
+    boolean retirada = retiradaDeMidia(motivo) && "ANUNCIO".equals(story.get("modo_conteudo"))
         && anterior != null;
-    List<MidiaReferencia> referencias = reutilizar
-        ? referenciasDaRetirada((UUID) anterior.get("id"), midias) : List.of();
-    List<MidiaCopiada> copias = reutilizar ? List.of() : copiarMidias(versaoId, midias);
+    List<MidiaReferencia> referencias = retirada
+        ? referenciasDaRetirada((UUID) anterior.get("id"), midias) : new ArrayList<>();
+    Map<ChaveMidia, Map<String, Object>> origens = !retirada && anterior != null
+        && "ANUNCIO".equals(story.get("modo_conteudo"))
+        ? origensReutilizaveis(story, janela, (UUID) anterior.get("id")) : Map.of();
+    List<MidiaCopiada> copias = retirada ? List.of()
+        : copiarMidias(versaoId, midias, origens, referencias);
     if (anterior != null) {
       jdbc.update("UPDATE arquivo_publicidade_story_versao SET vigente_ate = :instante WHERE id = :id",
           Map.of("instante", instante, "id", anterior.get("id")));
@@ -635,21 +639,38 @@ public class ArquivoPublicidadeStoryRegistroService {
         && origem.get("tamanho_bytes") instanceof Number tamanho && tamanho.longValue() > 0;
   }
 
+  private Map<ChaveMidia, Map<String, Object>> origensReutilizaveis(
+      Map<String, Object> story, Map<String, Object> janela, UUID versaoId) {
+    Map<ChaveMidia, Map<String, Object>> origens = origensDaVersao(versaoId);
+    origens.values().removeIf(origem ->
+        !Objects.equals(janela.get("id"), origem.get("origem_veiculacao_id"))
+        || !Objects.equals(story.get("id"), origem.get("origem_story_id"))
+        || !Objects.equals(story.get("anuncio_id"), origem.get("origem_anuncio_id"))
+        || !Objects.equals(story.get("criado_por"), origem.get("origem_usuario_id")));
+    return origens;
+  }
+
   private Map<ChaveMidia, Map<String, Object>> origensDaVersao(UUID versaoId) {
     List<Map<String, Object>> linhas = jdbc.queryForList("""
         SELECT m.id AS origem_midia_id, m.versao_id AS origem_versao_id,
                m.anuncio_midia_id, m.arquivo_midia_id, m.variante,
                m.storage_provider, m.bucket, m.chave_privada, m.sha256,
-               m.mime_type, m.tamanho_bytes, v.capturado_em AS origem_capturada_em
+               m.mime_type, m.tamanho_bytes, v.capturado_em AS origem_capturada_em,
+               j.id AS origem_veiculacao_id, j.story_id AS origem_story_id,
+               j.anuncio_id AS origem_anuncio_id, j.contratante_usuario_id AS origem_usuario_id
           FROM arquivo_publicidade_story_midia m
           JOIN arquivo_publicidade_story_versao v ON v.id = m.versao_id
+          JOIN arquivo_publicidade_story_veiculacao j ON j.id = v.veiculacao_id
          WHERE m.versao_id = :versaoId
         UNION ALL
         SELECT origem.id AS origem_midia_id, origem.versao_id AS origem_versao_id,
                origem.anuncio_midia_id, origem.arquivo_midia_id, origem.variante,
                origem.storage_provider, origem.bucket, origem.chave_privada,
                origem.sha256, origem.mime_type, origem.tamanho_bytes,
-               v.capturado_em AS origem_capturada_em
+               v.capturado_em AS origem_capturada_em,
+               origem_j.id AS origem_veiculacao_id, origem_j.story_id AS origem_story_id,
+               origem_j.anuncio_id AS origem_anuncio_id,
+               origem_j.contratante_usuario_id AS origem_usuario_id
           FROM arquivo_publicidade_story_midia_referencia ref
           JOIN arquivo_publicidade_story_midia origem ON origem.id = ref.origem_midia_id
           JOIN arquivo_publicidade_story_versao v ON v.id = origem.versao_id
@@ -744,7 +765,8 @@ public class ArquivoPublicidadeStoryRegistroService {
     return midia;
   }
 
-  private List<MidiaCopiada> copiarMidias(UUID versaoId, List<Map<String, Object>> midias) {
+  private List<MidiaCopiada> copiarMidias(UUID versaoId, List<Map<String, Object>> midias,
+      Map<ChaveMidia, Map<String, Object>> origens, List<MidiaReferencia> referencias) {
     if (midias.isEmpty()) {
       return List.of();
     }
@@ -780,7 +802,7 @@ public class ArquivoPublicidadeStoryRegistroService {
       } else {
         throw new IllegalStateException("origem de Story nao verificavel: " + midia.get("arquivo_midia_id"));
       }
-      copias.add(copiarUma(storage, versaoId, midia, "ORIGINAL", area, chave));
+      copias.add(copiarUma(storage, versaoId, midia, "ORIGINAL", area, chave, origens, referencias));
       if (midia.get("anuncio_midia_id") != null
           && "RESTRITA_18".equals(visibilidade)
           && "DISPONIVEL".equals(midia.get("preview_restrito_status"))) {
@@ -790,10 +812,10 @@ public class ArquivoPublicidadeStoryRegistroService {
           throw new IllegalStateException("preview de Story sem origem verificavel: " + midia.get("arquivo_midia_id"));
         }
         copias.add(copiarUma(storage, versaoId, midia,
-            "PREVIEW_RESTRITO", StorageArea.PUBLIC_MEDIA, preview));
+            "PREVIEW_RESTRITO", StorageArea.PUBLIC_MEDIA, preview, origens, referencias));
       }
     }
-    return List.copyOf(copias);
+    return copias.stream().filter(Objects::nonNull).toList();
   }
 
   private MidiaCopiada copiarUma(
@@ -802,7 +824,9 @@ public class ArquivoPublicidadeStoryRegistroService {
       Map<String, Object> midia,
       String variante,
       StorageArea origem,
-      String chaveOrigem) {
+      String chaveOrigem,
+      Map<ChaveMidia, Map<String, Object>> origens,
+      List<MidiaReferencia> referencias) {
     StoredObject original = storage.get(origem, chaveOrigem);
     if (original == null || original.content() == null || original.content().length == 0
         || original.contentType() == null) {
@@ -812,6 +836,12 @@ public class ArquivoPublicidadeStoryRegistroService {
     if ("ORIGINAL".equals(variante) && midia.get("sha256") != null
         && !hash.equals(midia.get("sha256"))) {
       throw new IllegalStateException("hash da fonte de Story divergente: " + midia.get("arquivo_midia_id"));
+    }
+    Map<String, Object> anterior = origens.get(new ChaveMidia(
+        (UUID) midia.get("anuncio_midia_id"), (UUID) midia.get("arquivo_midia_id"), variante));
+    if (copiaReutilizavel(storage, anterior, original, hash)) {
+      referencias.add(referencia(midia, variante, origens));
+      return null; // The physical copy remains owned by its original version.
     }
     String caminhoArquivoPrivado = storageProperties.getPrivateMediaPrefix()
         + "arquivo-publicidade/stories/" + versaoId + "/"
@@ -845,6 +875,28 @@ public class ArquivoPublicidadeStoryRegistroService {
         (UUID) midia.get("arquivo_midia_id"), variante, caminhoArquivoPrivado,
         hash, original.contentType(), original.content().length,
         ((Number) midia.get("ordem")).intValue());
+  }
+
+  private boolean copiaReutilizavel(ObjectStorage storage, Map<String, Object> origem,
+      StoredObject atual, String hash) {
+    if (origem == null || !(origem.get("origem_midia_id") instanceof UUID)
+        || !origemVerificavel(origem) || !hash.equals(origem.get("sha256"))
+        || !Objects.equals(atual.contentType(), origem.get("mime_type"))
+        || ((Number) origem.get("tamanho_bytes")).longValue() != atual.content().length) {
+      return false;
+    }
+    // Normal capture proves current bytes and the retained object separately.
+    // Withdrawal continues through its existing path without storage I/O.
+    StoredObject retida;
+    try {
+      retida = storage.get(StorageArea.PRIVATE_MEDIA, (String) origem.get("chave_privada"));
+    } catch (RuntimeException exception) {
+      return false;
+    }
+    return retida != null && retida.content() != null
+        && retida.content().length == atual.content().length
+        && hash.equals(sha256(retida.content()))
+        && Objects.equals(atual.contentType(), retida.contentType());
   }
 
   private Map<String, Object> unico(String sql, Map<String, ?> parametros) {

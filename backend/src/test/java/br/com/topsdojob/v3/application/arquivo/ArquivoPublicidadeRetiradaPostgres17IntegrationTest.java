@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -97,6 +98,10 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
         return privateObjects.putIfAbsent(key, value) == null
             ? ObjectWriteResult.CREATED : ObjectWriteResult.ALREADY_EXISTS;
       });
+      doAnswer(call -> {
+        privateObjects.remove(call.getArgument(1));
+        return null;
+      }).when(storage).delete(any(), any());
       @SuppressWarnings("unchecked")
       ObjectProvider<ObjectStorage> provider = mock(ObjectProvider.class);
       doReturn(storage).when(provider).getIfAvailable();
@@ -199,6 +204,8 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
       assertThat(admin.midia(period, reference, fixture.user(), "req-bytes", finalidade).bytes())
           .isEqualTo(fixture.bytes());
 
+      conferirReusoTextualERollback(jdbc, tx, writer, premium, storage, privateObjects, admin);
+
       PromotionFixture promotion = seedPromotion(jdbc);
       Fixture promotedAd = promotion.base();
       when(premium.idsAtivacoesComEfeitoPublico(promotedAd.ad()))
@@ -270,6 +277,119 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);
     }
+  }
+
+  private static void conferirReusoTextualERollback(JdbcTemplate jdbc, TransactionTemplate tx,
+      ArquivoPublicidadeRegistroService writer, PremiumPublicoMapper premium,
+      ObjectStorage storage, Map<String, StoredObject> privateObjects,
+      AdminArquivoPublicidadeService admin) throws Exception {
+    Fixture fixture = seed(jdbc);
+    when(premium.idsAtivacoesComEfeitoPublico(fixture.ad()))
+        .thenReturn(Set.of(fixture.activation()));
+    when(premium.flagsPorAnuncioIds(List.of(fixture.ad())))
+        .thenReturn(Map.of(fixture.ad(), PremiumPublicoFlagsDto.vazio()));
+    clearInvocations(storage);
+    tx.executeWithoutResult(ignored -> writer.registrarEstado(fixture.ad(),
+        "PUBLICACAO", "req-reuso-inicial", OffsetDateTime.now(ZoneOffset.UTC)));
+    verify(storage, times(2)).putIfAbsent(any(), any(), any(), any());
+    UUID period = jdbc.queryForObject(
+        "SELECT id FROM arquivo_publicidade_veiculacao WHERE anuncio_id=?",
+        UUID.class, fixture.ad());
+    UUID hold = UUID.randomUUID();
+    OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+    jdbc.update("""
+        INSERT INTO arquivo_publicidade_hold
+          (id,veiculacao_id,fundamento,responsavel_usuario_id,inicio_em,revisar_em)
+        VALUES (?,?,'Hold sintetico do reuso',?,?,?)
+        """, hold, period, fixture.user(), now, now.plusDays(1));
+    Map<String, StoredObject> before = Map.copyOf(privateObjects);
+
+    clearInvocations(storage);
+    tx.executeWithoutResult(ignored -> {
+      jdbc.update("UPDATE anuncio SET titulo='Texto alterado sem trocar fotos' WHERE id=?",
+          fixture.ad());
+      writer.registrarEstado(fixture.ad(), "EDICAO_ADMINISTRATIVA", "req-reuso-texto",
+          OffsetDateTime.now(ZoneOffset.UTC));
+    });
+    verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+    verify(storage, never()).delete(any(), any());
+    assertThat(privateObjects).containsExactlyInAnyOrderEntriesOf(before);
+    UUID textVersion = jdbc.queryForObject("""
+        SELECT id FROM arquivo_publicidade_versao WHERE veiculacao_id=? AND numero=2
+        """, UUID.class, period);
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM arquivo_publicidade_midia WHERE versao_id=?",
+        Long.class, textVersion)).isZero();
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
+        Long.class, textVersion)).isEqualTo(2L);
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
+    var detail = admin.detalhar(period, fixture.user(), "req-reuso-exportacao", finalidade, true);
+    assertThat(detail.versoes()).hasSize(2);
+    assertThat(detail.versoes().get(1).midias()).hasSize(2);
+    for (var media : detail.versoes().get(1).midias()) {
+      assertThat(admin.midia(period, media.id(), fixture.user(), "req-reuso-bytes", finalidade)
+          .bytes()).isEqualTo(fixture.bytes());
+    }
+
+    byte[] changed = "nova-foto-sintetica-do-reuso".getBytes(StandardCharsets.UTF_8);
+    String changedHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(changed));
+    String changedKey = "hml/public/reuso-" + fixture.ad() + ".jpg";
+    when(storage.get(StorageArea.PUBLIC_MEDIA, changedKey))
+        .thenReturn(new StoredObject(changed, "image/jpeg"));
+    Runnable editOnePhoto = () -> {
+      jdbc.update("UPDATE anuncio SET titulo='Texto com uma foto alterada' WHERE id=?", fixture.ad());
+      jdbc.update("""
+          UPDATE arquivo_midia SET chave_objeto=?,sha256=?,tamanho_bytes=?
+          WHERE id=(SELECT arquivo_midia_id FROM anuncio_midia WHERE id=?)
+          """, changedKey, changedHash, changed.length, fixture.removed());
+      writer.registrarEstado(fixture.ad(), "EDICAO_ADMINISTRATIVA", "req-reuso-misto",
+          OffsetDateTime.now(ZoneOffset.UTC));
+    };
+    clearInvocations(storage);
+    assertThatThrownBy(() -> tx.executeWithoutResult(ignored -> {
+      editOnePhoto.run();
+      throw new IllegalStateException("rollback sintetico depois de referencia e copia");
+    })).isInstanceOf(IllegalStateException.class).hasMessageContaining("rollback sintetico");
+    verify(storage, times(1)).putIfAbsent(any(), any(), any(), any());
+    verify(storage, times(1)).delete(any(), any());
+    assertThat(privateObjects).containsExactlyInAnyOrderEntriesOf(before);
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM arquivo_publicidade_versao WHERE veiculacao_id=?",
+        Long.class, period)).isEqualTo(2L);
+
+    clearInvocations(storage);
+    tx.executeWithoutResult(ignored -> editOnePhoto.run());
+    verify(storage, times(1)).putIfAbsent(any(), any(), any(), any());
+    verify(storage, never()).delete(any(), any());
+    assertThat(privateObjects).hasSize(before.size() + 1).containsAllEntriesOf(before);
+    UUID mixedVersion = jdbc.queryForObject("""
+        SELECT id FROM arquivo_publicidade_versao WHERE veiculacao_id=? AND numero=3
+        """, UUID.class, period);
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM arquivo_publicidade_midia WHERE versao_id=?",
+        Long.class, mixedVersion)).isEqualTo(1L);
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
+        Long.class, mixedVersion)).isEqualTo(1L);
+    UUID reusedReference = jdbc.queryForObject(
+        "SELECT id FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
+        UUID.class, mixedVersion);
+    assertThat(admin.midia(period, reusedReference, fixture.user(), "req-reuso-cadeia", finalidade)
+        .bytes()).isEqualTo(fixture.bytes());
+    tx.executeWithoutResult(ignored -> {
+      jdbc.update("UPDATE anuncio SET status='PAUSADO' WHERE id=?", fixture.ad());
+      writer.registrarEstado(fixture.ad(), "ENCERRAMENTO", "req-reuso-fim",
+          OffsetDateTime.now(ZoneOffset.UTC));
+    });
+    assertThat(jdbc.queryForObject(
+        "SELECT fim_em IS NOT NULL FROM arquivo_publicidade_veiculacao WHERE id=?",
+        Boolean.class, period)).isTrue();
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM arquivo_publicidade_hold WHERE id=? AND encerrado_em IS NULL",
+        Long.class, hold)).isEqualTo(1L);
+    assertThat(privateObjects).hasSize(before.size() + 1).containsAllEntriesOf(before);
+    System.out.println("ARCHIVE_REUSE_PG initialPut=2 textPut=0 changedVariantPut=1 rollbackDeletedOwn=1 reusedDeleted=0 holdPreserved=true");
   }
 
   private static Fixture seed(JdbcTemplate jdbc) throws Exception {

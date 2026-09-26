@@ -299,6 +299,165 @@ class ArquivoPublicidadeTransicaoTemporalPostgres17IntegrationTest {
   }
 
   @Test
+  void retiradaAnteriorAFronteiraSemCapturadorNaoMaterializaExibicaoInexistente() throws Exception {
+    provarRetomadaComRetiradaNaoCapturada(false);
+  }
+
+  @Test
+  void retiradaEReativacaoSemCapturadorNaoSeConfundemComExibicaoContinua() throws Exception {
+    provarRetomadaComRetiradaNaoCapturada(true);
+  }
+
+  @Test
+  void retiradaPosteriorPreservaFronteiraMasEstadoSemHistoricoRegistraLacuna() throws Exception {
+    PostgresSupport.start();
+    DriverManagerDataSource dataSource = new DriverManagerDataSource(
+        PostgresSupport.jdbcUrl(), "topsv3test", PostgresSupport.credential());
+    JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+    DataSourceTransactionManager manager = new DataSourceTransactionManager(dataSource);
+    TransactionTemplate transactions = new TransactionTemplate(manager);
+    Fixture posterior = seed(jdbc);
+    Fixture semHistorico = seed(jdbc);
+    OffsetDateTime retiradaPosterior = FRONTEIRA_VIDEO.plusMinutes(10);
+    for (Fixture fixture : List.of(posterior, semHistorico)) {
+      var service = new ArquivoPublicidadeTransicaoTemporalService(
+          new NamedParameterJdbcTemplate(dataSource), MAPPER, beneficios(fixture.anuncio()), manager,
+          Clock.fixed(BASE.toInstant(), ZoneOffset.UTC));
+      transactions.executeWithoutResult(status ->
+          service.reconciliarAnuncioAposCaptura(fixture.anuncio(), BASE));
+      jdbc.update("UPDATE anuncio SET status = 'REMOVIDO' WHERE id = ?", fixture.anuncio());
+      if (fixture == posterior) {
+        jdbc.update("""
+            INSERT INTO anuncio_status_historico(id,anuncio_id,status_anterior,status_novo,
+              motivo,ator_usuario_id,criado_em)
+            VALUES (?, ?, 'PUBLICADO', 'REMOVIDO', 'RETIRADA_POSTERIOR_AS_FRONTEIRAS', ?, ?)
+            """, UUID.randomUUID(), fixture.anuncio(), fixture.usuario(), retiradaPosterior);
+      }
+      transactions.executeWithoutResult(status ->
+          service.processarAnuncioAte(fixture.anuncio(), PROCESSAMENTO));
+    }
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM arquivo_publicidade_versao WHERE veiculacao_id = ?
+        """, Long.class, posterior.janela())).isEqualTo(3L);
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM arquivo_publicidade_versao WHERE veiculacao_id = ?
+        """, Long.class, semHistorico.janela())).isEqualTo(1L);
+    assertThat(jdbc.queryForList("""
+        SELECT depois_json->'evidencia'->>'motivo' FROM auditoria_evento
+        WHERE acao = 'ARQUIVO_PUBLICIDADE_TRANSICAO_LACUNA' AND recurso_id = ?
+        """, String.class, semHistorico.anuncio()))
+        .hasSize(2).containsOnly("ESTADO_INELEGIVEL_SEM_HISTORICO_SUFICIENTE");
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM auditoria_evento WHERE recurso_id = ?
+          AND depois_json->'evidencia'->>'evidenciaEm' IS NOT NULL
+        """, Long.class, semHistorico.anuncio())).isZero();
+    assertThat(jdbc.queryForObject("SELECT fim_em FROM arquivo_publicidade_veiculacao WHERE id = ?",
+        Object.class, semHistorico.janela())).isNull();
+  }
+
+  private static void provarRetomadaComRetiradaNaoCapturada(boolean reativar) throws Exception {
+    PostgresSupport.start();
+    DriverManagerDataSource dataSource = new DriverManagerDataSource(
+        PostgresSupport.jdbcUrl(), "topsv3test", PostgresSupport.credential());
+    JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+    NamedParameterJdbcTemplate named = new NamedParameterJdbcTemplate(dataSource);
+    DataSourceTransactionManager manager = new DataSourceTransactionManager(dataSource);
+    TransactionTemplate transactions = new TransactionTemplate(manager);
+    Fixture retirada = seed(jdbc);
+    StoryFixture story = seedStory(jdbc, retirada);
+    Fixture controle = seed(jdbc);
+    var planejamento = new ArquivoPublicidadeTransicaoTemporalService(
+        named, MAPPER, beneficios(retirada.anuncio()), manager,
+        Clock.fixed(BASE.toInstant(), ZoneOffset.UTC));
+    var planejamentoControle = new ArquivoPublicidadeTransicaoTemporalService(
+        named, MAPPER, beneficios(controle.anuncio()), manager,
+        Clock.fixed(BASE.toInstant(), ZoneOffset.UTC));
+    transactions.executeWithoutResult(status -> {
+      planejamento.reconciliarAnuncioAposCaptura(retirada.anuncio(), BASE);
+      planejamento.reconciliarStoryAposCaptura(story.story(), BASE);
+      planejamentoControle.reconciliarAnuncioAposCaptura(controle.anuncio(), BASE);
+    });
+    UUID hold = UUID.randomUUID();
+    jdbc.update("""
+        INSERT INTO arquivo_publicidade_hold(id,veiculacao_id,fundamento,responsavel_usuario_id,
+          inicio_em,revisar_em) VALUES (?, ?, 'Hold sintetico da retomada', ?, ?, ?)
+        """, hold, retirada.janela(), retirada.usuario(), BASE, PROCESSAMENTO.plusDays(7));
+    List<Map<String, Object>> midiasAntes = jdbc.queryForList("""
+        SELECT * FROM arquivo_publicidade_midia WHERE versao_id = ? ORDER BY id
+        """, retirada.fonte());
+    List<Map<String, Object>> holdAntes = jdbc.queryForList(
+        "SELECT * FROM arquivo_publicidade_hold WHERE id = ?", hold);
+
+    // Persisted shape of the legacy canonical flow: operational history changes,
+    // while the archive source and pending plans remain untouched. The separate
+    // local full-JVM fixture exercises b68 HTTP; this regression uses its evidence.
+    OffsetDateTime retiradaEm = BASE.plusMinutes(20);
+    String statusRetirada = reativar ? "PAUSADO" : "REMOVIDO";
+    jdbc.update("""
+        INSERT INTO anuncio_status_historico(id,anuncio_id,status_anterior,status_novo,
+          motivo,ator_usuario_id,criado_em)
+        VALUES (?, ?, 'PUBLICADO', ?, 'RETIRADA_SINTETICA_SEM_CAPTURADOR', ?, ?)
+        """, UUID.randomUUID(), retirada.anuncio(), statusRetirada, retirada.usuario(), retiradaEm);
+    jdbc.update("UPDATE anuncio SET status = ?, atualizado_em = ? WHERE id = ?",
+        statusRetirada, retiradaEm, retirada.anuncio());
+    if (reativar) {
+      OffsetDateTime reativadaEm = BASE.plusMinutes(40);
+      jdbc.update("""
+          INSERT INTO anuncio_status_historico(id,anuncio_id,status_anterior,status_novo,
+            motivo,ator_usuario_id,criado_em)
+          VALUES (?, ?, 'PAUSADO', 'PUBLICADO', 'REATIVACAO_ADMINISTRATIVA', ?, ?)
+          """, UUID.randomUUID(), retirada.anuncio(), retirada.usuario(), reativadaEm);
+      jdbc.update("UPDATE anuncio SET status = 'PUBLICADO', atualizado_em = ? WHERE id = ?",
+          reativadaEm, retirada.anuncio());
+    }
+    var retomada = new ArquivoPublicidadeTransicaoTemporalService(
+        named, MAPPER, beneficios(retirada.anuncio()), manager,
+        Clock.fixed(PROCESSAMENTO.toInstant(), ZoneOffset.UTC));
+    transactions.executeWithoutResult(status -> {
+      retomada.processarAnuncioAte(controle.anuncio(), PROCESSAMENTO);
+      retomada.processarAnuncioAte(retirada.anuncio(), PROCESSAMENTO);
+      retomada.processarStoryAte(story.story(), PROCESSAMENTO);
+    });
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM arquivo_publicidade_versao WHERE veiculacao_id = ?
+        """, Long.class, controle.janela())).isEqualTo(3L);
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM arquivo_publicidade_versao WHERE veiculacao_id = ?
+        """, Long.class, retirada.janela())).isEqualTo(1L);
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM arquivo_publicidade_story_versao WHERE veiculacao_id = ?
+        """, Long.class, story.janela())).isEqualTo(1L);
+    assertThat(jdbc.queryForList("""
+        SELECT estado FROM arquivo_publicidade_transicao_plano WHERE veiculacao_id = ?
+        """, String.class, retirada.janela())).containsOnly("CANCELADA");
+    assertThat(jdbc.queryForList("""
+        SELECT estado FROM arquivo_publicidade_story_transicao_plano WHERE veiculacao_id = ?
+        """, String.class, story.janela())).containsOnly("CANCELADA");
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM auditoria_evento WHERE acao = 'ARQUIVO_PUBLICIDADE_TRANSICAO_LACUNA'
+          AND recurso_id IN (?, ?)
+        """, Long.class, retirada.anuncio(), story.story())).isEqualTo(4L);
+    assertThat(jdbc.queryForList("""
+        SELECT * FROM arquivo_publicidade_midia WHERE versao_id = ? ORDER BY id
+        """, retirada.fonte())).isEqualTo(midiasAntes);
+    assertThat(jdbc.queryForList("SELECT * FROM arquivo_publicidade_hold WHERE id = ?", hold))
+        .isEqualTo(holdAntes);
+    assertThat(jdbc.queryForObject("SELECT fim_em FROM arquivo_publicidade_veiculacao WHERE id = ?",
+        Object.class, retirada.janela())).isNull();
+    assertThat(jdbc.queryForObject("SELECT status FROM anuncio WHERE id = ?", String.class,
+        retirada.anuncio())).isEqualTo(reativar ? "PUBLICADO" : "REMOVIDO");
+    // Reprocessing is idempotent: no duplicate gap event, derived version or cleanup.
+    transactions.executeWithoutResult(status -> {
+      retomada.processarAnuncioAte(retirada.anuncio(), PROCESSAMENTO);
+      retomada.processarStoryAte(story.story(), PROCESSAMENTO);
+    });
+    assertThat(jdbc.queryForObject("""
+        SELECT count(*) FROM auditoria_evento WHERE acao = 'ARQUIVO_PUBLICIDADE_TRANSICAO_LACUNA'
+          AND recurso_id IN (?, ?)
+        """, Long.class, retirada.anuncio(), story.story())).isEqualTo(4L);
+  }
+
+  @Test
   void upgradeV055ParaV057InicializaSomenteFuturoSemFabricarPassado() throws Exception {
     String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     String network = "topsv3-temporal-" + suffix + "-net";

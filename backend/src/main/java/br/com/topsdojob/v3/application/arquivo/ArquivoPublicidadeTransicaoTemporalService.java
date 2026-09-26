@@ -589,15 +589,15 @@ public class ArquivoPublicidadeTransicaoTemporalService implements ApplicationRu
     UUID fonteId = (UUID) plano.get("evidencia_versao_id");
     OffsetDateTime fronteira = instanteJdbc(plano.get("fronteira_em"));
     Map<String, Object> janela = unica("""
-        SELECT fim_em FROM %s WHERE id = :id FOR UPDATE
-        """.formatted(tipo.windowTable), Map.of("id", janelaId));
+        SELECT fim_em, anuncio_id, %s AS sujeito_id FROM %s WHERE id = :id FOR UPDATE
+        """.formatted(tipo.subjectColumn, tipo.windowTable), Map.of("id", janelaId));
     if (janela == null || (janela.get("fim_em") != null
         && !instanteJdbc(janela.get("fim_em")).isAfter(fronteira))) {
       cancelar(tipo, planoId, processamento);
       return;
     }
     Map<String, Object> fonte = unica("""
-        SELECT conteudo_sha256, contratante_json::text AS contratante_json,
+        SELECT conteudo_sha256, vigente_desde, contratante_json::text AS contratante_json,
                comercial_json::text AS comercial_json,
                segmentacao_json::text AS segmentacao_json,
                alcance_json::text AS alcance_json
@@ -627,6 +627,12 @@ public class ArquivoPublicidadeTransicaoTemporalService implements ApplicationRu
     OffsetDateTime fimAtual = instanteNullable(atual.get("vigente_ate"));
     if (fimAtual != null && !fimAtual.isAfter(fronteira)) {
       cancelar(tipo, planoId, processamento);
+      return;
+    }
+    Map<String, Object> descontinuidade = descontinuidadeSemCaptura(janela, fonte, fronteira);
+    if (descontinuidade != null) {
+      registrarLacunaECancelar(tipo, planoId, fonteId, janela, fronteira, processamento,
+          descontinuidade);
       return;
     }
     Map<String, Object> projetado = lerMapa((String) plano.get("conteudo_projetado_json"));
@@ -698,6 +704,63 @@ public class ArquivoPublicidadeTransicaoTemporalService implements ApplicationRu
         UPDATE %s SET estado = 'PROCESSADA', processado_em = :processado,
           resultado_versao_id = :resultado WHERE id = :id AND estado = 'PENDENTE'
         """.formatted(tipo.planTable), fim);
+  }
+
+  /**
+   * An older runtime can withdraw and even reactivate a subject without closing
+   * its archive. Current eligibility does not prove continuity at the boundary.
+   * Only operational evidence after the frozen source is considered; a later
+   * withdrawal does not invalidate an earlier, still-supported expiry.
+   */
+  private Map<String, Object> descontinuidadeSemCaptura(Map<String, Object> janela,
+      Map<String, Object> fonte, OffsetDateTime fronteira) {
+    Object anuncioId = janela.get("anuncio_id");
+    if (anuncioId == null) return Map.of("motivo", "ANUNCIO_DA_FONTE_AUSENTE");
+    Map<String, Object> parametros = Map.of("anuncio", anuncioId,
+        "desde", instanteJdbc(fonte.get("vigente_desde")), "fronteira", fronteira);
+    Map<String, Object> retirada = unica("""
+        SELECT id, criado_em FROM anuncio_status_historico
+        WHERE anuncio_id = :anuncio AND criado_em > :desde AND criado_em <= :fronteira
+          AND status_novo <> 'PUBLICADO'
+        ORDER BY criado_em, id LIMIT 1
+        """, parametros);
+    if (retirada != null) return evidenciaLacuna("ANUNCIO_STATUS_HISTORICO", retirada);
+    Map<String, Object> anuncio = unica("SELECT status FROM anuncio WHERE id = :anuncio", parametros);
+    if (anuncio == null || !"PUBLICADO".equals(anuncio.get("status"))) {
+      Map<String, Object> primeiraPosterior = unica("""
+          SELECT status_anterior FROM anuncio_status_historico
+          WHERE anuncio_id = :anuncio AND criado_em > :fronteira
+          ORDER BY criado_em, id LIMIT 1
+          """, parametros);
+      if (primeiraPosterior == null || !"PUBLICADO".equals(primeiraPosterior.get("status_anterior"))) {
+        // An observation cannot supply a missing historical timestamp. Retain
+        // the source/window unchanged and explicitly refuse this derivation.
+        return Map.of("motivo", "ESTADO_INELEGIVEL_SEM_HISTORICO_SUFICIENTE");
+      }
+    }
+    return null;
+  }
+
+  private Map<String, Object> evidenciaLacuna(String origem, Map<String, Object> evidencia) {
+    return Map.of("motivo", "RETIRADA_SEM_CAPTURA_ENTRE_FONTE_E_FRONTEIRA",
+        "origem", origem, "evidenciaId", evidencia.get("id").toString(),
+        "evidenciaEm", instanteJdbc(evidencia.get("criado_em")).toString());
+  }
+
+  private void registrarLacunaECancelar(Tipo tipo, UUID planoId, UUID fonteId,
+      Map<String, Object> janela, OffsetDateTime fronteira, OffsetDateTime processamento,
+      Map<String, Object> evidencia) {
+    cancelar(tipo, planoId, processamento);
+    String lacuna = json(Map.of("estado", "LACUNA_DE_CAPTURA", "planoId", planoId.toString(),
+        "evidenciaOrigemVersaoId", fonteId.toString(), "fronteiraPlanejadaEm", fronteira.toString(),
+        "observadoEm", processamento.toString(), "evidencia", evidencia));
+    jdbc.update("""
+        INSERT INTO auditoria_evento(id,acao,recurso_tipo,recurso_id,depois_json,origem,resultado,criado_em)
+        VALUES (:id, 'ARQUIVO_PUBLICIDADE_TRANSICAO_LACUNA', :tipo, :sujeito,
+          CAST(:lacuna AS jsonb), 'SISTEMA', 'PENDENTE', :agora)
+        """, Map.of("id", UUID.randomUUID(), "tipo", tipo == Tipo.ANUNCIO ? "ANUNCIO" : "STORY_ANUNCIO",
+            "sujeito", janela.get("sujeito_id"), "lacuna", lacuna, "agora", processamento));
+    LOG.warn("Derivacao temporal cancelada por lacuna de captura: tipo={}, plano={}", tipo, planoId);
   }
 
   private void cancelar(Tipo tipo, UUID planoId, OffsetDateTime agora) {

@@ -28,6 +28,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -63,6 +65,8 @@ class ArquivoPublicidadeRegistroServiceTest {
       jdbc, entityManager, new ObjectMapper(), provider, properties, stories, premiumPublico,
       mock(ArquivoPublicidadeTransicaoTemporalService.class));
   private boolean contaDesativada;
+  private final UUID usuarioId = UUID.randomUUID();
+  private String titulo = "Titulo sintetico";
   private List<Map<String, Object>> midiasOverride;
   private List<Map<String, Object>> janelasOverride = List.of();
   private List<Map<String, Object>> versoesOverride = List.of();
@@ -191,6 +195,114 @@ class ArquivoPublicidadeRegistroServiceTest {
     }
 
     verify(storage).delete(eq(StorageArea.PRIVATE_MEDIA), anyString());
+  }
+
+  @Test
+  void textoNovoCriaVersaoComZeroPutsEReusaReferenciasDaVersaoAnterior() {
+    CapturaSintetica captura = prepararCapturaSintetica();
+    captura.registrar("PUBLICACAO");
+    assertThat(captura.puts).hasSize(3);
+    captura.confirmar();
+    List<UUID> origens = copiasOverride.stream()
+        .map(copia -> (UUID) copia.get("origem_midia_id")).toList();
+
+    titulo = "Titulo sintetico editado";
+    captura.registrar("EDICAO_PUBLICADA");
+    assertThat(captura.puts).hasSize(3);
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_versao"))
+        .singleElement().satisfies(versao -> {
+          assertThat(versao.get("numero")).isEqualTo(2);
+          assertThat(versao.get("conteudo").toString()).contains(titulo);
+        });
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia"))
+        .extracting(linha -> linha.get("origemMidiaId")).containsExactlyInAnyOrderElementsOf(origens);
+    captura.confirmar();
+
+    titulo = "Terceiro titulo sintetico";
+    captura.registrar("EDICAO_PUBLICADA");
+    assertThat(captura.puts).hasSize(3);
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia"))
+        .extracting(linha -> linha.get("origemMidiaId")).containsExactlyInAnyOrderElementsOf(origens);
+  }
+
+  @Test
+  void previewAlteradoCopiaSoVarianteNovaEPreservaOriginalEOutraFoto() {
+    CapturaSintetica captura = prepararCapturaSintetica();
+    captura.registrar("PUBLICACAO");
+    captura.confirmar();
+    Map<String, Object> restrita = midiasOverride.get(0);
+    captura.objetos.put(captura.chave(StorageArea.PUBLIC_MEDIA,
+        (String) restrita.get("preview_restrito_chave")),
+        new StoredObject(new byte[] {9, 8, 7, 6}, "image/jpeg"));
+    restrita.put("preview_restrito_confirmado_em", AGORA.plusSeconds(1));
+    titulo = "Apresentacao editada com novo preview";
+
+    captura.registrar("MIDIA_ALTERADA");
+
+    assertThat(captura.puts).hasSize(4);
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia ("))
+        .singleElement().satisfies(copia -> assertThat(copia.get("variante")).isEqualTo("PREVIEW_RESTRITO"));
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia"))
+        .hasSize(2).allSatisfy(ref -> assertThat(ref.get("variante")).isEqualTo("ORIGINAL"));
+  }
+
+  @Test
+  void copiaPrivadaCorrompidaNaoEReutilizadaMesmoComMetadadosIguais() {
+    CapturaSintetica captura = prepararCapturaSintetica();
+    captura.registrar("PUBLICACAO");
+    captura.confirmar();
+    Map<String, Object> corrompida = copiasOverride.get(0);
+    captura.objetos.put(captura.chave(StorageArea.PRIVATE_MEDIA,
+        (String) corrompida.get("chave_privada")),
+        new StoredObject(new byte[] {8, 8, 8}, "image/jpeg"));
+    titulo = "Edicao com copia anterior invalida";
+
+    captura.registrar("EDICAO_PUBLICADA");
+
+    assertThat(captura.puts).hasSize(4);
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia"))
+        .hasSize(2).noneSatisfy(ref ->
+            assertThat(ref.get("origemMidiaId")).isEqualTo(corrompida.get("origem_midia_id")));
+  }
+
+  @Test
+  void identidadesDeOutraJanelaAnuncioOuProprietarioNaoSaoReutilizadas() {
+    CapturaSintetica captura = prepararCapturaSintetica();
+    captura.registrar("PUBLICACAO");
+    captura.confirmar();
+    copiasOverride.get(0).put("origem_janela_id", UUID.randomUUID());
+    copiasOverride.get(1).put("origem_anuncio_id", UUID.randomUUID());
+    copiasOverride.get(2).put("origem_usuario_id", UUID.randomUUID());
+    titulo = "Edicao com referencias incompatíveis";
+
+    captura.registrar("EDICAO_PUBLICADA");
+
+    assertThat(captura.puts).hasSize(6);
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia")).isEmpty();
+  }
+
+  @Test
+  void rollbackDaEdicaoLimpaSoCopiaCriadaEPreservaObjetosReutilizados() {
+    CapturaSintetica captura = prepararCapturaSintetica();
+    captura.registrar("PUBLICACAO");
+    captura.confirmar();
+    List<String> anteriores = List.copyOf(captura.puts);
+    Map<String, Object> alterada = midiasOverride.get(1);
+    StoredObject bytesNovos = new StoredObject(new byte[] {5, 4, 3, 2}, "image/jpeg");
+    captura.objetos.put(captura.chave(StorageArea.PUBLIC_MEDIA,
+        (String) alterada.get("chave_objeto")), bytesNovos);
+    alterada.put("sha256", hash(bytesNovos.content()));
+    titulo = "Apresentacao editada com nova midia";
+
+    captura.registrar("MIDIA_ALTERADA");
+    assertThat(captura.puts).hasSize(4);
+    for (TransactionSynchronization sincronizacao : TransactionSynchronizationManager.getSynchronizations()) {
+      sincronizacao.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+    }
+
+    assertThat(captura.removidas).containsExactly(captura.puts.get(3));
+    assertThat(captura.objetos.keySet()).containsAll(anteriores);
+    assertThat(captura.escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia")).hasSize(2);
   }
 
   @Test
@@ -522,14 +634,14 @@ class ArquivoPublicidadeRegistroServiceTest {
   private Map<String, Object> anuncio(UUID anuncioId) {
     Map<String, Object> row = new HashMap<>();
     row.put("id", anuncioId);
-    row.put("usuario_id", UUID.randomUUID());
+    row.put("usuario_id", usuarioId);
     row.put("status", "PUBLICADO");
     row.put("status_moderacao", "APROVADO");
     row.put("usuario_status", "ATIVO");
     row.put("tipo_conta", "ANUNCIANTE");
     row.put("desativado_em", contaDesativada ? AGORA.minusHours(1) : null);
     row.put("slug", "perfil-sintetico");
-    row.put("titulo", "Titulo sintetico");
+    row.put("titulo", titulo);
     row.put("descricao", "Descricao sintetica");
     row.put("categoria", "MASSAGENS");
     row.put("nome", "Identidade Sintetica");
@@ -589,6 +701,135 @@ class ArquivoPublicidadeRegistroServiceTest {
       }
     }
     throw new AssertionError("escrita nao encontrada: " + marcador);
+  }
+
+  private CapturaSintetica prepararCapturaSintetica() {
+    UUID anuncioId = UUID.randomUUID();
+    Map<String, Object> restrita = midia(false);
+    restrita.put("visibilidade_midia", "RESTRITA_18");
+    restrita.put("bucket", properties.getPrivateMediaBucket());
+    restrita.put("chave_objeto", properties.getPrivateMediaPrefix() + "sintetica/original.jpg");
+    restrita.put("preview_restrito_status", "DISPONIVEL");
+    restrita.put("preview_restrito_chave", properties.getPublicMediaPrefix() + "sintetica/preview.jpg");
+    restrita.put("preview_restrito_confirmado_em", AGORA.minusHours(1));
+    Map<String, Object> livre = midia(false);
+    livre.put("ordem", 1);
+    livre.put("finalidade", "GALERIA");
+    midiasOverride = List.of(restrita, livre);
+    configurarLeituras(anuncioId, List.of(ativacao(AGORA.plusDays(1))), false);
+    CapturaSintetica captura = new CapturaSintetica(anuncioId);
+    captura.objetos.put(captura.chave(StorageArea.PRIVATE_MEDIA,
+        (String) restrita.get("chave_objeto")), new StoredObject(new byte[] {1, 2, 3}, "image/jpeg"));
+    captura.objetos.put(captura.chave(StorageArea.PUBLIC_MEDIA,
+        (String) restrita.get("preview_restrito_chave")), new StoredObject(new byte[] {3, 2, 1}, "image/jpeg"));
+    captura.objetos.put(captura.chave(StorageArea.PUBLIC_MEDIA,
+        (String) livre.get("chave_objeto")), new StoredObject(new byte[] {4, 5, 6}, "image/jpeg"));
+    return captura;
+  }
+
+  private static String hash(byte[] bytes) {
+    try {
+      return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new AssertionError(exception);
+    }
+  }
+
+  private final class CapturaSintetica {
+    private final UUID anuncioId;
+    private final Map<String, StoredObject> objetos = new HashMap<>();
+    private final List<String> puts = new ArrayList<>();
+    private final List<String> removidas = new ArrayList<>();
+    private final List<String> sqls = new ArrayList<>();
+    private final List<Map<String, Object>> escritas = new ArrayList<>();
+    private final Map<UUID, Map<String, Object>> fisicas = new HashMap<>();
+    private int inicioCaptura;
+
+    private CapturaSintetica(UUID anuncioId) {
+      this.anuncioId = anuncioId;
+      when(provider.getIfAvailable()).thenReturn(storage);
+      when(storage.get(any(StorageArea.class), anyString())).thenAnswer(invocacao ->
+          objetos.get(chave(invocacao.getArgument(0), invocacao.getArgument(1))));
+      when(storage.putIfAbsent(any(StorageArea.class), anyString(), any(), anyString()))
+          .thenAnswer(invocacao -> {
+            String chave = chave(invocacao.getArgument(0), invocacao.getArgument(1));
+            puts.add(chave);
+            StoredObject existente = objetos.putIfAbsent(chave,
+                new StoredObject(invocacao.getArgument(2), invocacao.getArgument(3)));
+            return existente == null ? ObjectWriteResult.CREATED : ObjectWriteResult.ALREADY_EXISTS;
+          });
+      doAnswer(invocacao -> {
+        String chave = chave(invocacao.getArgument(0), invocacao.getArgument(1));
+        removidas.add(chave);
+        objetos.remove(chave);
+        return null;
+      }).when(storage).delete(any(StorageArea.class), anyString());
+      when(jdbc.update(anyString(), any(Map.class))).thenAnswer(invocacao -> {
+        sqls.add(invocacao.getArgument(0));
+        escritas.add(new HashMap<>(invocacao.<Map<String, Object>>getArgument(1)));
+        return 1;
+      });
+      TransactionSynchronizationManager.initSynchronization();
+      TransactionSynchronizationManager.setActualTransactionActive(true);
+    }
+
+    private String chave(StorageArea area, String chave) {
+      return area.name() + ":" + chave;
+    }
+
+    private void registrar(String motivo) {
+      inicioCaptura = sqls.size();
+      service.registrarEstado(anuncioId, motivo, "req-reuso-sintetico", AGORA);
+    }
+
+    private List<Map<String, Object>> escritasDaCaptura(String marcador) {
+      List<Map<String, Object>> resultado = new ArrayList<>();
+      for (int i = inicioCaptura; i < sqls.size(); i++) {
+        if (sqls.get(i).contains(marcador)) {
+          resultado.add(escritas.get(i));
+        }
+      }
+      return resultado;
+    }
+
+    private void confirmar() {
+      for (Map<String, Object> janela : escritasDaCaptura("INSERT INTO arquivo_publicidade_veiculacao")) {
+        janelasOverride = List.of(janela((UUID) janela.get("id"), (UUID) janela.get("ativacaoId")));
+      }
+      Map<String, Object> versao = escritasDaCaptura("INSERT INTO arquivo_publicidade_versao").get(0);
+      versoesOverride = List.of(Map.of("id", versao.get("id"), "numero", versao.get("numero"),
+          "conteudo_sha256", versao.get("hash"), "capturado_em", AGORA));
+      List<Map<String, Object>> atuais = new ArrayList<>();
+      for (Map<String, Object> copia : escritasDaCaptura("INSERT INTO arquivo_publicidade_midia (")) {
+        Map<String, Object> fonte = new HashMap<>();
+        fonte.put("origem_midia_id", copia.get("id"));
+        fonte.put("anuncio_midia_id", copia.get("anuncioMidiaId"));
+        fonte.put("arquivo_midia_id", copia.get("arquivoMidiaId"));
+        fonte.put("variante", copia.get("variante"));
+        fonte.put("sha256", copia.get("sha256"));
+        fonte.put("mime_type", copia.get("mimeType"));
+        fonte.put("tamanho_bytes", copia.get("tamanhoBytes"));
+        fonte.put("storage_provider", "R2");
+        fonte.put("bucket", copia.get("bucket"));
+        fonte.put("chave_privada", copia.get("chave"));
+        fonte.put("origem_capturada_em", AGORA);
+        fonte.put("origem_versao_id", versao.get("id"));
+        fonte.put("origem_janela_id", versao.get("janelaId"));
+        fonte.put("origem_anuncio_id", anuncioId);
+        fonte.put("origem_usuario_id", usuarioId);
+        fisicas.put((UUID) copia.get("id"), fonte);
+        atuais.add(fonte);
+      }
+      for (Map<String, Object> referencia : escritasDaCaptura("INSERT INTO arquivo_publicidade_midia_referencia")) {
+        atuais.add(fisicas.get((UUID) referencia.get("origemMidiaId")));
+      }
+      copiasOverride = atuais;
+      for (TransactionSynchronization sincronizacao : TransactionSynchronizationManager.getSynchronizations()) {
+        sincronizacao.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+      }
+      TransactionSynchronizationManager.clearSynchronization();
+      TransactionSynchronizationManager.initSynchronization();
+    }
   }
 
   private static R2StorageProperties properties() {

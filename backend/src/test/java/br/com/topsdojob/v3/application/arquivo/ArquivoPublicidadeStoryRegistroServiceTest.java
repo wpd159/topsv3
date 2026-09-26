@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
@@ -35,6 +36,7 @@ import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -44,6 +46,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -555,6 +559,196 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     assertThat(fechamento.getValue().get("motivo"))
         .isEqualTo("LACUNA_MIDIA_RETIRADA_SEM_COPIA_VERIFICADA");
     verify(storage, never()).get(any(), anyString());
+  }
+
+  @Test
+  void edicoesTextuaisDoStoryCriamVersoesComReferenciasDiretasSemNovosPuts() {
+    CapturaAnuncio captura = new CapturaAnuncio();
+    captura.registrar();
+    assertThat(captura.puts).isEqualTo(2);
+    assertThat(captura.copias).hasSize(2);
+    assertThat(captura.referencias).isEmpty();
+    captura.confirmarTransacao();
+
+    captura.story.put("titulo", "Titulo atualizado");
+    captura.registrar();
+    captura.story.put("descricao", "Descricao atualizada novamente");
+    captura.registrar();
+
+    assertThat(captura.versoes).hasSize(3);
+    assertThat(captura.puts).isEqualTo(2);
+    assertThat(captura.copias).hasSize(2);
+    assertThat(captura.referencias).hasSize(4).allSatisfy(ref ->
+        assertThat(ref.get("origemId")).isIn(captura.copias.keySet()));
+    assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
+    assertThat(captura.deletes).isZero();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"ORIGINAL", "PREVIEW_RESTRITO"})
+  void varianteAlteradaDoStoryCopiaSomenteElaERollbackPreservaReferencias(String variante) {
+    CapturaAnuncio captura = new CapturaAnuncio();
+    captura.registrar();
+    captura.confirmarTransacao();
+    List<String> anteriores = captura.copias.values().stream()
+        .map(row -> (String) row.get("chave_privada")).toList();
+    byte[] alterados = ("bytes sinteticos alterados " + variante).getBytes(StandardCharsets.UTF_8);
+    captura.objetos.put(captura.chaveFonte(variante), new StoredObject(alterados, "image/jpeg"));
+    if ("ORIGINAL".equals(variante)) captura.midia.put("sha256", sha(alterados));
+    captura.story.put("titulo", "Apresentacao apos troca da variante");
+
+    captura.registrar();
+
+    assertThat(captura.versoes).hasSize(2);
+    assertThat(captura.puts).isEqualTo(3);
+    assertThat(captura.copias).hasSize(3);
+    assertThat(captura.referencias).singleElement().satisfies(ref ->
+        assertThat(ref.get("variante")).isNotEqualTo(variante));
+    assertThat(TransactionSynchronizationManager.getSynchronizations()).hasSize(1);
+    for (TransactionSynchronization sincronizacao : TransactionSynchronizationManager.getSynchronizations()) {
+      sincronizacao.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+    }
+    assertThat(captura.deletes).isEqualTo(1);
+    assertThat(anteriores).allSatisfy(chave ->
+        assertThat(captura.objetos).containsKey(StorageArea.PRIVATE_MEDIA + ":" + chave));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"story", "anuncio", "proprietario", "janela", "arquivo", "bytes", "ausente"})
+  void copiaIncompativelDoStoryNaoEReutilizada(String incompatibilidade) {
+    CapturaAnuncio captura = new CapturaAnuncio();
+    captura.registrar();
+    captura.confirmarTransacao();
+    Map<String, Object> original = captura.copias.values().stream()
+        .filter(row -> "ORIGINAL".equals(row.get("variante"))).findFirst().orElseThrow();
+    switch (incompatibilidade) {
+      case "story" -> original.put("origem_story_id", UUID.randomUUID());
+      case "anuncio" -> original.put("origem_anuncio_id", UUID.randomUUID());
+      case "proprietario" -> original.put("origem_usuario_id", UUID.randomUUID());
+      case "janela" -> original.put("origem_veiculacao_id", UUID.randomUUID());
+      case "arquivo" -> original.put("arquivo_midia_id", UUID.randomUUID());
+      case "bytes" -> {
+        byte[] corrompidos = BYTES.clone();
+        corrompidos[0] ^= 1;
+        captura.objetos.put(StorageArea.PRIVATE_MEDIA + ":" + original.get("chave_privada"),
+            new StoredObject(corrompidos, "image/jpeg"));
+      }
+      case "ausente" -> captura.objetos.remove(StorageArea.PRIVATE_MEDIA + ":" + original.get("chave_privada"));
+      default -> throw new AssertionError(incompatibilidade);
+    }
+    captura.story.put("titulo", "Outra apresentacao");
+
+    captura.registrar();
+
+    assertThat(captura.puts).isEqualTo(3);
+    assertThat(captura.referencias).singleElement().satisfies(ref ->
+        assertThat(ref.get("variante")).isEqualTo("PREVIEW_RESTRITO"));
+    assertThat(captura.deletes).isZero();
+  }
+
+  /** In-memory database/storage with physical objects retained across logical versions. */
+  private final class CapturaAnuncio {
+    private final Map<String, Object> story = storyAnuncio();
+    private final Map<String, Object> midia = midiaAnuncio();
+    private final List<Map<String, Object>> versoes = new ArrayList<>();
+    private final Map<UUID, Map<String, Object>> copias = new HashMap<>();
+    private final List<Map<String, Object>> referencias = new ArrayList<>();
+    private final Map<String, StoredObject> objetos = new HashMap<>();
+    private Map<String, Object> janela;
+    private int puts;
+    private int deletes;
+
+    private CapturaAnuncio() {
+      prepararSelecaoAnuncio();
+      midia.put("visibilidade_midia", "RESTRITA_18");
+      midia.put("bucket", "privado");
+      midia.put("chave_objeto", "private/original.jpg");
+      midia.put("preview_restrito_chave", "public/preview.jpg");
+      midia.put("preview_restrito_status", "DISPONIVEL");
+      when(properties.getPublicMediaBucket()).thenReturn("publico");
+      when(properties.getPublicMediaPrefix()).thenReturn("public/");
+      objetos.put(chaveFonte("ORIGINAL"), new StoredObject(BYTES, "image/jpeg"));
+      objetos.put(chaveFonte("PREVIEW_RESTRITO"),
+          new StoredObject("preview sintetico".getBytes(StandardCharsets.UTF_8), "image/jpeg"));
+      when(storage.get(any(), anyString())).thenAnswer(invocation ->
+          objetos.get(invocation.getArgument(0) + ":" + invocation.getArgument(1)));
+      when(storage.putIfAbsent(any(), anyString(), any(), anyString())).thenAnswer(invocation -> {
+        puts++;
+        String chave = invocation.getArgument(0) + ":" + invocation.getArgument(1);
+        StoredObject novo = new StoredObject(invocation.getArgument(2), invocation.getArgument(3));
+        return objetos.putIfAbsent(chave, novo) == null
+            ? ObjectWriteResult.CREATED : ObjectWriteResult.ALREADY_EXISTS;
+      });
+      doAnswer(invocation -> {
+        deletes++;
+        objetos.remove(invocation.getArgument(0) + ":" + invocation.getArgument(1));
+        return null;
+      }).when(storage).delete(any(), anyString());
+      when(jdbc.queryForList(anyString(), anyMap(), eq(String.class))).thenReturn(List.of());
+      when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+        String sql = invocation.getArgument(0);
+        Map<String, Object> parametros = invocation.getArgument(1);
+        if (sql.contains("AS ultimo_inicio")) return marcos(parametros);
+        if (sql.contains("FROM story_anuncio s")) return List.of(story);
+        if (sql.contains("FROM arquivo_publicidade_story_veiculacao"))
+          return janela == null ? List.of() : List.of(janela);
+        if (sql.contains("FROM arquivo_publicidade_story_versao"))
+          return versoes.isEmpty() ? List.of() : List.of(versoes.get(versoes.size() - 1));
+        if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) return List.of(midia);
+        if (sql.contains("FROM arquivo_publicidade_story_midia m")) {
+          UUID id = (UUID) parametros.get("versaoId");
+          List<Map<String, Object>> origens = new ArrayList<>(copias.values().stream()
+              .filter(row -> id.equals(row.get("origem_versao_id"))).toList());
+          referencias.stream().filter(row -> id.equals(row.get("versaoId")))
+              .map(row -> copias.get(row.get("origemId"))).forEach(origens::add);
+          return origens;
+        }
+        return List.of();
+      });
+      when(jdbc.update(anyString(), anyMap())).thenAnswer(invocation -> {
+        String sql = invocation.getArgument(0);
+        Map<String, Object> p = invocation.getArgument(1);
+        if (sql.contains("INSERT INTO arquivo_publicidade_story_veiculacao")) {
+          janela = Map.of("id", p.get("id"), "inicio_em", p.get("inicio"), "fim_em", p.get("fim"),
+              "encerramento_motivo", "LIMITE_AUTOMATICO_STORY");
+        } else if (sql.contains("INSERT INTO arquivo_publicidade_story_versao")) {
+          versoes.add(Map.of("id", p.get("id"), "numero", p.get("numero"),
+              "conteudo_sha256", p.get("hash")));
+        } else if (sql.contains("INSERT INTO arquivo_publicidade_story_midia_referencia")) {
+          referencias.add(new HashMap<>(p));
+        } else if (sql.contains("INSERT INTO arquivo_publicidade_story_midia (")) {
+          Map<String, Object> origem = origem((UUID) p.get("versaoId"), (UUID) p.get("id"), midia);
+          origem.put("variante", p.get("variante"));
+          origem.put("chave_privada", p.get("chave"));
+          origem.put("sha256", p.get("sha256"));
+          origem.put("tamanho_bytes", p.get("bytes"));
+          origem.put("origem_story_id", STORY_ID);
+          origem.put("origem_anuncio_id", ANUNCIO_ID);
+          origem.put("origem_usuario_id", USUARIO_ID);
+          origem.put("origem_veiculacao_id", janela.get("id"));
+          copias.put((UUID) p.get("id"), origem);
+        }
+        return 1;
+      });
+    }
+
+    private String chaveFonte(String variante) {
+      return "ORIGINAL".equals(variante) ? "PRIVATE_MEDIA:private/original.jpg"
+          : "PUBLIC_MEDIA:public/preview.jpg";
+    }
+
+    private void registrar() {
+      service.registrarEstado(STORY_ID, "STORY_ATUALIZADO", "req-sintetica",
+          INICIO.plusMinutes(versoes.size()));
+    }
+
+    private void confirmarTransacao() {
+      for (TransactionSynchronization sincronizacao : TransactionSynchronizationManager.getSynchronizations()) {
+        sincronizacao.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+      }
+      TransactionSynchronizationManager.clearSynchronization();
+      TransactionSynchronizationManager.initSynchronization();
+    }
   }
 
   private Map<String, Object> storyAnuncio() {

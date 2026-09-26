@@ -446,9 +446,11 @@ public class ArquivoPublicidadeRegistroService {
     if (referenciasAnteriores.isEmpty()) {
       return false;
     }
-    List<MidiaReferencia> referencias = referenciasAnteriores.get();
+    List<MidiaReferencia> referencias = new ArrayList<>(referenciasAnteriores.get());
     List<MidiaCopiada> copias = completa && !retiradaFoto
-        ? copiarMidias(versaoId, midias) : List.of();
+        ? copiarMidias(versaoId, janelaId, (UUID) anuncio.get("usuario_id"), midias,
+            anterior == null ? Map.of() : fontesDaVersao((UUID) anterior.get("id")), referencias)
+        : List.of();
     if (anterior != null) {
       jdbc.update("""
           UPDATE arquivo_publicidade_versao SET vigente_ate = :instante WHERE id = :id
@@ -584,18 +586,22 @@ public class ArquivoPublicidadeRegistroService {
   private Map<ChaveMidia, Map<String, Object>> fontesDaVersao(UUID versaoId) {
     List<Map<String, Object>> linhas = jdbc.queryForList("""
         SELECT m.id AS origem_midia_id, m.anuncio_midia_id, m.arquivo_midia_id,
-               m.variante, m.sha256, m.mime_type,
-               v.capturado_em AS origem_capturada_em,
-               j.anuncio_id AS origem_anuncio_id
+               m.variante, m.sha256, m.mime_type, m.tamanho_bytes,
+               m.storage_provider, m.bucket, m.chave_privada,
+               v.id AS origem_versao_id, v.capturado_em AS origem_capturada_em,
+               j.anuncio_id AS origem_anuncio_id, j.id AS origem_janela_id,
+               j.contratante_usuario_id AS origem_usuario_id
         FROM arquivo_publicidade_midia m
         JOIN arquivo_publicidade_versao v ON v.id = m.versao_id
         JOIN arquivo_publicidade_veiculacao j ON j.id = v.veiculacao_id
         WHERE m.versao_id = :versaoId
         UNION ALL
         SELECT m.id AS origem_midia_id, r.anuncio_midia_id, m.arquivo_midia_id,
-               r.variante, m.sha256, m.mime_type,
-               v.capturado_em AS origem_capturada_em,
-               j.anuncio_id AS origem_anuncio_id
+               r.variante, m.sha256, m.mime_type, m.tamanho_bytes,
+               m.storage_provider, m.bucket, m.chave_privada,
+               v.id AS origem_versao_id, v.capturado_em AS origem_capturada_em,
+               j.anuncio_id AS origem_anuncio_id, j.id AS origem_janela_id,
+               j.contratante_usuario_id AS origem_usuario_id
         FROM arquivo_publicidade_midia_referencia r
         JOIN arquivo_publicidade_midia m ON m.id = r.origem_midia_id
           AND m.anuncio_midia_id = r.anuncio_midia_id AND m.variante = r.variante
@@ -621,7 +627,9 @@ public class ArquivoPublicidadeRegistroService {
     return fontes;
   }
 
-  private List<MidiaCopiada> copiarMidias(UUID versaoId, List<Map<String, Object>> midias) {
+  private List<MidiaCopiada> copiarMidias(
+      UUID versaoId, UUID janelaId, UUID usuarioId, List<Map<String, Object>> midias,
+      Map<ChaveMidia, Map<String, Object>> fontes, List<MidiaReferencia> referencias) {
     if (midias.isEmpty()) {
       return List.of();
     }
@@ -660,15 +668,22 @@ public class ArquivoPublicidadeRegistroService {
       } else {
         throw new IllegalStateException("origem de midia exibida nao verificavel: " + midia.get("id"));
       }
-      copias.add(copiarUma(storage, versaoId, midia, "ORIGINAL", area, chave));
+      MidiaCopiada original = copiarUma(storage, versaoId, janelaId, usuarioId, midia,
+          "ORIGINAL", area, chave, fontes, referencias);
+      if (original != null) {
+        copias.add(original);
+      }
       if ("RESTRITA_18".equals(visibilidade)
           && "DISPONIVEL".equals(midia.get("preview_restrito_status"))) {
         String preview = (String) midia.get("preview_restrito_chave");
         if (preview == null || !preview.startsWith(storageProperties.getPublicMediaPrefix())) {
           throw new IllegalStateException("preview restrito exibido sem origem integra: " + midia.get("id"));
         }
-        copias.add(copiarUma(storage, versaoId, midia,
-            "PREVIEW_RESTRITO", StorageArea.PUBLIC_MEDIA, preview));
+        MidiaCopiada copiaPreview = copiarUma(storage, versaoId, janelaId, usuarioId, midia,
+            "PREVIEW_RESTRITO", StorageArea.PUBLIC_MEDIA, preview, fontes, referencias);
+        if (copiaPreview != null) {
+          copias.add(copiaPreview);
+        }
       }
     }
     return List.copyOf(copias);
@@ -677,10 +692,14 @@ public class ArquivoPublicidadeRegistroService {
   private MidiaCopiada copiarUma(
       ObjectStorage storage,
       UUID versaoId,
+      UUID janelaId,
+      UUID usuarioId,
       Map<String, Object> midia,
       String variante,
       StorageArea origem,
-      String chaveOrigem) {
+      String chaveOrigem,
+      Map<ChaveMidia, Map<String, Object>> fontes,
+      List<MidiaReferencia> referencias) {
     StoredObject original = storage.get(origem, chaveOrigem);
     if (original == null || original.content() == null || original.content().length == 0
         || original.contentType() == null) {
@@ -693,6 +712,12 @@ public class ArquivoPublicidadeRegistroService {
     Object esperado = midia.get("sha256");
     if ("ORIGINAL".equals(variante) && esperado != null && !hash.equals(esperado)) {
       throw new IllegalStateException("hash da fonte de midia divergente: " + midia.get("id"));
+    }
+    Map<String, Object> fonte = fontes.get(new ChaveMidia((UUID) midia.get("id"), variante));
+    if (copiaAnteriorIntegra(storage, janelaId, usuarioId, midia, variante, fonte, original, hash)) {
+      referencias.add(new MidiaReferencia((UUID) fonte.get("origem_midia_id"),
+          (UUID) midia.get("id"), variante, ((Number) midia.get("ordem")).intValue()));
+      return null;
     }
     String objetoDestino = storageProperties.getPrivateMediaPrefix()
         + "arquivo-publicidade/" + versaoId + "/" + midia.get("id")
@@ -724,6 +749,44 @@ public class ArquivoPublicidadeRegistroService {
         (UUID) midia.get("arquivo_midia_id"), variante, objetoDestino,
         hash, original.contentType(), original.content().length,
         ((Number) midia.get("ordem")).intValue());
+  }
+
+  /** Reuse is local to the preceding version of this window, never a hash lookup. */
+  private boolean copiaAnteriorIntegra(
+      ObjectStorage storage, UUID janelaId, UUID usuarioId, Map<String, Object> midia,
+      String variante, Map<String, Object> fonte, StoredObject original, String hash) {
+    if (fonte == null || !(fonte.get("origem_midia_id") instanceof UUID)
+        || !janelaId.equals(fonte.get("origem_janela_id"))
+        || !usuarioId.equals(fonte.get("origem_usuario_id"))
+        || !Objects.equals(midia.get("anuncio_id"), fonte.get("origem_anuncio_id"))
+        || !Objects.equals(midia.get("id"), fonte.get("anuncio_midia_id"))
+        || !Objects.equals(midia.get("arquivo_midia_id"), fonte.get("arquivo_midia_id"))
+        || !variante.equals(fonte.get("variante"))
+        || !"R2".equals(fonte.get("storage_provider"))
+        || !storageProperties.getPrivateMediaBucket().equals(fonte.get("bucket"))
+        || !(fonte.get("origem_versao_id") instanceof UUID origemVersaoId)
+        || !(fonte.get("chave_privada") instanceof String chave)
+        || !chave.equals(storageProperties.getPrivateMediaPrefix() + "arquivo-publicidade/"
+            + origemVersaoId + "/" + midia.get("id") + "/"
+            + variante.toLowerCase(java.util.Locale.ROOT))
+        || !hash.equals(fonte.get("sha256"))
+        || !original.contentType().equals(fonte.get("mime_type"))
+        || !(fonte.get("tamanho_bytes") instanceof Number tamanho)
+        || tamanho.longValue() != original.content().length) {
+      return false;
+    }
+    // A new version confirms both current source bytes and retained private bytes.
+    // Withdrawal deliberately follows the separate path without storage I/O.
+    StoredObject retida;
+    try {
+      retida = storage.get(StorageArea.PRIVATE_MEDIA, chave);
+    } catch (RuntimeException exception) {
+      return false;
+    }
+    return retida != null && retida.content() != null
+        && retida.content().length == original.content().length
+        && hash.equals(sha256(retida.content()))
+        && original.contentType().equals(retida.contentType());
   }
 
   private void encerrar(UUID janelaId, OffsetDateTime instante, String motivo) {
