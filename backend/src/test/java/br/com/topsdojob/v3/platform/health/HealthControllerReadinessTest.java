@@ -64,7 +64,7 @@ class HealthControllerReadinessTest {
         when(databaseResult.next()).thenReturn(true);
         when(databaseResult.getInt("probe")).thenReturn(1);
         when(migrationResult.next()).thenReturn(true);
-        when(migrationResult.getInt("latest_version")).thenReturn(55);
+        when(migrationResult.getInt("latest_version")).thenReturn(57);
         when(migrationResult.getLong("failed_count")).thenReturn(0L);
         application.applicationReady();
         service = BackendReadinessService.forTesting(
@@ -111,7 +111,7 @@ class HealthControllerReadinessTest {
 
     @Test
     void select1PassaMasMigrationIncompativelMantem503() throws Exception {
-        when(migrationResult.getInt("latest_version")).thenReturn(54);
+        when(migrationResult.getInt("latest_version")).thenReturn(56);
         MockMvcBuilders.standaloneSetup(controller).build().perform(get("/api/health/readiness"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.components.database").value("UP"))

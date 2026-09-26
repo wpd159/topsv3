@@ -2,6 +2,8 @@
 
 Este PR é prospectivo. Não migra acervo real, não altera o KYC manual do anunciante e não habilita novo método de aferição etária. O contrato de enquadramento, campos e limites está em [ARQUIVO-PUBLICIDADE-CONTRATO.md](ARQUIVO-PUBLICIDADE-CONTRATO.md).
 
+Revisão de 25/09/2026: mestre SEO v1.0.0, SHA256 `E381E31C2C599F8210042C15EABC25F218480FE73A38B67B29F9C67B037607DB`, preservado. O head `3cab38215a5e08e75be208ba95e648e68cac8923` e o CI anterior são linha de base, não prova das correções abaixo. V054/V055 mantêm seus bytes/checksums; V056/V057 são aditivas. Nenhum dado real foi migrado ou reconstruído.
+
 | Requisito | Base existente | Correção nesta branch | Evidência/limite |
 | --- | --- | --- | --- |
 | Distinguir benefício exibido de anúncio básico | `anuncio_status_historico`, ativações e ledger | V054 registra janelas somente de benefício de anúncio elegível; ausência de benefício conserva apenas trilhas existentes | Testes sintéticos de captura/sem benefício. Crédito fungível fica `ORIGEM_INDETERMINADA`, não pagamento inventado. |
@@ -15,10 +17,19 @@ Este PR é prospectivo. Não migra acervo real, não altera o KYC manual do anun
 | Aferição etária do visitante | Declaração de data/CPF matematicamente válido | Proposta de autorização por escopo no servidor e eliminação documental por finalidade | **Pendente de decisão técnica/jurídica**; nenhuma nova aferição, descarte ou bloqueio global ativado. |
 | Repositório público e acervo anterior | Não há prova do limiar de usuários mensais nem bytes históricos íntegros | Nenhum repositório público ou backfill | Reavaliar se o limiar legal for comprovado; não usar visualizações como usuários ou destinatários únicos. |
 
+### Quatro achados da revisão do PR55
+
+| Achado | Falha na linha de base | Correção focal nesta branch | Limite que permanece |
+| --- | --- | --- | --- |
+| Retirada de foto | Reprovar nova cópia de sobreviventes no R2 podia desfazer a retirada na mesma transação. | V056 vincula versão nova aos bytes privados anteriores verificados; a retirada não requer PUT/GET novo para sobreviventes, e promoção sem fonte é suprimida antes da exibição. | Referência preserva integridade comprovada na captura, não mede disponibilidade futura do objeto no R2. Lacuna anterior não vira captura inventada. |
+| Story retomado | `UNIQUE(story_id)` e retorno na janela encerrada impediam novo período após pausa. | V056 permite períodos não sobrepostos, preserva o primeiro e faz a retomada capturar novo período/versão; leitura administrativa distingue períodos. | Retomada não prolonga o vencimento operacional do Story. |
+| Vencimentos independentes | Galeria/vídeo podiam mudar por expiração sem versão correspondente. | V057 registra planos ainda não ocorridos com fonte privada e materializa apenas efeito derivável na fronteira, distinguindo vencimento e processamento. O bootstrap examina fontes V055 ainda vigentes antes da prontidão e agenda apenas vencimentos futuros. | Fronteira já perdida antes do bootstrap é lacuna potencial, não observação retrospectiva; mudanças que não decorrem das dependências congeladas precisam de captura própria. |
+| CSRF local | Sem cookie no modo `local`, o cliente abortava antes do servidor mesmo com sessão válida. | O cliente consulta `/auth/me` e omite o header só quando não houve cookie; ambientes protegidos continuam exigindo token no servidor. | Sessão, RBAC, finalidade e auditoria permanecem obrigatórios; não há autorização deduzida do hostname. |
+
 Limites ainda abertos, sem alegação de conformidade integral: segmentação na captura fica explicitamente `NAO_AFERIDA_NA_CAPTURA` e alcance de destinatários fica `NAO_MENSURADO`; débito de saldo fungível não demonstra a alocação a um pagamento específico; notificações, ordens e providências existentes ainda não estão vinculadas por ID à versão/veiculação; não há rotina automática de expurgo, tombstone de backup ou encerramento de hold. A preservação de bytes é prospectiva e a disponibilidade da leitura de mídias legadas no bucket preservado exige precheck antes de publicação. Eventos de retirada de acervo anterior fecham somente janelas que já tenham sido capturadas, sem fabricar uma versão antiga.
 
 ## Publicação e recuperação futuras
 
 Antes de uma publicação separadamente autorizada: revisar V054/V055 e Flyway num PostgreSQL 17 descartável; confirmar configuração, permissão de leitura dos buckets de origem e escrita/leitura do prefixo privado; executar os gates normais de CI/deploy e smoke de arquivo administrativo com dados sintéticos. Captura de nova peça abrangida falha fechada se a cópia privada não puder ser verificada. Retirada pública deve continuar mesmo quando não há captura histórica prévia.
 
-As migrations são aditivas e não têm `down` automático. Recuperar a aplicação anterior não deve apagar janelas, versões, holds ou objetos privados já confirmados, nem restaurar mídia pública retirada. Backup e restauração futura precisam preservar o vínculo banco/storage e reavaliar prazos/holds antes de abrir tráfego. Este PR não executa migration, backfill, expurgo, deploy ou restauração produtiva.
+As migrations são aditivas e não têm `down` automático. Em PostgreSQL 17 descartável, a evolução V055→V057, a validação Flyway com pacote anterior pré-V054 e o seletor público anterior mantiveram a foto retirada fora da exibição e preservaram hold, linhas e bytes privados. **A JVM anterior completa não foi iniciada nessa fixture**; sua partida continua um gate da recuperação operacional futura. Recuperar a aplicação anterior não deve apagar janelas, versões, holds ou objetos privados já confirmados, nem restaurar mídia pública retirada. Backup e restauração futura precisam preservar o vínculo banco/storage e reavaliar prazos/holds antes de abrir tráfego. Este PR não executa migration, backfill, expurgo, deploy ou restauração produtiva.

@@ -98,7 +98,7 @@ class AdminArquivoPublicidadeServiceTest {
     String chave = "hml/qa/arquivo-publicidade/" + versao + "/" + anuncioMidia + "/original";
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
     ResultSet rs = mock(ResultSet.class);
-    when(rs.getObject("versao_id", UUID.class)).thenReturn(versao);
+    when(rs.getObject("origem_versao_id", UUID.class)).thenReturn(versao);
     when(rs.getObject("anuncio_midia_id", UUID.class)).thenReturn(anuncioMidia);
     when(rs.getString("variante")).thenReturn("ORIGINAL");
     when(rs.getString("storage_provider")).thenReturn("R2");
@@ -107,7 +107,8 @@ class AdminArquivoPublicidadeServiceTest {
     when(rs.getString("sha256")).thenReturn(hash);
     when(rs.getString("mime_type")).thenReturn("image/png");
     when(rs.getLong("tamanho_bytes")).thenReturn((long) bytes.length);
-    when(jdbc.query(anyString(), any(RowMapper.class), eq(veiculacao), eq(midia)))
+    when(jdbc.query(anyString(), any(RowMapper.class), eq(veiculacao), eq(midia),
+        eq(veiculacao), eq(midia)))
         .thenAnswer(call -> List.of(((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0)));
     ObjectProvider<ObjectStorage> provider = mock(ObjectProvider.class);
     ObjectStorage storage = mock(ObjectStorage.class);
@@ -138,5 +139,54 @@ class AdminArquivoPublicidadeServiceTest {
     assertEquals(bytes.length, service.midia(veiculacao, midia, ator, "req-4", finalidade).bytes().length);
     verify(audit).registrarMidia(ator, veiculacao, midia,
         "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA", "req-4", finalidade);
+  }
+
+  @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void referenciaAutorizaVersaoAtualEValidaChaveDaCopiaOriginal() throws Exception {
+    UUID veiculacao = UUID.randomUUID();
+    UUID versaoOriginal = UUID.randomUUID();
+    UUID vinculo = UUID.randomUUID();
+    UUID referencia = UUID.randomUUID();
+    UUID ator = UUID.randomUUID();
+    byte[] bytes = {9, 8, 7};
+    String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    String chave = "hml/qa/arquivo-publicidade/" + versaoOriginal + "/" + vinculo + "/original";
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    ResultSet rs = mock(ResultSet.class);
+    when(rs.getObject("origem_versao_id", UUID.class)).thenReturn(versaoOriginal);
+    when(rs.getObject("anuncio_midia_id", UUID.class)).thenReturn(vinculo);
+    when(rs.getString("variante")).thenReturn("ORIGINAL");
+    when(rs.getString("storage_provider")).thenReturn("R2");
+    when(rs.getString("bucket")).thenReturn("bucket-qa");
+    when(rs.getString("chave_privada")).thenReturn(chave);
+    when(rs.getString("sha256")).thenReturn(hash);
+    when(rs.getString("mime_type")).thenReturn("image/png");
+    when(rs.getLong("tamanho_bytes")).thenReturn((long) bytes.length);
+    when(jdbc.query(anyString(), any(RowMapper.class), eq(veiculacao), eq(referencia),
+        eq(veiculacao), eq(referencia))).thenAnswer(call -> {
+          String sql = call.getArgument(0);
+          assertTrue(sql.contains("v.id = r.versao_id"));
+          assertTrue(sql.contains("m.anuncio_midia_id = r.anuncio_midia_id"));
+          assertTrue(sql.contains("m.variante = r.variante"));
+          assertTrue(sql.contains("destino_j.anuncio_id = origem_j.anuncio_id"));
+          return List.of(((RowMapper<?>) call.getArgument(1)).mapRow(rs, 0));
+        });
+    ObjectProvider<ObjectStorage> provider = mock(ObjectProvider.class);
+    ObjectStorage storage = mock(ObjectStorage.class);
+    when(provider.getIfAvailable()).thenReturn(storage);
+    when(storage.get(StorageArea.PRIVATE_MEDIA, chave)).thenReturn(new StoredObject(bytes, "image/png"));
+    R2StorageProperties properties = new R2StorageProperties();
+    properties.setPrivateMediaBucket("bucket-qa");
+    properties.setPrivateMediaPrefix("hml/qa/");
+    var audit = mock(AdminArquivoPublicidadeAccessAuditService.class);
+    var service = new AdminArquivoPublicidadeService(
+        jdbc, new ObjectMapper(), provider, properties, audit);
+
+    assertEquals(bytes.length, service.midia(veiculacao, referencia, ator, "req-ref",
+        FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA).bytes().length);
+    verify(audit).registrarMidia(ator, veiculacao, referencia,
+        "ARQUIVO_PUBLICIDADE_MIDIA_PREPARADA", "req-ref",
+        FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA);
   }
 }

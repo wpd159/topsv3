@@ -1,22 +1,31 @@
 package br.com.topsdojob.v3.application.arquivo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import java.time.OffsetDateTime;
@@ -51,9 +60,14 @@ class ArquivoPublicidadeRegistroServiceTest {
       mock(ArquivoPublicidadeStoryRegistroService.class);
   private final PremiumPublicoMapper premiumPublico = mock(PremiumPublicoMapper.class);
   private final ArquivoPublicidadeRegistroService service = new ArquivoPublicidadeRegistroService(
-      jdbc, entityManager, new ObjectMapper(), provider, properties, stories, premiumPublico);
+      jdbc, entityManager, new ObjectMapper(), provider, properties, stories, premiumPublico,
+      mock(ArquivoPublicidadeTransicaoTemporalService.class));
   private boolean contaDesativada;
   private List<Map<String, Object>> midiasOverride;
+  private List<Map<String, Object>> janelasOverride = List.of();
+  private List<Map<String, Object>> versoesOverride = List.of();
+  private List<Map<String, Object>> copiasOverride = List.of();
+  private final Set<UUID> midiasOcultasOverride = new java.util.HashSet<>();
 
   @AfterEach
   void limparTransacao() {
@@ -180,6 +194,230 @@ class ArquivoPublicidadeRegistroServiceTest {
   }
 
   @Test
+  void retiradaReusaCopiaConfirmadaMesmoComStorageIndisponivel() {
+    UUID anuncioId = UUID.randomUUID();
+    Map<String, Object> ativacao = ativacao(AGORA.plusDays(1));
+    Map<String, Object> sobrevivente = midia(false);
+    midiasOverride = List.of(sobrevivente);
+    UUID janelaId = UUID.randomUUID();
+    UUID versaoAnteriorId = UUID.randomUUID();
+    UUID copiaId = UUID.randomUUID();
+    janelasOverride = List.of(Map.of(
+        "id", janelaId,
+        "ativacao_beneficio_id", ativacao.get("id"),
+        "classificacao", "ORIGEM_INDETERMINADA",
+        "relacao_material", "DESCONHECIDA",
+        "cobertura", "PREVENTIVA",
+        "inicio_em", AGORA.minusHours(1),
+        "fim_em", AGORA.plusDays(1)));
+    versoesOverride = List.of(Map.of(
+        "id", versaoAnteriorId,
+        "numero", 1,
+        "conteudo_sha256", "0".repeat(64),
+        "capturado_em", AGORA.minusHours(1)));
+    copiasOverride = List.of(Map.of(
+        "origem_midia_id", copiaId,
+        "anuncio_midia_id", sobrevivente.get("id"),
+        "arquivo_midia_id", sobrevivente.get("arquivo_midia_id"),
+        "variante", "ORIGINAL",
+        "sha256", "1".repeat(64),
+        "mime_type", "image/jpeg"));
+    configurarLeituras(anuncioId, List.of(ativacao), false);
+    when(provider.getIfAvailable()).thenThrow(new IllegalStateException("R2 indisponivel"));
+
+    assertThatCode(() -> service.registrarEstado(
+        anuncioId, "MIDIA_REMOVIDA_PELO_PROPRIETARIO", "req-retirada", AGORA))
+        .doesNotThrowAnyException();
+
+    verifyNoInteractions(storage);
+    verify(provider, never()).getIfAvailable();
+    ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> parametros = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc, org.mockito.Mockito.atLeastOnce()).update(sql.capture(), parametros.capture());
+    Map<String, ?> referencia = parametrosPara(sql.getAllValues(), parametros.getAllValues(),
+        "INSERT INTO arquivo_publicidade_midia_referencia");
+    assertThat(referencia.get("origemMidiaId")).isEqualTo(copiaId);
+    assertThat(referencia.get("anuncioMidiaId")).isEqualTo(sobrevivente.get("id"));
+  }
+
+  @Test
+  void retiradaLegadaSemVersaoAnteriorFechaLacunaSemCapturaNova() {
+    UUID anuncioId = UUID.randomUUID();
+    Map<String, Object> ativacao = ativacao(AGORA.plusDays(1));
+    UUID janelaId = UUID.randomUUID();
+    midiasOverride = List.of(midia(false));
+    janelasOverride = List.of(janela(janelaId, (UUID) ativacao.get("id")));
+    configurarLeituras(anuncioId, List.of(ativacao), false);
+    when(provider.getIfAvailable()).thenThrow(new IllegalStateException("R2 indisponivel"));
+
+    assertThatCode(() -> service.registrarEstado(
+        anuncioId, "MIDIA_REMOVIDA_PELO_PROPRIETARIO", "req-legado", AGORA))
+        .doesNotThrowAnyException();
+
+    ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> parametros = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc, org.mockito.Mockito.atLeastOnce()).update(sql.capture(), parametros.capture());
+    assertThat(sql.getAllValues()).noneMatch(item -> item.contains("INSERT INTO arquivo_publicidade_versao"));
+    assertThat(parametrosPara(sql.getAllValues(), parametros.getAllValues(),
+        "UPDATE arquivo_publicidade_veiculacao").get("motivo"))
+        .isEqualTo("RETIRADA_SEM_COPIA_PRIVADA_ANTERIOR");
+    verify(provider, never()).getIfAvailable();
+  }
+
+  @Test
+  void retiradaNaoReusaCopiaAnteriorAReprocessamentoDoMesmoArquivo() {
+    UUID anuncioId = UUID.randomUUID();
+    Map<String, Object> ativacao = ativacao(AGORA.plusDays(1));
+    Map<String, Object> sobrevivente = midia(false);
+    sobrevivente.put("processado_em", AGORA.minusMinutes(10));
+    midiasOverride = List.of(sobrevivente);
+    janelasOverride = List.of(janela(UUID.randomUUID(), (UUID) ativacao.get("id")));
+    versoesOverride = List.of(Map.of(
+        "id", UUID.randomUUID(), "numero", 1,
+        "conteudo_sha256", "0".repeat(64), "capturado_em", AGORA.minusHours(1)));
+    copiasOverride = List.of(Map.of(
+        "origem_midia_id", UUID.randomUUID(),
+        "anuncio_midia_id", sobrevivente.get("id"),
+        "arquivo_midia_id", sobrevivente.get("arquivo_midia_id"),
+        "variante", "ORIGINAL", "sha256", "1".repeat(64),
+        "mime_type", "image/jpeg", "origem_capturada_em", AGORA.minusHours(1)));
+    configurarLeituras(anuncioId, List.of(ativacao), false);
+
+    service.registrarEstado(anuncioId, "MIDIA_REMOVIDA_PELO_PROPRIETARIO", null, AGORA);
+
+    ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> parametros = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc, org.mockito.Mockito.atLeastOnce()).update(sql.capture(), parametros.capture());
+    assertThat(sql.getAllValues()).noneMatch(item -> item.contains("INSERT INTO arquivo_publicidade_midia_referencia"));
+    assertThat(parametrosPara(sql.getAllValues(), parametros.getAllValues(),
+        "UPDATE arquivo_publicidade_veiculacao").get("motivo"))
+        .isEqualTo("RETIRADA_SEM_COPIA_PRIVADA_ANTERIOR");
+    verify(provider, never()).getIfAvailable();
+  }
+
+  @Test
+  void retiradaNaoReusaPreviewReconfirmadoDepoisDaCopia() {
+    UUID anuncioId = UUID.randomUUID();
+    Map<String, Object> ativacao = ativacao(AGORA.plusDays(1));
+    Map<String, Object> sobrevivente = midia(false);
+    sobrevivente.put("visibilidade_midia", "RESTRITA_18");
+    sobrevivente.put("preview_restrito_status", "DISPONIVEL");
+    sobrevivente.put("preview_restrito_confirmado_em", AGORA.minusMinutes(10));
+    midiasOverride = List.of(sobrevivente);
+    janelasOverride = List.of(janela(UUID.randomUUID(), (UUID) ativacao.get("id")));
+    versoesOverride = List.of(Map.of(
+        "id", UUID.randomUUID(), "numero", 1,
+        "conteudo_sha256", "0".repeat(64), "capturado_em", AGORA.minusHours(1)));
+    Map<String, Object> original = new HashMap<>(Map.of(
+        "origem_midia_id", UUID.randomUUID(), "anuncio_midia_id", sobrevivente.get("id"),
+        "arquivo_midia_id", sobrevivente.get("arquivo_midia_id"),
+        "variante", "ORIGINAL", "sha256", "1".repeat(64), "mime_type", "image/jpeg",
+        "origem_capturada_em", AGORA.minusHours(1)));
+    Map<String, Object> preview = new HashMap<>(original);
+    preview.put("origem_midia_id", UUID.randomUUID());
+    preview.put("variante", "PREVIEW_RESTRITO");
+    copiasOverride = List.of(original, preview);
+    configurarLeituras(anuncioId, List.of(ativacao), false);
+
+    service.registrarEstado(anuncioId, "MIDIA_REMOVIDA_PELO_PROPRIETARIO", null, AGORA);
+
+    ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+    verify(jdbc, org.mockito.Mockito.atLeastOnce()).update(sql.capture(), any(Map.class));
+    assertThat(sql.getAllValues()).noneMatch(item -> item.contains("INSERT INTO arquivo_publicidade_midia_referencia"));
+    verify(provider, never()).getIfAvailable();
+  }
+
+  @Test
+  void retiradaLegadaOcultaSomenteFotoPromovidaSemCopiaEMantemSobreviventeAnterior() {
+    UUID anuncioId = UUID.randomUUID();
+    UUID usuarioId = UUID.randomUUID();
+    UUID atorId = UUID.randomUUID();
+    Map<String, Object> ativacao = ativacao(AGORA.plusDays(1));
+    Map<String, Object> sobreviventeAntiga = midia(false);
+    Map<String, Object> promovida = midia(false);
+    promovida.put("ordem", 1);
+    promovida.put("finalidade", "GALERIA");
+    midiasOverride = List.of(sobreviventeAntiga, promovida);
+    janelasOverride = List.of(janela(UUID.randomUUID(), (UUID) ativacao.get("id")));
+    configurarLeituras(anuncioId, List.of(ativacao), false);
+    AnuncioEntity anuncio = AnuncioEntity.criarFixtureHomologacao(anuncioId, usuarioId,
+        "perfil-sintetico", "Titulo sintetico", "Descricao sintetica",
+        StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, AGORA.minusDays(1));
+    when(entityManager.find(AnuncioEntity.class, anuncioId)).thenReturn(anuncio);
+    AnuncioMidiaEntity vinculoPromovido = mock(AnuncioMidiaEntity.class);
+    UUID promovidaId = (UUID) promovida.get("id");
+    when(entityManager.find(AnuncioMidiaEntity.class, promovidaId)).thenReturn(vinculoPromovido);
+    when(vinculoPromovido.getAnuncioId()).thenReturn(anuncioId);
+    when(vinculoPromovido.getStatus()).thenReturn(StatusAnuncioMidia.PUBLICAVEL);
+    when(vinculoPromovido.getTipo()).thenReturn(TipoAnuncioMidia.FOTO);
+    when(vinculoPromovido.getVisibilidadeMidia()).thenReturn(VisibilidadeMidia.LIVRE);
+    doAnswer(invocation -> {
+      midiasOcultasOverride.add(promovidaId);
+      return null;
+    }).when(vinculoPromovido).aplicarDecisao(
+        StatusAnuncioMidia.PENDENTE, VisibilidadeMidia.LIVRE, AGORA);
+
+    List<UUID> suprimidas = service.prepararRetiradaSemNovaCopia(anuncioId, atorId,
+        "req-promovida", AGORA, Set.of((UUID) sobreviventeAntiga.get("id")));
+
+    assertThat(suprimidas).containsExactly(promovidaId);
+    assertThat(service.possuiFotoPublicaSelecionada(anuncioId)).isTrue();
+    verify(vinculoPromovido).aplicarDecisao(
+        StatusAnuncioMidia.PENDENTE, VisibilidadeMidia.LIVRE, AGORA);
+    verify(entityManager, never()).find(AnuncioMidiaEntity.class,
+        (UUID) sobreviventeAntiga.get("id"));
+    verify(provider, never()).getIfAvailable();
+  }
+
+  @Test
+  void retiradaLegadaContinuaAteOcultarMaisDeDezPromocoesSemCopia() {
+    UUID anuncioId = UUID.randomUUID();
+    Map<String, Object> ativacao = ativacao(AGORA.plusDays(1));
+    List<Map<String, Object>> fotos = new ArrayList<>();
+    for (int ordem = 0; ordem < 16; ordem++) {
+      Map<String, Object> foto = midia(false);
+      foto.put("ordem", ordem);
+      foto.put("finalidade", ordem == 0 ? "CAPA" : "GALERIA");
+      fotos.add(foto);
+    }
+    midiasOverride = fotos;
+    janelasOverride = List.of(janela(UUID.randomUUID(), (UUID) ativacao.get("id")));
+    configurarLeituras(anuncioId, List.of(ativacao), false);
+    AnuncioEntity anuncio = AnuncioEntity.criarFixtureHomologacao(anuncioId,
+        UUID.randomUUID(), "perfil-legado", "Titulo sintetico", "Descricao sintetica",
+        StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, AGORA.minusDays(1));
+    when(entityManager.find(AnuncioEntity.class, anuncioId)).thenReturn(anuncio);
+    for (Map<String, Object> foto : fotos.subList(3, fotos.size())) {
+      UUID id = (UUID) foto.get("id");
+      AnuncioMidiaEntity vinculo = mock(AnuncioMidiaEntity.class);
+      when(entityManager.find(AnuncioMidiaEntity.class, id)).thenReturn(vinculo);
+      when(vinculo.getAnuncioId()).thenReturn(anuncioId);
+      when(vinculo.getStatus()).thenReturn(StatusAnuncioMidia.PUBLICAVEL);
+      when(vinculo.getTipo()).thenReturn(TipoAnuncioMidia.FOTO);
+      when(vinculo.getVisibilidadeMidia()).thenReturn(VisibilidadeMidia.LIVRE);
+      doAnswer(invocation -> {
+        midiasOcultasOverride.add(id);
+        return null;
+      }).when(vinculo).aplicarDecisao(
+          StatusAnuncioMidia.PENDENTE, VisibilidadeMidia.LIVRE, AGORA);
+    }
+    Set<UUID> exibidasAntes = fotos.subList(0, 3).stream()
+        .map(foto -> (UUID) foto.get("id"))
+        .collect(java.util.stream.Collectors.toSet());
+
+    List<UUID> suprimidas = service.prepararRetiradaSemNovaCopia(anuncioId,
+        UUID.randomUUID(), "req-mais-dez", AGORA, exibidasAntes);
+
+    assertThat(suprimidas).hasSize(13)
+        .doesNotContainAnyElementsOf(exibidasAntes);
+    assertThat(service.midiasExibidasAntesDaRetirada(anuncioId)).containsExactlyInAnyOrderElementsOf(exibidasAntes);
+    verify(provider, never()).getIfAvailable();
+  }
+
+  @Test
   void preservaSoMidiasSelecionadasPelaGaleriaPublicaMesmoComArquivoInvalidoNaPosicao() {
     UUID anuncioId = UUID.randomUUID();
     Map<String, Object> video = midia(false);
@@ -248,15 +486,30 @@ class ArquivoPublicidadeRegistroServiceTest {
         return List.of(anuncio(anuncioId));
       }
       if (sql.contains("FROM anuncio_midia am")) {
-        return midiasOverride == null ? List.of(midia(legado)) : midiasOverride;
+        return (midiasOverride == null ? List.of(midia(legado)) : midiasOverride).stream()
+            .filter(midia -> !midiasOcultasOverride.contains(midia.get("id")))
+            .map(midia -> {
+              Map<String, Object> linha = new HashMap<>(midia);
+              linha.putIfAbsent("anuncio_id", anuncioId);
+              return linha;
+            }).toList();
       }
       if (sql.contains("FROM ativacao_beneficio ab")) {
         assertThat(sql).contains("LEAST(ab.fim_em, gb.validade_fim_em)");
         return ativacoes;
       }
-      if (sql.contains("FROM arquivo_publicidade_veiculacao")
-          || sql.contains("FROM arquivo_publicidade_versao")) {
-        return List.of();
+      if (sql.contains("FROM arquivo_publicidade_veiculacao")) {
+        return janelasOverride;
+      }
+      if (sql.contains("FROM arquivo_publicidade_versao")) {
+        return versoesOverride;
+      }
+      if (sql.contains("FROM arquivo_publicidade_midia")) {
+        return copiasOverride.stream().map(copia -> {
+          Map<String, Object> linha = new HashMap<>(copia);
+          linha.putIfAbsent("origem_anuncio_id", anuncioId);
+          return linha;
+        }).toList();
       }
       if (sql.contains("FROM anuncio_localizacao")) {
         return List.of();
@@ -313,6 +566,13 @@ class ArquivoPublicidadeRegistroServiceTest {
     row.put("movimento_id", UUID.randomUUID());
     row.put("fim_em", fim);
     return row;
+  }
+
+  private Map<String, Object> janela(UUID janelaId, UUID ativacaoId) {
+    return Map.of("id", janelaId, "ativacao_beneficio_id", ativacaoId,
+        "classificacao", "ORIGEM_INDETERMINADA", "relacao_material", "DESCONHECIDA",
+        "cobertura", "PREVENTIVA", "inicio_em", AGORA.minusHours(1),
+        "fim_em", AGORA.plusDays(1));
   }
 
   private Map<String, ?> parametrosPara(List<String> sqls, List<Map<String, ?>> parametros,

@@ -145,12 +145,32 @@ public class AdminArquivoStoryService {
       FinalidadeAcessoArquivoPublicidade finalidade) {
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para midia privada");
     List<MidiaPrivada> encontradas = jdbc.query("""
+        with efetiva as (
+          select m.id, m.versao_id as versao_destino_id, m.versao_id,
+                 m.anuncio_midia_id, m.arquivo_midia_id, m.variante,
+                 m.storage_provider, m.bucket, m.chave_privada, m.sha256,
+                 m.mime_type, m.tamanho_bytes
+            from arquivo_publicidade_story_midia m
+          union all
+          select r.id, r.versao_id as versao_destino_id, origem.versao_id,
+                 origem.anuncio_midia_id, origem.arquivo_midia_id, origem.variante,
+                 origem.storage_provider, origem.bucket, origem.chave_privada,
+                 origem.sha256, origem.mime_type, origem.tamanho_bytes
+            from arquivo_publicidade_story_midia_referencia r
+            join arquivo_publicidade_story_midia origem on origem.id = r.origem_midia_id
+           where r.arquivo_midia_id = origem.arquivo_midia_id
+             and r.variante = origem.variante
+        )
         select m.versao_id, m.anuncio_midia_id, m.arquivo_midia_id,
                m.variante, m.storage_provider, m.bucket, m.chave_privada,
                m.sha256, m.mime_type, m.tamanho_bytes
-          from arquivo_publicidade_story_midia m
-          join arquivo_publicidade_story_versao v on v.id = m.versao_id
+          from efetiva m
+          join arquivo_publicidade_story_versao v on v.id = m.versao_destino_id
+          join arquivo_publicidade_story_versao origem_v on origem_v.id = m.versao_id
+          join arquivo_publicidade_story_veiculacao destino_j on destino_j.id = v.veiculacao_id
+          join arquivo_publicidade_story_veiculacao origem_j on origem_j.id = origem_v.veiculacao_id
          where v.veiculacao_id = ? and m.id = ?
+           and origem_j.story_id = destino_j.story_id
         """, (rs, row) -> new MidiaPrivada(uuid(rs, "versao_id"),
             uuid(rs, "anuncio_midia_id"), uuid(rs, "arquivo_midia_id"),
             rs.getString("variante"), rs.getString("storage_provider"),
@@ -196,13 +216,28 @@ public class AdminArquivoStoryService {
   private List<Midia> midias(UUID veiculacaoId, UUID versaoId) {
     return jdbc.query("""
         select id, variante, mime_type, tamanho_bytes, sha256, ordem
-          from arquivo_publicidade_story_midia where versao_id = ? order by ordem, id
+          from (
+            select m.id, m.variante, m.mime_type, m.tamanho_bytes, m.sha256, m.ordem
+              from arquivo_publicidade_story_midia m where m.versao_id = ?
+            union all
+            select r.id, origem.variante, origem.mime_type, origem.tamanho_bytes,
+                   origem.sha256, r.ordem
+              from arquivo_publicidade_story_midia_referencia r
+              join arquivo_publicidade_story_midia origem on origem.id = r.origem_midia_id
+              join arquivo_publicidade_story_versao destino_v on destino_v.id = r.versao_id
+              join arquivo_publicidade_story_versao origem_v on origem_v.id = origem.versao_id
+              join arquivo_publicidade_story_veiculacao destino_j on destino_j.id = destino_v.veiculacao_id
+              join arquivo_publicidade_story_veiculacao origem_j on origem_j.id = origem_v.veiculacao_id
+             where r.versao_id = ? and r.arquivo_midia_id = origem.arquivo_midia_id
+               and r.variante = origem.variante
+               and origem_j.story_id = destino_j.story_id
+          ) midias order by ordem, id
         """, (rs, row) -> {
           UUID id = uuid(rs, "id");
           return new Midia(id, rs.getString("variante"), rs.getString("mime_type"),
               rs.getLong("tamanho_bytes"), rs.getString("sha256"), rs.getInt("ordem"),
               "/api/admin/registros/stories/" + veiculacaoId + "/midias/" + id + "/arquivo");
-        }, versaoId);
+        }, versaoId, versaoId);
   }
 
   private JsonNode json(ResultSet rs, String column) throws SQLException {

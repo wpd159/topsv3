@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -207,13 +208,24 @@ public class MinhasMidiasService {
             // while the advertisement stays operational.
             fotoElegivelPolicy.validarRemocaoIndividual(anuncio, midiaId);
         }
+        Set<UUID> exibidasAntes = encerrar ? Set.of()
+                : arquivoPublicidade.midiasExibidasAntesDaRetirada(anuncio.getId());
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         midia.removerLogicamente(agora);
         anuncioMidiaRepository.flush();
         if (encerrar) {
             cicloVidaService.encerrarPorUltimaFoto(anuncio, midiaId, requestId, agora);
         } else {
-            arquivoPublicidade.registrarEstado(anuncio.getId(), "MIDIA_REMOVIDA_PELO_PROPRIETARIO", requestId, agora);
+            List<UUID> suprimidas = arquivoPublicidade.prepararRetiradaSemNovaCopia(
+                    anuncio.getId(), anuncio.getUsuarioId(), requestId, agora, exibidasAntes);
+            if (fotoDoAnuncio && !suprimidas.isEmpty()
+                    && !arquivoPublicidade.possuiFotoPublicaSelecionada(anuncio.getId())) {
+                cicloVidaService.encerrarPorFaltaDeMidiaArquivavel(
+                        anuncio, anuncio.getUsuarioId(), midiaId, suprimidas, requestId, agora);
+            } else {
+                arquivoPublicidade.registrarEstado(
+                        anuncio.getId(), "MIDIA_REMOVIDA_PELO_PROPRIETARIO", requestId, agora);
+            }
         }
         return resposta(anuncio);
     }

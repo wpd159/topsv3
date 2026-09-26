@@ -2,7 +2,9 @@ package br.com.topsdojob.v3.application.admin.moderacao;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +13,7 @@ import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupSer
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLotePrevalidacaoService.ItemValidado;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoFotoLoteAcao;
 import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -20,6 +23,7 @@ import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -35,6 +39,8 @@ class AdminModeracaoFotosLoteItemServiceTest {
       mock(AuditoriaEventoRepository.class);
   private final ArquivoPublicidadeRegistroService arquivoPublicidade =
       mock(ArquivoPublicidadeRegistroService.class);
+  private final MeuAnuncioCicloVidaService cicloVidaService =
+      mock(MeuAnuncioCicloVidaService.class);
   private final AdminModeracaoFotosLoteItemService service =
       new AdminModeracaoFotosLoteItemService(
           moderacaoAcaoService,
@@ -42,7 +48,8 @@ class AdminModeracaoFotosLoteItemServiceTest {
           anuncioRepository,
           auditoriaRepository,
           new ObjectMapper(),
-          arquivoPublicidade);
+          arquivoPublicidade,
+          cicloVidaService);
 
   @Test
   void estadoStaleRetornaIdempotenteSemDuplicarAuditoriaDeSucesso() {
@@ -70,6 +77,34 @@ class AdminModeracaoFotosLoteItemServiceTest {
         org.mockito.ArgumentMatchers.eq(anuncioId),
         org.mockito.ArgumentMatchers.eq("MODERACAO_FOTO_EXCLUIDA"),
         org.mockito.ArgumentMatchers.eq("request-stale"), any());
+  }
+
+  @Test
+  void exclusaoPublicaEncerraSePromovidaSuprimidaEraUltimaFotoExibivel() {
+    UUID anuncioId = UUID.randomUUID();
+    UUID midiaId = UUID.randomUUID();
+    UUID promovidaId = UUID.randomUUID();
+    AnuncioEntity anuncio = mock(AnuncioEntity.class);
+    when(anuncio.getStatus()).thenReturn(StatusAnuncio.PUBLICADO);
+    when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+    when(arquivoPublicidade.midiasExibidasAntesDaRetirada(anuncioId)).thenReturn(Set.of(midiaId));
+    when(arquivoPublicidade.prepararRetiradaSemNovaCopia(eq(anuncioId), any(),
+        eq("req-promovida"), any(), eq(Set.of(midiaId)))).thenReturn(List.of(promovidaId));
+    when(arquivoPublicidade.possuiFotoPublicaSelecionada(anuncioId)).thenReturn(false);
+    when(cleanupService.limparMidia(any(), any(), any()))
+        .thenReturn(new AdminAnuncioMidiaCleanupService.Resultado(
+            1, 0, 0, 1, 0, false, 0, false));
+    AdminUserPrincipal ator = principal();
+
+    var resultado = service.executar(anuncioId, new ItemValidado(
+        midiaId, AdminDecisaoFotoLoteAcao.EXCLUIR, null, null, false), ator, "req-promovida");
+
+    assertThat(resultado.resultado()).isEqualTo("EXCLUIDA");
+    verify(cicloVidaService).encerrarPorFaltaDeMidiaArquivavel(eq(anuncio),
+        eq(ator.usuarioId()), eq(midiaId), eq(List.of(promovidaId)),
+        eq("req-promovida"), any());
+    verify(arquivoPublicidade, never()).registrarEstado(eq(anuncioId),
+        eq("MODERACAO_FOTO_EXCLUIDA"), any(), any());
   }
 
   private AdminUserPrincipal principal() {

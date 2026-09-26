@@ -24,6 +24,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -86,7 +87,7 @@ class AdminArquivoStoryServiceTest {
 
   @Test
   @SuppressWarnings({"unchecked", "rawtypes"})
-  void midiaDiretaExigeBucketEChaveDaVersaoArquivada() throws Exception {
+  void midiaDiretaOuReferenciadaExigeBucketEChaveDaVersaoDeOrigem() throws Exception {
     UUID veiculacao = UUID.randomUUID();
     UUID versao = UUID.randomUUID();
     UUID arquivoMidia = UUID.randomUUID();
@@ -126,6 +127,11 @@ class AdminArquivoStoryServiceTest {
     when(rs.getString("chave_privada")).thenReturn(chave);
     when(storage.get(StorageArea.PRIVATE_MEDIA, chave)).thenReturn(new StoredObject(bytes, "image/png"));
     assertEquals(bytes.length, service.midia(veiculacao, midia, ator, "req-2", finalidade).bytes().length);
+    ArgumentCaptor<String> consulta = ArgumentCaptor.forClass(String.class);
+    verify(jdbc, org.mockito.Mockito.times(2)).query(consulta.capture(), any(RowMapper.class),
+        eq(veiculacao), eq(midia));
+    assertTrue(consulta.getValue().contains("arquivo_publicidade_story_midia_referencia"));
+    assertTrue(consulta.getValue().contains("origem.versao_id"));
     verify(audit).registrarMidia(ator, veiculacao, midia,
         "ARQUIVO_PUBLICIDADE_STORY_MIDIA_PREPARADA", "req-2", finalidade);
   }

@@ -11,11 +11,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -25,6 +27,9 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
@@ -67,6 +72,8 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
   private final ArquivoMidiaRepository arquivoMidiaRepository = mock(ArquivoMidiaRepository.class);
   private final MidiaPublicaMapper midiaPublicaMapper = mock(MidiaPublicaMapper.class);
   private final PremiumPublicoMapper premiumPublicoMapper = mock(PremiumPublicoMapper.class);
+  private final ArquivoPublicidadeTransicaoTemporalService transicoesTemporais =
+      mock(ArquivoPublicidadeTransicaoTemporalService.class);
   private ArquivoPublicidadeStoryRegistroService service;
 
   @BeforeEach
@@ -79,7 +86,8 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     when(properties.getPrivateMediaPrefix()).thenReturn("private/");
     service = new ArquivoPublicidadeStoryRegistroService(jdbc, entityManager,
         new ObjectMapper().findAndRegisterModules(), provider, properties,
-        anuncioMidiaRepository, arquivoMidiaRepository, midiaPublicaMapper, premiumPublicoMapper);
+        anuncioMidiaRepository, arquivoMidiaRepository, midiaPublicaMapper,
+        premiumPublicoMapper, transicoesTemporais);
   }
 
   @AfterEach
@@ -173,7 +181,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
         "UPDATE arquivo_publicidade_story_veiculacao"), janela.capture());
     assertThat(versao.getValue().get("fim")).isEqualTo(ultimoInicio);
     assertThat(janela.getValue().get("fim")).isEqualTo(ultimoInicio);
-    verify(jdbc).queryForList(org.mockito.ArgumentMatchers.contains("clock_timestamp()"), anyMap());
+    verify(jdbc, times(2)).queryForList(org.mockito.ArgumentMatchers.contains("clock_timestamp()"), anyMap());
     verify(storage, never()).putIfAbsent(any(), anyString(), any(), anyString());
   }
 
@@ -208,7 +216,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
         "INSERT INTO arquivo_publicidade_story_versao"), versao.capture());
     assertThat(versao.getValue().get("inicio")).isEqualTo(observado);
     assertThat(versao.getValue().get("numero")).isEqualTo(2);
-    verify(jdbc).queryForList(org.mockito.ArgumentMatchers.contains("clock_timestamp()"), anyMap());
+    verify(jdbc, times(2)).queryForList(org.mockito.ArgumentMatchers.contains("clock_timestamp()"), anyMap());
   }
 
   @Test
@@ -351,6 +359,264 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     assertThat(conteudo.path("urlAnuncioNaCaptura").asText()).isEqualTo("/anuncios/exemplo-story");
     assertThat(conteudo.path("midias").size()).isEqualTo(1);
     verify(storage).get(StorageArea.PUBLIC_MEDIA, "public/foto.jpg");
+  }
+
+  @Test
+  void retomadaAbreSegundoPeriodoSemAlterarOPrimeiroENaoUltrapassaPrazoOriginal() {
+    OffsetDateTime fechamento = INICIO.plusHours(1);
+    OffsetDateTime retomada = INICIO.plusHours(2);
+    Map<String, Object> antigo = Map.of("id", JANELA_ID, "inicio_em", INICIO,
+        "fim_em", fechamento, "encerramento_motivo", "ANUNCIO_PAUSADO");
+    AtomicReference<Map<String, Object>> ultimo = new AtomicReference<>(antigo);
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
+      if (sql.contains("FROM story_anuncio s")) return List.of(story("PUBLICADO"));
+      if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(ultimo.get());
+      if (sql.contains("FROM arquivo_midia ar")) return List.of(midia());
+      return List.of();
+    });
+    when(storage.get(eq(StorageArea.PRIVATE_MEDIA), anyString()))
+        .thenReturn(new StoredObject(BYTES, "image/jpeg"));
+    when(storage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), anyString(), any(), eq("image/jpeg")))
+        .thenReturn(ObjectWriteResult.CREATED);
+
+    service.registrarEstado(STORY_ID, "STORY_RETOMADO", "req-retomada", retomada);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> nova = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_veiculacao"), nova.capture());
+    assertThat(nova.getValue().get("id")).isNotEqualTo(JANELA_ID);
+    assertThat(nova.getValue().get("inicio")).isEqualTo(retomada);
+    assertThat(nova.getValue().get("fim")).isEqualTo(FIM);
+    verify(jdbc, never()).update(org.mockito.ArgumentMatchers.contains(
+        "UPDATE arquivo_publicidade_story_veiculacao"), anyMap());
+    verify(jdbc, times(2)).queryForList(org.mockito.ArgumentMatchers.contains(
+        "ORDER BY inicio_em DESC, id DESC LIMIT 1 FOR UPDATE"), anyMap());
+    ultimo.set(Map.of("id", nova.getValue().get("id"), "inicio_em", retomada,
+        "fim_em", FIM, "encerramento_motivo", "LIMITE_AUTOMATICO_STORY"));
+    service.registrarEstado(STORY_ID, "STORY_REPETIDO", "req-repetido", FIM.plusMinutes(1));
+    verify(jdbc, times(1)).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_veiculacao"), anyMap());
+  }
+
+  @Test
+  void retiradaDeStoryAnuncioUsaReferenciaDaCopiaAnteriorSemStorage() {
+    Map<String, Object> story = storyAnuncio();
+    Map<String, Object> selecionada = midiaAnuncio();
+    UUID versaoAnterior = UUID.randomUUID();
+    UUID copiaAnterior = UUID.randomUUID();
+    Map<String, Object> origem = origem(versaoAnterior, copiaAnterior, selecionada);
+    prepararSelecaoAnuncio();
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
+      if (sql.contains("FROM story_anuncio s")) return List.of(story);
+      if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(Map.of(
+          "id", JANELA_ID, "inicio_em", INICIO, "fim_em", FIM,
+          "encerramento_motivo", "LIMITE_AUTOMATICO_STORY"));
+      if (sql.contains("FROM arquivo_publicidade_story_versao")) return List.of(Map.of(
+          "id", versaoAnterior, "numero", 1, "conteudo_sha256", "0".repeat(64)));
+      if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) return List.of(selecionada);
+      if (sql.contains("FROM arquivo_publicidade_story_midia m")) return List.of(origem);
+      return List.of();
+    });
+    when(jdbc.queryForList(anyString(), anyMap(), eq(String.class))).thenReturn(List.of());
+    doThrow(new IllegalStateException("provider sinteticamente indisponivel"))
+        .when(provider).getIfAvailable();
+    when(midiaPublicaMapper.publicas(any(), anyMap(), eq(true), anyInt(), eq(false)))
+        .thenThrow(new IllegalStateException("URL nao deve ser resolvida na retirada"));
+
+    service.registrarEstado(STORY_ID, "MIDIA_REMOVIDA_PELO_PROPRIETARIO", "req-retirada",
+        INICIO.plusHours(1));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> referencia = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_midia_referencia"), referencia.capture());
+    assertThat(referencia.getValue().get("origemId")).isEqualTo(copiaAnterior);
+    assertThat(referencia.getValue().get("arquivoId")).isEqualTo(MIDIA_ID);
+    verify(jdbc, never()).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_midia ("), anyMap());
+    verify(storage, never()).get(any(), anyString());
+    verify(storage, never()).putIfAbsent(any(), anyString(), any(), anyString());
+    verify(provider, never()).getIfAvailable();
+    verify(midiaPublicaMapper, never()).publicas(any(), anyMap(), eq(true), anyInt(), eq(false));
+  }
+
+  @Test
+  void retiradaComSobreviventeSemCopiaEncerraPeriodoComLacunaSemFabricarVersao() {
+    Map<String, Object> story = storyAnuncio();
+    Map<String, Object> selecionada = midiaAnuncio();
+    prepararSelecaoAnuncio();
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
+      if (sql.contains("FROM story_anuncio s")) return List.of(story);
+      if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(Map.of(
+          "id", JANELA_ID, "inicio_em", INICIO, "fim_em", FIM,
+          "encerramento_motivo", "LIMITE_AUTOMATICO_STORY"));
+      if (sql.contains("FROM arquivo_publicidade_story_versao")) return List.of(Map.of(
+          "id", UUID.randomUUID(), "numero", 1, "conteudo_sha256", "0".repeat(64)));
+      if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) return List.of(selecionada);
+      return List.of();
+    });
+    when(jdbc.queryForList(anyString(), anyMap(), eq(String.class))).thenReturn(List.of());
+
+    service.registrarEstado(STORY_ID, "MODERACAO_FOTO_EXCLUIDA",
+        "req-descoberta", INICIO.plusHours(1));
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> fechamento = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "UPDATE arquivo_publicidade_story_veiculacao"), fechamento.capture());
+    assertThat(fechamento.getValue().get("motivo"))
+        .isEqualTo("LACUNA_MIDIA_RETIRADA_SEM_COPIA_VERIFICADA");
+    verify(storage, never()).get(any(), anyString());
+    verify(jdbc, never()).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_versao"), anyMap());
+  }
+
+  @Test
+  void retiradaDeStoryPreexistenteSemVersaoNaoFabricaHistorico() {
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
+      if (sql.contains("FROM story_anuncio s")) return List.of(storyAnuncio());
+      return List.of();
+    });
+
+    service.registrarEstado(STORY_ID, "MIDIA_REMOVIDA_PELO_PROPRIETARIO",
+        "req-lacuna", INICIO.plusHours(1));
+
+    verify(jdbc, never()).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_veiculacao"), anyMap());
+    verify(jdbc, never()).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_versao"), anyMap());
+    verify(storage, never()).get(any(), anyString());
+  }
+
+  @Test
+  void preflightIgnoraLacunaLegadaSemDespublicarFotosDoAnuncio() {
+    prepararSelecaoAnuncio();
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("SELECT s.id, j.id AS veiculacao_id")) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("id", STORY_ID);
+        row.put("veiculacao_id", null);
+        return List.of(row);
+      }
+      if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) {
+        return List.of(midiaAnuncio());
+      }
+      return List.of();
+    });
+
+    assertThat(service.midiasSemCopiaParaRetiradaPorAnuncio(ANUNCIO_ID)).isEmpty();
+    verify(storage, never()).get(any(), anyString());
+  }
+
+  @Test
+  void previewRegeneradoAposCopiaAnteriorNaoPodeSerReferenciado() {
+    Map<String, Object> story = storyAnuncio();
+    Map<String, Object> selecionada = midiaAnuncio();
+    selecionada.put("visibilidade_midia", "RESTRITA_18");
+    selecionada.put("preview_restrito_status", "DISPONIVEL");
+    selecionada.put("preview_restrito_confirmado_em", INICIO.plusMinutes(20));
+    UUID versaoAnterior = UUID.randomUUID();
+    Map<String, Object> original = origem(versaoAnterior, UUID.randomUUID(), selecionada);
+    Map<String, Object> preview = origem(versaoAnterior, UUID.randomUUID(), selecionada);
+    preview.put("variante", "PREVIEW_RESTRITO");
+    preview.put("chave_privada", "private/arquivo-publicidade/stories/" + versaoAnterior + "/"
+        + VINCULO_ID + "/" + MIDIA_ID + "/preview_restrito");
+    prepararSelecaoAnuncio();
+    when(jdbc.queryForList(anyString(), anyMap())).thenAnswer(invocation -> {
+      String sql = invocation.getArgument(0);
+      if (sql.contains("AS ultimo_inicio")) return marcos(invocation.getArgument(1));
+      if (sql.contains("FROM story_anuncio s")) return List.of(story);
+      if (sql.contains("FROM arquivo_publicidade_story_veiculacao")) return List.of(Map.of(
+          "id", JANELA_ID, "inicio_em", INICIO, "fim_em", FIM,
+          "encerramento_motivo", "LIMITE_AUTOMATICO_STORY"));
+      if (sql.contains("FROM arquivo_publicidade_story_versao")) return List.of(Map.of(
+          "id", versaoAnterior, "numero", 1, "conteudo_sha256", "0".repeat(64)));
+      if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) return List.of(selecionada);
+      if (sql.contains("FROM arquivo_publicidade_story_midia m")) return List.of(original, preview);
+      return List.of();
+    });
+    when(jdbc.queryForList(anyString(), anyMap(), eq(String.class))).thenReturn(List.of());
+
+    service.registrarEstado(STORY_ID,
+        "MIDIA_REMOVIDA_PELO_PROPRIETARIO", "req-preview", INICIO.plusHours(1));
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, ?>> fechamento = ArgumentCaptor.forClass(Map.class);
+    verify(jdbc).update(org.mockito.ArgumentMatchers.contains(
+        "UPDATE arquivo_publicidade_story_veiculacao"), fechamento.capture());
+    assertThat(fechamento.getValue().get("motivo"))
+        .isEqualTo("LACUNA_MIDIA_RETIRADA_SEM_COPIA_VERIFICADA");
+    verify(storage, never()).get(any(), anyString());
+  }
+
+  private Map<String, Object> storyAnuncio() {
+    Map<String, Object> row = story("PUBLICADO");
+    row.put("modo_conteudo", "ANUNCIO");
+    row.put("anuncio_id", ANUNCIO_ID);
+    row.put("arquivo_midia_id", null);
+    row.put("anuncio_status", "PUBLICADO");
+    row.put("status_moderacao", "APROVADO");
+    row.put("removido_em", null);
+    row.put("slug", "anuncio-story");
+    row.put("titulo", "Anuncio Story");
+    row.put("descricao", "Descricao");
+    return row;
+  }
+
+  private Map<String, Object> midiaAnuncio() {
+    Map<String, Object> row = midia();
+    row.put("anuncio_midia_id", VINCULO_ID);
+    row.put("visibilidade_midia", "LIVRE");
+    row.put("bucket", "publico");
+    row.put("chave_objeto", "public/foto.jpg");
+    return row;
+  }
+
+  private Map<String, Object> origem(UUID versao, UUID copia, Map<String, Object> midia) {
+    Map<String, Object> row = new HashMap<>();
+    row.put("origem_midia_id", copia);
+    row.put("origem_versao_id", versao);
+    row.put("anuncio_midia_id", VINCULO_ID);
+    row.put("arquivo_midia_id", MIDIA_ID);
+    row.put("variante", "ORIGINAL");
+    row.put("storage_provider", "R2");
+    row.put("bucket", "privado");
+    row.put("chave_privada", "private/arquivo-publicidade/stories/" + versao + "/"
+        + VINCULO_ID + "/" + MIDIA_ID + "/original");
+    row.put("sha256", midia.get("sha256"));
+    row.put("mime_type", midia.get("mime_type"));
+    row.put("tamanho_bytes", BYTES.length);
+    row.put("origem_capturada_em", INICIO);
+    return row;
+  }
+
+  private void prepararSelecaoAnuncio() {
+    AnuncioMidiaEntity vinculo = mock(AnuncioMidiaEntity.class);
+    when(vinculo.getId()).thenReturn(VINCULO_ID);
+    when(vinculo.getAnuncioId()).thenReturn(ANUNCIO_ID);
+    when(vinculo.getArquivoMidiaId()).thenReturn(MIDIA_ID);
+    when(vinculo.getTipo()).thenReturn(TipoAnuncioMidia.FOTO);
+    when(vinculo.getFinalidade()).thenReturn(FinalidadeAnuncioMidia.CAPA);
+    when(vinculo.getOrdem()).thenReturn(0);
+    when(vinculo.getStatus()).thenReturn(StatusAnuncioMidia.PUBLICAVEL);
+    when(vinculo.getVisibilidadeMidia()).thenReturn(VisibilidadeMidia.LIVRE);
+    when(anuncioMidiaRepository.findByAnuncioId(ANUNCIO_ID)).thenReturn(List.of(vinculo));
+    ArquivoMidiaEntity arquivo = mock(ArquivoMidiaEntity.class);
+    when(arquivo.getId()).thenReturn(MIDIA_ID);
+    when(arquivoMidiaRepository.findByIdIn(List.of(MIDIA_ID))).thenReturn(List.of(arquivo));
+    when(premiumPublicoMapper.flagsPorAnuncioIds(List.of(ANUNCIO_ID)))
+        .thenReturn(Map.of(ANUNCIO_ID, PremiumPublicoFlagsDto.vazio()));
+    when(midiaPublicaMapper.publicas(any(), anyMap(), eq(true), anyInt(), eq(false)))
+        .thenReturn(List.of(new MidiaPublicaDto(VINCULO_ID, "FOTO", "CAPA", 0, "LIVRE",
+            true, "https://example.invalid/foto.jpg", null, null, 100, 100, "image/jpeg")));
   }
 
   private Map<String, Object> story(String status) {

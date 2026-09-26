@@ -62,6 +62,9 @@ jobs:
           ADMIN_USUARIO_EXCLUSAO_POSTGRES17_ENABLED: "true"
           WIZARD_PROGRESS_POSTGRES17_ENABLED: "true"
           COMPLIANCE_POSTGRES17_ENABLED: "true"
+          ARQUIVO_PUBLICIDADE_POSTGRES17_ENABLED: "true"
+          STORY_PERIODOS_POSTGRES17_ENABLED: "true"
+          ARQUIVO_PUBLICIDADE_TRANSICOES_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Preserve backend and cold JVM evidence

@@ -147,24 +147,38 @@ public class AdminArquivoPublicidadeService {
       FinalidadeAcessoArquivoPublicidade finalidade) {
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para midia privada");
     List<MidiaPrivada> encontradas = jdbc.query("""
-        select m.versao_id, m.anuncio_midia_id, m.variante,
+        select m.versao_id as origem_versao_id, m.anuncio_midia_id, m.variante,
                m.storage_provider, m.bucket, m.chave_privada,
                m.sha256, m.mime_type, m.tamanho_bytes
           from arquivo_publicidade_midia m
           join arquivo_publicidade_versao v on v.id = m.versao_id
          where v.veiculacao_id = ? and m.id = ?
+        union all
+        select m.versao_id as origem_versao_id, r.anuncio_midia_id, r.variante,
+               m.storage_provider, m.bucket, m.chave_privada,
+               m.sha256, m.mime_type, m.tamanho_bytes
+          from arquivo_publicidade_midia_referencia r
+          join arquivo_publicidade_midia m on m.id = r.origem_midia_id
+            and m.anuncio_midia_id = r.anuncio_midia_id and m.variante = r.variante
+          join arquivo_publicidade_versao origem_v on origem_v.id = m.versao_id
+          join arquivo_publicidade_veiculacao origem_j on origem_j.id = origem_v.veiculacao_id
+          join arquivo_publicidade_versao v on v.id = r.versao_id
+          join arquivo_publicidade_veiculacao destino_j on destino_j.id = v.veiculacao_id
+            and destino_j.anuncio_id = origem_j.anuncio_id
+         where v.veiculacao_id = ? and r.id = ?
         """, (rs, row) -> new MidiaPrivada(
-            uuid(rs, "versao_id"), uuid(rs, "anuncio_midia_id"),
+            uuid(rs, "origem_versao_id"), uuid(rs, "anuncio_midia_id"),
             rs.getString("variante"), rs.getString("storage_provider"),
             rs.getString("bucket"), rs.getString("chave_privada"),
             rs.getString("sha256"), rs.getString("mime_type"),
-            rs.getLong("tamanho_bytes")), veiculacaoId, midiaId);
+            rs.getLong("tamanho_bytes")), veiculacaoId, midiaId,
+            veiculacaoId, midiaId);
     if (encontradas.isEmpty()) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Midia arquivada nao encontrada");
     }
     MidiaPrivada meta = encontradas.get(0);
     String prefixo = storageProperties.getPrivateMediaPrefix();
-    String chaveEsperada = prefixo + "arquivo-publicidade/" + meta.versaoId()
+    String chaveEsperada = prefixo + "arquivo-publicidade/" + meta.origemVersaoId()
         + "/" + meta.anuncioMidiaId() + "/" + meta.variante().toLowerCase(Locale.ROOT);
     if (prefixo == null || !"R2".equals(meta.provider())
         || !Objects.equals(storageProperties.getPrivateMediaBucket(), meta.bucket())
@@ -196,13 +210,25 @@ public class AdminArquivoPublicidadeService {
   private List<Midia> midias(UUID veiculacaoId, UUID versaoId) {
     return jdbc.query("""
         select id, variante, mime_type, tamanho_bytes, sha256, ordem
-          from arquivo_publicidade_midia where versao_id = ? order by ordem, id
+          from arquivo_publicidade_midia where versao_id = ?
+        union all
+        select r.id, r.variante, m.mime_type, m.tamanho_bytes, m.sha256, r.ordem
+          from arquivo_publicidade_midia_referencia r
+          join arquivo_publicidade_midia m on m.id = r.origem_midia_id
+            and m.anuncio_midia_id = r.anuncio_midia_id and m.variante = r.variante
+          join arquivo_publicidade_versao origem_v on origem_v.id = m.versao_id
+          join arquivo_publicidade_veiculacao origem_j on origem_j.id = origem_v.veiculacao_id
+          join arquivo_publicidade_versao destino_v on destino_v.id = r.versao_id
+          join arquivo_publicidade_veiculacao destino_j on destino_j.id = destino_v.veiculacao_id
+            and destino_j.anuncio_id = origem_j.anuncio_id
+         where r.versao_id = ?
+         order by ordem, id
         """, (rs, row) -> {
           UUID id = uuid(rs, "id");
           return new Midia(id, rs.getString("variante"), rs.getString("mime_type"),
               rs.getLong("tamanho_bytes"), rs.getString("sha256"), rs.getInt("ordem"),
               "/api/admin/registros/publicidade/" + veiculacaoId + "/midias/" + id + "/arquivo");
-        }, versaoId);
+        }, versaoId, versaoId);
   }
 
   private JsonNode json(ResultSet rs, String column) throws SQLException {
@@ -233,7 +259,7 @@ public class AdminArquivoPublicidadeService {
     }
   }
 
-  private record MidiaPrivada(UUID versaoId, UUID anuncioMidiaId, String variante,
+  private record MidiaPrivada(UUID origemVersaoId, UUID anuncioMidiaId, String variante,
       String provider, String bucket, String key, String sha256, String mimeType, long size) {
   }
 }

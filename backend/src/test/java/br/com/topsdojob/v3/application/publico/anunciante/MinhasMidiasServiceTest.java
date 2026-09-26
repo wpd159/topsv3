@@ -397,6 +397,7 @@ class MinhasMidiasServiceTest {
         AnuncioMidiaEntity primeira = vinculo(TipoAnuncioMidia.FOTO, 0);
         AnuncioMidiaEntity segunda = vinculo(TipoAnuncioMidia.FOTO, 1);
         vinculos.addAll(List.of(primeira, segunda));
+        when(arquivoPublicidade.possuiFotoPublicaSelecionada(ANUNCIO_ID)).thenReturn(true);
 
         service.remover(SLUG, primeira.getId(), authentication, "request-remocao-nao-final");
 
@@ -406,6 +407,24 @@ class MinhasMidiasServiceTest {
         verify(arquivoPublicidade).registrarEstado(eq(ANUNCIO_ID),
                 eq("MIDIA_REMOVIDA_PELO_PROPRIETARIO"), eq("request-remocao-nao-final"),
                 any(OffsetDateTime.class));
+    }
+
+    @Test
+    void remocaoEncerraQuandoPromovidaSemCopiaDeixaGaleriaSemFoto() {
+        AnuncioMidiaEntity primeira = vinculo(TipoAnuncioMidia.FOTO, 0);
+        AnuncioMidiaEntity promovida = vinculo(TipoAnuncioMidia.FOTO, 1);
+        vinculos.addAll(List.of(primeira, promovida));
+        when(arquivoPublicidade.prepararRetiradaSemNovaCopia(eq(ANUNCIO_ID), any(),
+                eq("request-sem-copia"), any(), any())).thenReturn(List.of(promovida.getId()));
+        when(arquivoPublicidade.possuiFotoPublicaSelecionada(ANUNCIO_ID)).thenReturn(false);
+
+        service.remover(SLUG, primeira.getId(), authentication, "request-sem-copia");
+
+        verify(cicloVidaService).encerrarPorFaltaDeMidiaArquivavel(any(AnuncioEntity.class),
+                any(), eq(primeira.getId()), eq(List.of(promovida.getId())),
+                eq("request-sem-copia"), any());
+        verify(arquivoPublicidade, never()).registrarEstado(eq(ANUNCIO_ID),
+                eq("MIDIA_REMOVIDA_PELO_PROPRIETARIO"), any(), any());
     }
 
     @Test

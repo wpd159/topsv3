@@ -7,6 +7,9 @@ import br.com.topsdojob.v3.application.publico.mapper.SelecaoMidiasPublicas;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -24,11 +27,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -46,6 +52,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class ArquivoPublicidadeRegistroService {
   private static final Logger LOG = LoggerFactory.getLogger(ArquivoPublicidadeRegistroService.class);
   private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
+  private static final Set<String> MOTIVOS_RETIRADA_FOTO = Set.of(
+      "MIDIA_REMOVIDA_PELO_PROPRIETARIO", "MODERACAO_FOTO_EXCLUIDA");
+  private static final String MOTIVO_LACUNA_RETIRADA = "RETIRADA_SEM_COPIA_PRIVADA_ANTERIOR";
 
   private final NamedParameterJdbcTemplate jdbc;
   private final EntityManager entityManager;
@@ -54,6 +63,7 @@ public class ArquivoPublicidadeRegistroService {
   private final R2StorageProperties storageProperties;
   private final ArquivoPublicidadeStoryRegistroService stories;
   private final PremiumPublicoMapper premiumPublico;
+  private final ArquivoPublicidadeTransicaoTemporalService transicoesTemporais;
 
   public ArquivoPublicidadeRegistroService(
       NamedParameterJdbcTemplate jdbc,
@@ -62,7 +72,8 @@ public class ArquivoPublicidadeRegistroService {
       ObjectProvider<ObjectStorage> storageProvider,
       R2StorageProperties storageProperties,
       ArquivoPublicidadeStoryRegistroService stories,
-      PremiumPublicoMapper premiumPublico) {
+      PremiumPublicoMapper premiumPublico,
+      ArquivoPublicidadeTransicaoTemporalService transicoesTemporais) {
     this.jdbc = jdbc;
     this.entityManager = entityManager;
     this.mapper = mapper;
@@ -70,6 +81,139 @@ public class ArquivoPublicidadeRegistroService {
     this.storageProperties = storageProperties;
     this.stories = stories;
     this.premiumPublico = premiumPublico;
+    this.transicoesTemporais = transicoesTemporais;
+  }
+
+  @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+  public Set<UUID> midiasExibidasAntesDaRetirada(UUID anuncioId) {
+    Objects.requireNonNull(anuncioId, "anuncioId");
+    return midiasExibiveis(anuncioId).stream()
+        .map(midia -> (UUID) midia.get("id"))
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+  }
+
+  @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+  public boolean possuiFotoPublicaSelecionada(UUID anuncioId) {
+    Objects.requireNonNull(anuncioId, "anuncioId");
+    return midiasExibiveis(anuncioId).stream().anyMatch(midia -> "FOTO".equals(midia.get("tipo")));
+  }
+
+  /** Hides only newly selected media for which withdrawal cannot reuse verified bytes. */
+  @Transactional(propagation = Propagation.MANDATORY)
+  public List<UUID> prepararRetiradaSemNovaCopia(
+      UUID anuncioId, UUID atorId, String requestId, OffsetDateTime instante,
+      Set<UUID> exibidasAntes) {
+    Objects.requireNonNull(anuncioId, "anuncioId");
+    Objects.requireNonNull(instante, "instante");
+    entityManager.flush();
+    AnuncioEntity anuncio = entityManager.find(AnuncioEntity.class, anuncioId);
+    if (anuncio == null || anuncio.getStatus() != br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio.PUBLICADO
+        || anuncio.getStatusModeracao() != br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio.APROVADO
+        || anuncio.getRemovidoEm() != null) {
+      return List.of();
+    }
+    Set<UUID> suprimidas = new LinkedHashSet<>();
+    Set<UUID> anteriores = exibidasAntes == null ? Set.of() : Set.copyOf(exibidasAntes);
+    // Every pass must hide at least one *new* promoted photo. Legacy ads can
+    // have more links than the current gallery limit, so a fixed retry cap
+    // would turn a legitimate withdrawal into an avoidable rollback.
+    while (true) {
+      Set<UUID> descobertas = new LinkedHashSet<>(midiasSemCopiaNoAnuncio(anuncioId, instante));
+      List<UUID> storySemCopia = stories.midiasSemCopiaParaRetiradaPorAnuncio(anuncioId);
+      if (storySemCopia != null) {
+        descobertas.addAll(storySemCopia);
+      }
+      descobertas.removeAll(anteriores);
+      if (descobertas.isEmpty()) {
+        break;
+      }
+      boolean mudou = false;
+      for (UUID id : descobertas) {
+        AnuncioMidiaEntity midia = entityManager.find(AnuncioMidiaEntity.class, id);
+        if (midia == null || !anuncioId.equals(midia.getAnuncioId())
+            || midia.getStatus() != StatusAnuncioMidia.PUBLICAVEL) {
+          continue;
+        }
+        if (midia.getTipo() != TipoAnuncioMidia.FOTO) {
+          throw new IllegalStateException("retirada encontrou midia nao fotografica sem copia: " + id);
+        }
+        if (!suprimidas.add(id)) {
+          throw new IllegalStateException("retirada repetiu midia promovida sem progresso: " + id);
+        }
+        midia.aplicarDecisao(StatusAnuncioMidia.PENDENTE, midia.getVisibilidadeMidia(), instante);
+        mudou = true;
+      }
+      if (!mudou) {
+        throw new IllegalStateException("retirada nao conseguiu ocultar midia sem copia: " + anuncioId);
+      }
+      entityManager.flush();
+    }
+    if (!suprimidas.isEmpty()) {
+      LOG.warn("Retirada suprimiu midias aprovadas sem copia privada anterior: anuncio={}, quantidade={}",
+          anuncioId, suprimidas.size());
+      entityManager.persist(AuditoriaEventoEntity.registrarSistema(
+          UUID.randomUUID(), atorId == null ? anuncio.getUsuarioId() : atorId,
+          "MIDIA_SUPRIMIDA_SEM_COPIA_PRIVADA", "ANUNCIO", anuncioId,
+          null, json(Map.of("midiasSuprimidas", List.copyOf(suprimidas),
+              "novoStatus", "PENDENTE", "causa", "SEM_COPIA_PRIVADA_ANTERIOR")),
+          requestId, instante));
+    }
+    return List.copyOf(suprimidas);
+  }
+
+  private List<UUID> midiasSemCopiaNoAnuncio(UUID anuncioId, OffsetDateTime instante) {
+    Set<UUID> ativacoesPublicas = premiumPublico.idsAtivacoesComEfeitoPublico(anuncioId);
+    if (ativacoesPublicas.isEmpty()) {
+      return List.of();
+    }
+    List<Map<String, Object>> ativacoes = ativacoesVigentes(anuncioId, instante).stream()
+        .filter(item -> ativacoesPublicas.contains(item.get("id"))).toList();
+    if (ativacoes.isEmpty()) {
+      return List.of();
+    }
+    List<Map<String, Object>> midias = midiasExibiveis(anuncioId);
+    if (midias.isEmpty()) {
+      return List.of();
+    }
+    List<Map<String, Object>> janelas = jdbc.queryForList("""
+        SELECT id, ativacao_beneficio_id FROM arquivo_publicidade_veiculacao
+        WHERE anuncio_id = :anuncioId AND (fim_em IS NULL OR fim_em > :instante)
+        ORDER BY id FOR UPDATE
+        """, Map.of("anuncioId", anuncioId, "instante", instante));
+    Set<UUID> ausentes = new LinkedHashSet<>();
+    for (Map<String, Object> ativacao : ativacoes) {
+      UUID ativacaoId = (UUID) ativacao.get("id");
+      List<Map<String, Object>> correspondentes = janelas.stream()
+          .filter(janela -> ativacaoId.equals(janela.get("ativacao_beneficio_id"))).toList();
+      if (correspondentes.isEmpty()) {
+        midias.forEach(midia -> ausentes.add((UUID) midia.get("id")));
+        continue;
+      }
+      for (Map<String, Object> janela : correspondentes) {
+        Map<String, Object> versao = unico("""
+            SELECT id FROM arquivo_publicidade_versao
+            WHERE veiculacao_id = :janelaId
+              AND (vigente_ate IS NULL OR vigente_ate > :instante)
+            ORDER BY numero DESC LIMIT 1 FOR UPDATE
+            """, Map.of("janelaId", janela.get("id"), "instante", instante));
+        if (versao == null) {
+          midias.forEach(midia -> ausentes.add((UUID) midia.get("id")));
+          continue;
+        }
+        Map<ChaveMidia, Map<String, Object>> fontes = fontesDaVersao((UUID) versao.get("id"));
+        for (Map<String, Object> midia : midias) {
+          UUID vinculoId = (UUID) midia.get("id");
+          if (!fonteCompativel(midia, "ORIGINAL", fontes.get(new ChaveMidia(vinculoId, "ORIGINAL")))
+              || ("RESTRITA_18".equals(midia.get("visibilidade_midia"))
+                  && "DISPONIVEL".equals(midia.get("preview_restrito_status"))
+                  && !fonteCompativel(midia, "PREVIEW_RESTRITO",
+                      fontes.get(new ChaveMidia(vinculoId, "PREVIEW_RESTRITO"))))) {
+            ausentes.add(vinculoId);
+          }
+        }
+      }
+    }
+    return List.copyOf(ausentes);
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
@@ -104,6 +248,9 @@ public class ArquivoPublicidadeRegistroService {
             JOIN arquivo_publicidade_veiculacao j ON j.id = v.veiculacao_id
             WHERE j.anuncio_id = :anuncioId), CAST(:instante AS timestamptz)))
         """, Map.of("anuncioId", anuncioId, "instante", instante), OffsetDateTime.class);
+    // Resolve due plans from evidence frozen before this command reads the new
+    // mutable advertisement state. Never infer a past version from today's row.
+    transicoesTemporais.processarAnuncioAte(anuncioId, instante);
     boolean publicada = "PUBLICADO".equals(anuncio.get("status"))
         && "APROVADO".equals(anuncio.get("status_moderacao"))
         && anuncio.get("removido_em") == null
@@ -135,6 +282,7 @@ public class ArquivoPublicidadeRegistroService {
       for (Map<String, Object> aberta : abertas) {
         encerrar((UUID) aberta.get("id"), instante, motivo);
       }
+      transicoesTemporais.reconciliarAnuncioAposCaptura(anuncioId, instante);
       stories.registrarEstadoPorAnuncio(anuncioId, motivo, requestId, instante);
       return;
     }
@@ -147,6 +295,7 @@ public class ArquivoPublicidadeRegistroService {
     for (Map<String, Object> encerrada : abertasPorAtivacao.values()) {
       encerrar((UUID) encerrada.get("id"), instante, motivo);
     }
+    transicoesTemporais.reconciliarAnuncioAposCaptura(anuncioId, instante);
     stories.registrarEstadoPorAnuncio(anuncioId, motivo, requestId, instante);
   }
 
@@ -159,6 +308,11 @@ public class ArquivoPublicidadeRegistroService {
       String motivo,
       String requestId,
       OffsetDateTime instante) {
+    if (aberta == null && MOTIVOS_RETIRADA_FOTO.contains(motivo)) {
+      LOG.warn("Retirada sem janela prospectiva anterior: anuncio={}, ativacao={}",
+          anuncio.get("id"), ativacao.get("id"));
+      return;
+    }
     if (aberta != null && (!classe.nome().equals(aberta.get("classificacao"))
         || !classe.relacaoMaterial().equals(aberta.get("relacao_material"))
         || !classe.cobertura().equals(aberta.get("cobertura")))) {
@@ -198,10 +352,15 @@ public class ArquivoPublicidadeRegistroService {
     } else {
       janelaId = (UUID) aberta.get("id");
     }
-    criarVersaoSeMudou(janelaId, anuncio, midias, ativacao, classe, motivo, requestId, instante);
+    if (!criarVersaoSeMudou(janelaId, anuncio, midias, ativacao, classe,
+        motivo, requestId, instante)) {
+      LOG.warn("Retirada sem copia privada anterior suficiente: anuncio={}, janela={}",
+          anuncio.get("id"), janelaId);
+      encerrar(janelaId, instante, MOTIVO_LACUNA_RETIRADA);
+    }
   }
 
-  private void criarVersaoSeMudou(
+  private boolean criarVersaoSeMudou(
       UUID janelaId,
       Map<String, Object> anuncio,
       List<Map<String, Object>> midias,
@@ -274,11 +433,22 @@ public class ArquivoPublicidadeRegistroService {
           AND (vigente_ate IS NULL OR vigente_ate > :instante)
         ORDER BY numero DESC LIMIT 1 FOR UPDATE
         """, Map.of("janelaId", janelaId, "instante", instante));
+    boolean retiradaFoto = MOTIVOS_RETIRADA_FOTO.contains(motivo);
+    if (retiradaFoto && anterior == null) {
+      return false;
+    }
     if (anterior != null && hash.equals(anterior.get("conteudo_sha256"))) {
-      return;
+      return true;
     }
     UUID versaoId = UUID.randomUUID();
-    List<MidiaCopiada> copias = completa ? copiarMidias(versaoId, midias) : List.of();
+    Optional<List<MidiaReferencia>> referenciasAnteriores = completa && retiradaFoto
+        ? referenciasAnteriores(anterior, midias) : Optional.of(List.of());
+    if (referenciasAnteriores.isEmpty()) {
+      return false;
+    }
+    List<MidiaReferencia> referencias = referenciasAnteriores.get();
+    List<MidiaCopiada> copias = completa && !retiradaFoto
+        ? copiarMidias(versaoId, midias) : List.of();
     if (anterior != null) {
       jdbc.update("""
           UPDATE arquivo_publicidade_versao SET vigente_ate = :instante WHERE id = :id
@@ -331,6 +501,124 @@ public class ArquivoPublicidadeRegistroService {
             'R2', :bucket, :chave, :sha256, :mimeType, :tamanhoBytes, :ordem)
           """, midiaParametros);
     }
+    for (MidiaReferencia referencia : referencias) {
+      jdbc.update("""
+          INSERT INTO arquivo_publicidade_midia_referencia (
+            id, versao_id, origem_midia_id, anuncio_midia_id, variante, ordem)
+          VALUES (:id, :versaoId, :origemMidiaId, :anuncioMidiaId, :variante, :ordem)
+          """, Map.of(
+              "id", UUID.randomUUID(),
+              "versaoId", versaoId,
+              "origemMidiaId", referencia.origemMidiaId(),
+              "anuncioMidiaId", referencia.anuncioMidiaId(),
+              "variante", referencia.variante(),
+              "ordem", referencia.ordem()));
+    }
+    return true;
+  }
+
+  private Optional<List<MidiaReferencia>> referenciasAnteriores(
+      Map<String, Object> anterior, List<Map<String, Object>> midias) {
+    if (midias.isEmpty()) {
+      return Optional.of(List.of());
+    }
+    if (anterior == null) {
+      return Optional.empty();
+    }
+    Map<ChaveMidia, Map<String, Object>> fontes = fontesDaVersao((UUID) anterior.get("id"));
+    List<MidiaReferencia> referencias = new ArrayList<>();
+    for (Map<String, Object> midia : midias) {
+      MidiaReferencia original = referenciaPara(midia, "ORIGINAL", fontes);
+      if (original == null) {
+        return Optional.empty();
+      }
+      referencias.add(original);
+      if ("RESTRITA_18".equals(midia.get("visibilidade_midia"))
+          && "DISPONIVEL".equals(midia.get("preview_restrito_status"))) {
+        MidiaReferencia preview = referenciaPara(midia, "PREVIEW_RESTRITO", fontes);
+        if (preview == null) {
+          return Optional.empty();
+        }
+        referencias.add(preview);
+      }
+    }
+    return Optional.of(List.copyOf(referencias));
+  }
+
+  private MidiaReferencia referenciaPara(
+      Map<String, Object> midia, String variante,
+      Map<ChaveMidia, Map<String, Object>> fontes) {
+    UUID vinculoId = (UUID) midia.get("id");
+    Map<String, Object> fonte = fontes.get(new ChaveMidia(vinculoId, variante));
+    if (!fonteCompativel(midia, variante, fonte)) {
+      return null;
+    }
+    return new MidiaReferencia((UUID) fonte.get("origem_midia_id"), vinculoId,
+        variante, ((Number) midia.get("ordem")).intValue());
+  }
+
+  private boolean fonteCompativel(
+      Map<String, Object> midia, String variante, Map<String, Object> fonte) {
+    if (fonte == null || midia.get("anuncio_id") == null
+        || !Objects.equals(midia.get("anuncio_id"), fonte.get("origem_anuncio_id"))
+        || !Objects.equals(midia.get("arquivo_midia_id"), fonte.get("arquivo_midia_id"))) {
+      return false;
+    }
+    if ("ORIGINAL".equals(variante)) {
+      return (midia.get("sha256") == null || Objects.equals(midia.get("sha256"), fonte.get("sha256")))
+          && (midia.get("mime_type") == null
+              || Objects.equals(midia.get("mime_type"), fonte.get("mime_type")))
+          && !fontePosteriorAoProcessamento(midia.get("processado_em"), fonte);
+    }
+    return !fontePosteriorAoProcessamento(midia.get("preview_restrito_confirmado_em"), fonte);
+  }
+
+  private boolean fontePosteriorAoProcessamento(Object processamento, Map<String, Object> fonte) {
+    if (processamento == null) {
+      return false;
+    }
+    Object capturado = fonte.get("origem_capturada_em");
+    return capturado == null || instanteJdbc(processamento).isAfter(instanteJdbc(capturado));
+  }
+
+  private Map<ChaveMidia, Map<String, Object>> fontesDaVersao(UUID versaoId) {
+    List<Map<String, Object>> linhas = jdbc.queryForList("""
+        SELECT m.id AS origem_midia_id, m.anuncio_midia_id, m.arquivo_midia_id,
+               m.variante, m.sha256, m.mime_type,
+               v.capturado_em AS origem_capturada_em,
+               j.anuncio_id AS origem_anuncio_id
+        FROM arquivo_publicidade_midia m
+        JOIN arquivo_publicidade_versao v ON v.id = m.versao_id
+        JOIN arquivo_publicidade_veiculacao j ON j.id = v.veiculacao_id
+        WHERE m.versao_id = :versaoId
+        UNION ALL
+        SELECT m.id AS origem_midia_id, r.anuncio_midia_id, m.arquivo_midia_id,
+               r.variante, m.sha256, m.mime_type,
+               v.capturado_em AS origem_capturada_em,
+               j.anuncio_id AS origem_anuncio_id
+        FROM arquivo_publicidade_midia_referencia r
+        JOIN arquivo_publicidade_midia m ON m.id = r.origem_midia_id
+          AND m.anuncio_midia_id = r.anuncio_midia_id AND m.variante = r.variante
+        JOIN arquivo_publicidade_versao v ON v.id = m.versao_id
+        JOIN arquivo_publicidade_veiculacao j ON j.id = v.veiculacao_id
+        WHERE r.versao_id = :versaoId
+        """, Map.of("versaoId", versaoId));
+    Map<ChaveMidia, Map<String, Object>> fontes = new HashMap<>();
+    Set<ChaveMidia> duplicadas = new LinkedHashSet<>();
+    for (Map<String, Object> linha : linhas) {
+      ChaveMidia chave = new ChaveMidia(
+          (UUID) linha.get("anuncio_midia_id"), (String) linha.get("variante"));
+      if (duplicadas.contains(chave)) {
+        continue;
+      }
+      if (fontes.putIfAbsent(chave, linha) != null) {
+        LOG.warn("Copia privada duplicada na versao: versao={}, midia={}, variante={}",
+            versaoId, chave.anuncioMidiaId(), chave.variante());
+        fontes.remove(chave);
+        duplicadas.add(chave);
+      }
+    }
+    return fontes;
   }
 
   private List<MidiaCopiada> copiarMidias(UUID versaoId, List<Map<String, Object>> midias) {
@@ -406,18 +694,18 @@ public class ArquivoPublicidadeRegistroService {
     if ("ORIGINAL".equals(variante) && esperado != null && !hash.equals(esperado)) {
       throw new IllegalStateException("hash da fonte de midia divergente: " + midia.get("id"));
     }
-    String chavePrivada = storageProperties.getPrivateMediaPrefix()
+    String objetoDestino = storageProperties.getPrivateMediaPrefix()
         + "arquivo-publicidade/" + versaoId + "/" + midia.get("id")
         + "/" + variante.toLowerCase(java.util.Locale.ROOT);
     ObjectWriteResult resultado = storage.putIfAbsent(
-        StorageArea.PRIVATE_MEDIA, chavePrivada, original.content(), original.contentType());
+        StorageArea.PRIVATE_MEDIA, objetoDestino, original.content(), original.contentType());
     if (resultado == ObjectWriteResult.CREATED) {
       TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
         @Override
         public void afterCompletion(int status) {
           if (status == STATUS_ROLLED_BACK) {
             try {
-              storage.delete(StorageArea.PRIVATE_MEDIA, chavePrivada);
+              storage.delete(StorageArea.PRIVATE_MEDIA, objetoDestino);
             } catch (RuntimeException exception) {
               LOG.error("Falha ao limpar copia privada apos rollback: versao={}, midia={}, variante={}",
                   versaoId, midia.get("id"), variante, exception);
@@ -426,14 +714,14 @@ public class ArquivoPublicidadeRegistroService {
         }
       });
     }
-    StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, chavePrivada);
+    StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, objetoDestino);
     if (confirmada == null || confirmada.content() == null
         || !hash.equals(sha256(confirmada.content()))
         || !Objects.equals(original.contentType(), confirmada.contentType())) {
       throw new IllegalStateException("copia privada da midia nao confirmou integridade: " + midia.get("id"));
     }
     return new MidiaCopiada(UUID.randomUUID(), (UUID) midia.get("id"),
-        (UUID) midia.get("arquivo_midia_id"), variante, chavePrivada,
+        (UUID) midia.get("arquivo_midia_id"), variante, objetoDestino,
         hash, original.contentType(), original.content().length,
         ((Number) midia.get("ordem")).intValue());
   }
@@ -482,10 +770,11 @@ public class ArquivoPublicidadeRegistroService {
     // Match the public gallery's position policy before filtering invalid files:
     // an invalid photo still consumes one of the available public positions.
     List<Map<String, Object>> candidatas = jdbc.queryForList("""
-        SELECT am.id, am.arquivo_midia_id, am.tipo, am.finalidade, am.ordem,
+        SELECT am.id, am.anuncio_id, am.arquivo_midia_id, am.tipo, am.finalidade, am.ordem,
                am.visibilidade_midia, ar.storage_provider, ar.bucket, ar.chave_objeto,
-                ar.mime_type, ar.sha256, ar.status_arquivo,
+                 ar.mime_type, ar.sha256, ar.status_arquivo, ar.processado_em,
                 ar.preview_restrito_chave, ar.preview_restrito_status,
+                 ar.preview_restrito_confirmado_em,
                 EXISTS (SELECT 1 FROM documento_usuario d
                   WHERE d.arquivo_midia_id = ar.id) AS documento_usuario
         FROM anuncio_midia am LEFT JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
@@ -570,5 +859,12 @@ public class ArquivoPublicidadeRegistroService {
 
   private record MidiaCopiada(UUID id, UUID anuncioMidiaId, UUID arquivoMidiaId,
       String variante, String chave, String sha256, String mimeType, long tamanhoBytes, int ordem) {
+  }
+
+  private record MidiaReferencia(UUID origemMidiaId, UUID anuncioMidiaId,
+      String variante, int ordem) {
+  }
+
+  private record ChaveMidia(UUID anuncioMidiaId, String variante) {
   }
 }

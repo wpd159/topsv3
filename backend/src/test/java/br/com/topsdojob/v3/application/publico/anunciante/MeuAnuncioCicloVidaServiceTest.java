@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
@@ -27,6 +28,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -167,6 +169,39 @@ class MeuAnuncioCicloVidaServiceTest {
         verify(anuncioRepository, never()).delete(any(AnuncioEntity.class));
         verify(anuncioRepository, never()).deleteById(any(UUID.class));
         assertThat(auditoriaSalva().getAcao()).isEqualTo("ANUNCIO_REMOVIDO_PELO_USUARIO");
+    }
+
+    @Test
+    void fechamentoPorFotoPromovidaSemCopiaTemMotivoEAuditoriaDistintos() {
+        AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-sem-copia", StatusAnuncio.PUBLICADO);
+        UUID atorAdmin = UUID.randomUUID();
+        UUID removida = UUID.randomUUID();
+        UUID suprimida = UUID.randomUUID();
+        AnuncioStatusHistoricoRepository historicos = mock(AnuncioStatusHistoricoRepository.class);
+        DocumentoBuscaAnuncioRepository busca = mock(DocumentoBuscaAnuncioRepository.class);
+        RevisaoAnuncioRepository revisoes = mock(RevisaoAnuncioRepository.class);
+        ArquivoPublicidadeRegistroService arquivo = mock(ArquivoPublicidadeRegistroService.class);
+        when(revisoes.findByAnuncioId(ANUNCIO_ID)).thenReturn(List.of());
+        when(busca.findById(ANUNCIO_ID)).thenReturn(Optional.empty());
+        MeuAnuncioCicloVidaService fechamento = new MeuAnuncioCicloVidaService(
+                consultaService, anuncioRepository, auditoriaRepository, new ObjectMapper(),
+                historicos, busca, revisoes, fotoElegivelPolicy, arquivo);
+
+        fechamento.encerrarPorFaltaDeMidiaArquivavel(anuncio, atorAdmin, removida,
+                List.of(suprimida), "request-fail-closed", CRIADO_EM.plusDays(1));
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.REMOVIDO);
+        ArgumentCaptor<AnuncioStatusHistoricoEntity> historico =
+                ArgumentCaptor.forClass(AnuncioStatusHistoricoEntity.class);
+        verify(historicos).save(historico.capture());
+        assertThat(historico.getValue().getMotivo()).isEqualTo("MIDIA_PROMOVIDA_SEM_COPIA_PRIVADA");
+        assertThat(historico.getValue().getAtorUsuarioId()).isEqualTo(atorAdmin);
+        AuditoriaEventoEntity auditoria = auditoriaSalva();
+        assertThat(auditoria.getAcao()).isEqualTo("ANUNCIO_ENCERRADO_SEM_MIDIA_ARQUIVAVEL");
+        assertThat(auditoria.getAtorUsuarioId()).isEqualTo(atorAdmin);
+        assertThat(auditoria.getDepoisJson()).contains(removida.toString(), suprimida.toString());
+        verify(arquivo).registrarEstado(ANUNCIO_ID, "MIDIA_PROMOVIDA_SEM_COPIA_PRIVADA",
+                "request-fail-closed", CRIADO_EM.plusDays(1));
     }
 
     @Test

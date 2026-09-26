@@ -24,7 +24,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void validaSelectReadOnlyEFlywayCompativelSemConsultaPesada() throws Exception {
-        Fixture fixture = fixture(1, 55, 0);
+        Fixture fixture = fixture(1, 57, 0);
 
         var result = fixture.probe().check();
 
@@ -40,7 +40,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void reprovaMigrationFalha() throws Exception {
-        Fixture fixture = fixture(1, 55, 1);
+        Fixture fixture = fixture(1, 57, 1);
 
         var result = fixture.probe().check();
 
@@ -50,7 +50,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void reprovaSchemaAbaixoDaVersaoMinimaDoCodigo() throws Exception {
-        Fixture fixture = fixture(1, 54, 0);
+        Fixture fixture = fixture(1, 56, 0);
 
         var result = fixture.probe().check();
 
@@ -60,7 +60,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void aceitaSchemaAditivoMaisNovoParaPreservarRollbackDaAplicacao() throws Exception {
-        Fixture fixture = fixture(1, 56, 0);
+        Fixture fixture = fixture(1, 58, 0);
 
         var result = fixture.probe().check();
 
@@ -81,7 +81,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void reconheceBancoMasReprovaSeHistoricoFlywayNaoPodeSerLido() throws Exception {
-        Fixture fixture = fixture(1, 55, 0);
+        Fixture fixture = fixture(1, 57, 0);
         when(fixture.migrationsStatement().executeQuery(org.mockito.ArgumentMatchers.anyString()))
                 .thenThrow(new SQLException("historico indisponivel"));
 
@@ -95,7 +95,7 @@ class DatabaseReadinessProbeTest {
     @ValueSource(strings = {"acquisition", "database-query", "migration-query", "rollback", "close"})
     void prazoMonotonicoIncluiCadaFaseAteFechamentoEfetivo(String phase) throws Exception {
         AtomicLong clock = new AtomicLong();
-        Fixture fixture = fixture(1, 55, 0, clock::get);
+        Fixture fixture = fixture(1, 57, 0, clock::get);
         long deadline = 100_000_000L;
         switch (phase) {
             case "acquisition" -> when(fixture.dataSource().getConnection()).thenAnswer(invocation -> {
@@ -134,14 +134,14 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void prazoJaExpiradoNaoAdquireConexao() throws Exception {
-        Fixture fixture = fixture(1, 55, 0, () -> 100);
+        Fixture fixture = fixture(1, 57, 0, () -> 100);
         assertThat(fixture.probe().check(100)).isEqualTo(DatabaseReadinessProbe.DatabaseReadiness.down());
         verify(fixture.dataSource(), never()).getConnection();
     }
 
     @Test
     void erroAoConfigurarStatementFechaStatementConexaoERollback() throws Exception {
-        Fixture fixture = fixture(1, 55, 0);
+        Fixture fixture = fixture(1, 57, 0);
         doThrow(new SQLException("unsupported timeout")).when(fixture.databaseStatement()).setQueryTimeout(1);
 
         assertThat(fixture.probe().check()).isEqualTo(DatabaseReadinessProbe.DatabaseReadiness.down());

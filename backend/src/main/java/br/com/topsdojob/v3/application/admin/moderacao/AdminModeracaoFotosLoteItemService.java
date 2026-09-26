@@ -7,6 +7,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoFotoLoteA
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminResultadoFotoLoteItemDto;
 import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -17,7 +18,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,7 @@ public class AdminModeracaoFotosLoteItemService {
     private final AuditoriaEventoRepository auditoriaRepository;
     private final ObjectMapper objectMapper;
     private final ArquivoPublicidadeRegistroService arquivoPublicidade;
+    private final MeuAnuncioCicloVidaService cicloVidaService;
 
     public AdminModeracaoFotosLoteItemService(
             AdminModeracaoAcaoService moderacaoAcaoService,
@@ -41,13 +45,15 @@ public class AdminModeracaoFotosLoteItemService {
             AnuncioRepository anuncioRepository,
             AuditoriaEventoRepository auditoriaRepository,
             ObjectMapper objectMapper,
-            ArquivoPublicidadeRegistroService arquivoPublicidade) {
+            ArquivoPublicidadeRegistroService arquivoPublicidade,
+            MeuAnuncioCicloVidaService cicloVidaService) {
         this.moderacaoAcaoService = moderacaoAcaoService;
         this.midiaCleanupService = midiaCleanupService;
         this.anuncioRepository = anuncioRepository;
         this.auditoriaRepository = auditoriaRepository;
         this.objectMapper = objectMapper;
         this.arquivoPublicidade = arquivoPublicidade;
+        this.cicloVidaService = cicloVidaService;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -89,6 +95,8 @@ public class AdminModeracaoFotosLoteItemService {
                     "estado do anuncio impede exclusao da foto");
         }
 
+        Set<UUID> exibidasAntes = arquivoPublicidade.midiasExibidasAntesDaRetirada(anuncioId);
+        boolean fotoPublica = exibidasAntes.contains(item.mediaId());
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         var limpeza = midiaCleanupService.limparMidia(anuncioId, item.mediaId(), agora);
         if (limpeza.jaProcessado()) {
@@ -101,6 +109,10 @@ public class AdminModeracaoFotosLoteItemService {
                     null,
                     null);
         }
+        List<UUID> suprimidas = fotoPublica
+                ? arquivoPublicidade.prepararRetiradaSemNovaCopia(
+                        anuncioId, ator.usuarioId(), requestId, agora, exibidasAntes)
+                : List.of();
         Map<String, Object> depois = new LinkedHashMap<>();
         depois.put("anuncioId", anuncioId);
         depois.put("decisao", "EXCLUIR");
@@ -111,6 +123,7 @@ public class AdminModeracaoFotosLoteItemService {
         depois.put("objetosCompartilhadosPreservados", limpeza.objetosCompartilhadosPreservados());
         depois.put("objetosCleanupPosCommit", limpeza.objetosCleanupAgendados());
         depois.put("storiesEncerrados", limpeza.storiesEncerrados());
+        depois.put("midiasSuprimidasSemCopia", suprimidas);
         depois.put("storageOculto", true);
         auditoriaRepository.save(AuditoriaEventoEntity.registrar(
                 UUID.randomUUID(),
@@ -122,7 +135,13 @@ public class AdminModeracaoFotosLoteItemService {
                 json(depois),
                 requestId,
                 agora));
-        arquivoPublicidade.registrarEstado(anuncioId, "MODERACAO_FOTO_EXCLUIDA", requestId, agora);
+        if (fotoPublica && !suprimidas.isEmpty()
+                && !arquivoPublicidade.possuiFotoPublicaSelecionada(anuncioId)) {
+            cicloVidaService.encerrarPorFaltaDeMidiaArquivavel(
+                    anuncio, ator.usuarioId(), item.mediaId(), suprimidas, requestId, agora);
+        } else {
+            arquivoPublicidade.registrarEstado(anuncioId, "MODERACAO_FOTO_EXCLUIDA", requestId, agora);
+        }
         return new AdminResultadoFotoLoteItemDto(
                 item.mediaId(),
                 item.decisao().name(),

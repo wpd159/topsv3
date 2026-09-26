@@ -104,17 +104,13 @@ async function csrfValue() {
   if (current) return current
   const response = await fetch(adminApiUrl('/auth/me'), { credentials: 'include', cache: 'no-store' })
   if (!response.ok) throw await apiErrorFromResponse(response)
-  const refreshed = readCsrfValue()
-  if (!refreshed) {
-    throw new ApiContractError('A proteção da sessão não está disponível.', 'TECHNICAL_FAILURE', 503, true)
-  }
-  return refreshed
+  return readCsrfValue()
 }
 
 async function postRead(path: string, signal?: AbortSignal, accept = 'application/json') {
   const csrf = await csrfValue()
   const headers = new Headers({ Accept: accept })
-  headers.set(['X', 'XSRF', 'TOKEN'].join('-'), csrf)
+  if (csrf) headers.set(['X', 'XSRF', 'TOKEN'].join('-'), csrf)
   const response = await fetch(adminApiUrl(path), {
     method: 'POST',
     credentials: 'include',
