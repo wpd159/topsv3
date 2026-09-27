@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { normalizeApiError } from '@/lib/api-contract'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import { imagemPublicaR2 } from '@/lib/media/public-media'
 import { enviarIndexNowNoCliente, montarEventoIndexNowAnuncio } from '@/lib/seo/indexnow-client'
@@ -168,6 +169,14 @@ function uniqueBy<T>(items: T[], key: (item: T) => string) {
   return [...new Map(items.map((item) => [key(item), item])).values()]
 }
 
+function storyPublicationErrorMessage(error: unknown) {
+  const normalized = normalizeApiError(error)
+  if (['INVALID_REQUEST', 'SESSION_REQUIRED', 'ACCESS_DENIED', 'CONFLICT'].includes(normalized.kind)) {
+    return normalized.message
+  }
+  return 'A publicação não foi confirmada. Tente novamente.'
+}
+
 export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string }) {
   const searchParams = new URLSearchParams(initialQuery)
   const [context, setContext] = useState<AdminAdQueueContext>(() => parseAdminAdQueueContext(searchParams))
@@ -184,6 +193,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   const [supportError, setSupportError] = useState<unknown>(null)
   const [locationsError, setLocationsError] = useState<unknown>(null)
   const [actionError, setActionError] = useState<unknown>(null)
+  const [storyError, setStoryError] = useState<string | null>(null)
   const [busyAdId, setBusyAdId] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [supportReload, setSupportReload] = useState(0)
@@ -305,6 +315,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
     publishingStoryIds.current.add(item.id)
     setBusyStoryIds((current) => new Set(current).add(item.id))
     setActionError(null)
+    setStoryError(null)
     const idempotencyKey = storyIdempotencyKeys.current.get(item.id)
       || `admin-story-${item.id}-${Date.now()}`
     storyIdempotencyKeys.current.set(item.id, idempotencyKey)
@@ -324,7 +335,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       } : current)
       storyIdempotencyKeys.current.delete(item.id)
     } catch (reason) {
-      setActionError(reason)
+      setStoryError(storyPublicationErrorMessage(reason))
     } finally {
       publishingStoryIds.current.delete(item.id)
       setBusyStoryIds((current) => {
@@ -440,6 +451,12 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       {supportError ? <ContractState error={supportError} onRetry={() => setSupportReload((value) => value + 1)} compact /> : null}
       {locationsError ? <ContractState error={locationsError} onRetry={() => setLocationsReload((value) => value + 1)} compact /> : null}
       {actionError ? <ContractState error={actionError} compact /> : null}
+      {storyError ? (
+        <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">Não foi possível publicar o Story</p>
+          <p className="mt-1 text-amber-800">{storyError}</p>
+        </div>
+      ) : null}
       {error ? <ContractState error={error} onRetry={() => setReload((value) => value + 1)} /> : null}
       {!error && loading && !data ? <p className="py-12 text-center text-sm text-zinc-500">Carregando fila...</p> : null}
       {!error && !loading && items.length === 0 ? <div className="border border-zinc-200 bg-white px-5 py-10 text-center"><p className="font-semibold text-zinc-900">Nenhum anúncio corresponde aos filtros.</p><p className="mt-1 text-sm text-zinc-600">A fila está legitimamente vazia para esta combinação.</p></div> : null}

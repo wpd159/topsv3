@@ -142,8 +142,15 @@ final class UltimaFotoPostgres17Fixture implements AutoCloseable {
                     "--filter", "id=" + networkId, "--format", "{{.ID}}").trim();
             if (!present.isEmpty()) {
                 String identity = command(remaining(deadline, 10), false, Map.of(), "network", "inspect", "--format",
-                        "{{.Id}}|{{index .Labels \"" + OWNER_LABEL + "\"}}", networkId).trim();
-                if (!identity.equals(networkId + "|" + owner)) throw new IllegalStateException("ownership da rede divergente");
+                        "{{.Id}}|{{json .Labels}}", networkId).trim();
+                String[] fields = identity.split("\\|", 2);
+                if (fields.length != 2 || !fields[0].equals(networkId)) {
+                    throw new IllegalStateException("ownership da rede divergente");
+                }
+                var labels = new ObjectMapper().readTree(fields[1]);
+                if (labels == null || !labels.isObject() || !owner.equals(labels.path(OWNER_LABEL).asText())) {
+                    throw new IllegalStateException("ownership da rede divergente");
+                }
                 command(remaining(deadline, 10), true, Map.of(), "network", "rm", networkId);
             }
             if (!command(remaining(deadline, 10), false, Map.of(), "network", "ls", "--no-trunc", "--filter",
@@ -172,10 +179,23 @@ final class UltimaFotoPostgres17Fixture implements AutoCloseable {
 
     private void verifyContainer(String container, long deadline) throws Exception {
         String identity = command(remaining(deadline, 10), false, Map.of(), "container", "inspect", "--format",
-                "{{.Id}}|{{index .Config.Labels \"" + OWNER_LABEL + "\"}}|{{range .Mounts}}{{if eq .Type \"volume\"}}{{.Name}}{{end}}{{end}}",
+                "{{.Id}}|{{json .Config.Labels}}|{{json .Mounts}}",
                 container).trim();
-        if (!identity.equals(container + "|" + owner + "|")) {
+        String[] fields = identity.split("\\|", 3);
+        if (fields.length != 3 || !fields[0].equals(container)) {
             throw new IllegalStateException("ownership ou ausencia de volumes da fixture nao comprovados");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        var labels = mapper.readTree(fields[1]);
+        var mounts = mapper.readTree(fields[2]);
+        if (labels == null || !labels.isObject() || !owner.equals(labels.path(OWNER_LABEL).asText())
+                || mounts == null || !mounts.isArray()) {
+            throw new IllegalStateException("ownership ou ausencia de volumes da fixture nao comprovados");
+        }
+        for (var mount : mounts) {
+            if (!mount.path("Type").isTextual() || "volume".equals(mount.path("Type").asText())) {
+                throw new IllegalStateException("ownership ou ausencia de volumes da fixture nao comprovados");
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.arquivo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -295,7 +296,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
 
   @Test
   void storyAnuncioCongelaApresentacaoVisivelEBytesSelecionados() throws Exception {
-    Map<String, Object> story = story("PUBLICADO");
+    Map<String, Object> story = storyAnuncio();
     story.put("modo_conteudo", "ANUNCIO");
     story.put("anuncio_id", ANUNCIO_ID);
     story.put("arquivo_midia_id", null);
@@ -646,6 +647,130 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     assertThat(captura.deletes).isZero();
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"ANUNCIO_COM_GRUPO",
+      "MIDIA_UPLOAD_LEGADO_VINCULADO", "MIDIA_UPLOAD_INDEPENDENTE", "MIDIA_UPLOAD_DIREITO_PRESERVADO"})
+  void contratoCanonicoStoriesAnuncioAceitaSomenteVinculosCoerentes(String cenario) {
+    CapturaAnuncio captura = new CapturaAnuncio();
+    if (cenario.startsWith("MIDIA_UPLOAD")) {
+      captura.story.put("modo_conteudo", "MIDIA_UPLOAD");
+      captura.story.put("arquivo_midia_id", MIDIA_ID);
+    }
+    if (cenario.equals("MIDIA_UPLOAD_LEGADO_VINCULADO")) {
+      captura.story.put("arquivo_midia_id", null);
+      captura.story.put("anuncio_midia_id", VINCULO_ID);
+    }
+    if (cenario.equals("MIDIA_UPLOAD_INDEPENDENTE")) {
+      captura.story.put("anuncio_id", null);
+      captura.story.put("anuncio_usuario_id", null);
+      captura.story.put("direito_anuncio_id", null);
+      captura.story.put("grupo_anuncio_id", null);
+    }
+    if (cenario.equals("MIDIA_UPLOAD_DIREITO_PRESERVADO")) {
+      captura.story.put("anuncio_id", null);
+      captura.story.put("anuncio_usuario_id", null);
+      captura.story.put("direito_preservado_anterior", true);
+    }
+
+    captura.registrar();
+
+    assertThat(captura.janela).isNotNull();
+    assertThat(captura.versoes).hasSize(1);
+    assertThat(captura.copias).hasSize(2);
+    assertThat(captura.puts).isEqualTo(2);
+    verify(jdbc, times(1)).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_veiculacao"), anyMap());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"CODIGO_DIFERENTE", "ESCOPO_MIDIA", "DIREITO_OUTRO_USUARIO",
+      "DIREITO_SEM_USUARIO", "GRUPO_AUSENTE", "GRUPO_ORIGEM_DIVERGENTE",
+      "GRUPO_OUTRO_USUARIO", "GRUPO_SEM_USUARIO", "GRUPO_OUTRO_ANUNCIO",
+      "ANUNCIO_AUSENTE", "DIREITO_OUTRO_ANUNCIO", "DIREITO_SEM_ANUNCIO", "ANUNCIO_OUTRO_USUARIO",
+      "ANUNCIO_SEM_USUARIO", "UPLOAD_LEGADO_DIREITO_OUTRO_ANUNCIO",
+      "UPLOAD_INDEPENDENTE_SEM_DIREITO_PRESERVADO"})
+  void contratoIncoerenteNaoCriaArquivoNemCopiaPrivada(String cenario) {
+    CapturaAnuncio captura = new CapturaAnuncio();
+    UUID outro = UUID.fromString("60000000-0000-4000-8000-000000000001");
+    switch (cenario) {
+      case "CODIGO_DIFERENTE" -> captura.story.put("beneficio_codigo", "DESTAQUE");
+      case "ESCOPO_MIDIA" -> captura.story.put("beneficio_escopo", "MIDIA");
+      case "DIREITO_OUTRO_USUARIO" -> captura.story.put("direito_usuario_id", outro);
+      case "DIREITO_SEM_USUARIO" -> captura.story.put("direito_usuario_id", null);
+      case "GRUPO_AUSENTE" -> {
+        captura.story.put("grupo_ativacao_id", null);
+        captura.story.put("grupo_usuario_id", null);
+        captura.story.put("grupo_anuncio_id", null);
+        captura.story.put("grupo_origem", null);
+      }
+      case "GRUPO_ORIGEM_DIVERGENTE" -> captura.story.put("grupo_origem", "ADMIN");
+      case "GRUPO_OUTRO_USUARIO" -> captura.story.put("grupo_usuario_id", outro);
+      case "GRUPO_SEM_USUARIO" -> captura.story.put("grupo_usuario_id", null);
+      case "GRUPO_OUTRO_ANUNCIO" -> captura.story.put("grupo_anuncio_id", outro);
+      case "ANUNCIO_AUSENTE" -> captura.story.put("anuncio_id", null);
+      case "DIREITO_OUTRO_ANUNCIO" -> {
+        captura.story.put("direito_anuncio_id", outro);
+        captura.story.put("grupo_anuncio_id", outro);
+      }
+      case "DIREITO_SEM_ANUNCIO" -> {
+        captura.story.put("direito_anuncio_id", null);
+        captura.story.put("grupo_anuncio_id", null);
+      }
+      case "ANUNCIO_OUTRO_USUARIO" -> captura.story.put("anuncio_usuario_id", outro);
+      case "ANUNCIO_SEM_USUARIO" -> captura.story.put("anuncio_usuario_id", null);
+      case "UPLOAD_LEGADO_DIREITO_OUTRO_ANUNCIO" -> {
+        captura.story.put("modo_conteudo", "MIDIA_UPLOAD");
+        captura.story.put("arquivo_midia_id", null);
+        captura.story.put("anuncio_midia_id", VINCULO_ID);
+        captura.story.put("direito_anuncio_id", outro);
+        captura.story.put("grupo_anuncio_id", outro);
+      }
+      case "UPLOAD_INDEPENDENTE_SEM_DIREITO_PRESERVADO" -> {
+        captura.story.put("modo_conteudo", "MIDIA_UPLOAD");
+        captura.story.put("arquivo_midia_id", MIDIA_ID);
+        captura.story.put("anuncio_id", null);
+        captura.story.put("anuncio_usuario_id", null);
+      }
+      default -> throw new AssertionError(cenario);
+    }
+
+    assertThatThrownBy(captura::registrar).isInstanceOf(IllegalStateException.class);
+
+    assertThat(captura.janela).isNull();
+    assertThat(captura.versoes).isEmpty();
+    assertThat(captura.copias).isEmpty();
+    assertThat(captura.puts).isZero();
+    verify(jdbc, never()).update(anyString(), anyMap());
+  }
+
+  @Test
+  void falhaTecnicaNaReconciliacaoPermiteReusoPosteriorSemDuplicarArquivoOuCopia() {
+    CapturaAnuncio captura = new CapturaAnuncio();
+    captura.registrar();
+    captura.confirmarTransacao();
+    Object janelaId = captura.janela.get("id");
+    captura.story.put("titulo", "Apresentacao alterada apos indisponibilidade temporaria");
+    StoredObject fonte = captura.objetos.remove(captura.chaveFonte("ORIGINAL"));
+
+    assertThatThrownBy(captura::registrar).isInstanceOf(IllegalStateException.class);
+    assertThat(captura.versoes).hasSize(1);
+    assertThat(captura.copias).hasSize(2);
+    assertThat(captura.puts).isEqualTo(2);
+    assertThat(captura.referencias).isEmpty();
+
+    captura.objetos.put(captura.chaveFonte("ORIGINAL"), fonte);
+    captura.registrar();
+
+    assertThat(captura.janela.get("id")).isEqualTo(janelaId);
+    assertThat(captura.versoes).hasSize(2);
+    assertThat(captura.copias).hasSize(2);
+    assertThat(captura.referencias).hasSize(2);
+    assertThat(captura.puts).isEqualTo(2);
+    assertThat(captura.deletes).isZero();
+    verify(jdbc, times(1)).update(org.mockito.ArgumentMatchers.contains(
+        "INSERT INTO arquivo_publicidade_story_veiculacao"), anyMap());
+  }
+
   /** In-memory database/storage with physical objects retained across logical versions. */
   private final class CapturaAnuncio {
     private final Map<String, Object> story = storyAnuncio();
@@ -695,6 +820,12 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
         if (sql.contains("FROM arquivo_publicidade_story_versao"))
           return versoes.isEmpty() ? List.of() : List.of(versoes.get(versoes.size() - 1));
         if (sql.contains("FROM anuncio_midia am JOIN arquivo_midia ar")) return List.of(midia);
+        if (sql.contains("FROM arquivo_midia ar")) {
+          if (parametros.get("arquivoId") == null) {
+            assertThat(parametros.get("vinculoId")).isEqualTo(VINCULO_ID);
+          }
+          return List.of(midia);
+        }
         if (sql.contains("FROM arquivo_publicidade_story_midia m")) {
           UUID id = (UUID) parametros.get("versaoId");
           List<Map<String, Object>> origens = new ArrayList<>(copias.values().stream()
@@ -723,7 +854,7 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
           origem.put("sha256", p.get("sha256"));
           origem.put("tamanho_bytes", p.get("bytes"));
           origem.put("origem_story_id", STORY_ID);
-          origem.put("origem_anuncio_id", ANUNCIO_ID);
+          origem.put("origem_anuncio_id", story.get("anuncio_id"));
           origem.put("origem_usuario_id", USUARIO_ID);
           origem.put("origem_veiculacao_id", janela.get("id"));
           copias.put((UUID) p.get("id"), origem);
@@ -755,6 +886,9 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     Map<String, Object> row = story("PUBLICADO");
     row.put("modo_conteudo", "ANUNCIO");
     row.put("anuncio_id", ANUNCIO_ID);
+    row.put("direito_anuncio_id", ANUNCIO_ID);
+    row.put("grupo_anuncio_id", ANUNCIO_ID);
+    row.put("anuncio_usuario_id", USUARIO_ID);
     row.put("arquivo_midia_id", null);
     row.put("anuncio_status", "PUBLICADO");
     row.put("status_moderacao", "APROVADO");
@@ -826,6 +960,12 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     row.put("fim_em", FIM);
     row.put("encerrado_em", null);
     row.put("criado_por", USUARIO_ID);
+    row.put("direito_usuario_id", USUARIO_ID);
+    row.put("direito_anuncio_id", null);
+    row.put("grupo_usuario_id", USUARIO_ID);
+    row.put("grupo_anuncio_id", null);
+    row.put("anuncio_usuario_id", null);
+    row.put("direito_preservado_anterior", false);
     row.put("nome", "Usuária exemplo");
     row.put("nome_civil", "Nome Civil Exemplo");
     row.put("cpf_normalizado", "12345678909");
@@ -835,11 +975,12 @@ class ArquivoPublicidadeStoryRegistroServiceTest {
     row.put("desativado_em", null);
     row.put("excluido_em", null);
     row.put("origem", "CREDITO");
+    row.put("grupo_origem", "CREDITO");
     row.put("grupo_ativacao_id", UUID.randomUUID());
     row.put("custo_creditos_snapshot", 3);
     row.put("grupo_ator_id", null);
     row.put("beneficio_codigo", "STORIES");
-    row.put("beneficio_escopo", "MIDIA");
+    row.put("beneficio_escopo", "ANUNCIO");
     row.put("movimento_credito_id", UUID.randomUUID());
     return row;
   }

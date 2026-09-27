@@ -187,10 +187,17 @@ public class ArquivoPublicidadeStoryRegistroService {
                u.nome, u.nome_civil, u.cpf_normalizado, u.email_normalizado,
                u.status AS usuario_status, u.tipo_conta, u.desativado_em, u.excluido_em,
                ab.origem, ab.grupo_ativacao_id, ab.custo_creditos_snapshot,
+               ab.usuario_id AS direito_usuario_id, ab.anuncio_id AS direito_anuncio_id,
+               gb.usuario_id AS grupo_usuario_id, gb.anuncio_id AS grupo_anuncio_id,
+               gb.origem AS grupo_origem,
                gb.ator_usuario_id AS grupo_ator_id, bp.codigo AS beneficio_codigo,
                bp.escopo AS beneficio_escopo,
+               EXISTS (SELECT 1 FROM story_anuncio anterior
+                       WHERE anterior.ativacao_beneficio_id = s.ativacao_beneficio_id
+                         AND anterior.direito_preservado = true
+                         AND anterior.encerrado_em IS NOT NULL) AS direito_preservado_anterior,
                mc.id AS movimento_credito_id,
-               a.slug, a.titulo, a.descricao, a.categoria, a.preco,
+               a.usuario_id AS anuncio_usuario_id, a.slug, a.titulo, a.descricao, a.categoria, a.preco,
                a.whatsapp_normalizado, a.link_conteudo, a.atendimento_exclusivamente_virtual,
                a.status AS anuncio_status, a.status_moderacao, a.removido_em
         FROM story_anuncio s
@@ -252,9 +259,7 @@ public class ArquivoPublicidadeStoryRegistroService {
         return;
       }
     }
-    if (!"MIDIA".equals(story.get("beneficio_escopo"))) {
-      throw new IllegalStateException("Story exibido sem beneficio de escopo MIDIA: " + storyId);
-    }
+    validarDireitoCanonico(story);
     List<Map<String, Object>> midias = "ANUNCIO".equals(story.get("modo_conteudo"))
         ? midiasExibidasNoAnuncio((UUID) story.get("anuncio_id"), retiradaDeMidia(motivo))
         : List.of(midiaDireta(story));
@@ -277,6 +282,33 @@ public class ArquivoPublicidadeStoryRegistroService {
     }
     criarVersaoSeMudou(story, janela, midias, motivo, requestId, observado);
     transicoesTemporais.reconciliarStoryAposCaptura(storyId, observado);
+  }
+
+  private void validarDireitoCanonico(Map<String, Object> story) {
+    Object titular = story.get("criado_por");
+    Object anuncio = story.get("anuncio_id");
+    Object anuncioDireito = story.get("direito_anuncio_id");
+    boolean grupoCompativel = story.get("grupo_ativacao_id") != null
+        && Objects.equals(titular, story.get("grupo_usuario_id"))
+        && Objects.equals(anuncioDireito, story.get("grupo_anuncio_id"))
+        && Objects.equals(story.get("origem"), story.get("grupo_origem"));
+    boolean anuncioCompativel = anuncio != null
+        && Objects.equals(anuncio, anuncioDireito)
+        && Objects.equals(titular, story.get("anuncio_usuario_id"));
+    // Benefit scope is ANUNCIO even for independent uploads. A preserved right
+    // may retain its historical ad, as in MinhaContaStoriesDireitoService.
+    boolean vinculoCompativel = "ANUNCIO".equals(story.get("modo_conteudo"))
+        ? anuncioCompativel
+        : (anuncio != null ? anuncioCompativel
+            : anuncioDireito == null || Boolean.TRUE.equals(story.get("direito_preservado_anterior")));
+    if (!"STORIES".equals(story.get("beneficio_codigo"))
+        || !"ANUNCIO".equals(story.get("beneficio_escopo"))
+        || story.get("ativacao_beneficio_id") == null || titular == null
+        || !Objects.equals(titular, story.get("direito_usuario_id"))
+        || !grupoCompativel || !vinculoCompativel) {
+      throw new IllegalStateException("Story exibido sem direito STORIES canonico e vinculos coerentes: "
+          + story.get("id"));
+    }
   }
 
   private MarcosCaptura marcosAposLocks(
