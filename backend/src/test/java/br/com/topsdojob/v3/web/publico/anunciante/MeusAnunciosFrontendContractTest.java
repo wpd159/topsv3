@@ -91,7 +91,8 @@ class MeusAnunciosFrontendContractTest {
                 .contains("backendFirst: isEdit")
                 .contains("hydrateFromBackend")
                 .contains("clearCurrentCache")
-                .contains("consultarLimitesMinhasMidias")
+                .contains("recoverWizardAnuncio")
+                .contains("saveWizardCreationOperation")
                 .contains("enviarMinhasMidiasEmLote")
                 .contains("<WizardStepFotos")
                 .contains("readOnly={isEdit}")
@@ -188,7 +189,7 @@ class MeusAnunciosFrontendContractTest {
         String wizard = Files.readString(FRONTEND.resolve(Path.of(
                 "features", "anuncio-wizard", "anuncio-wizard.tsx")));
         String fluxoFinal = recorte(wizard, "const runFinalFlow = async () => {", "const requestPublish = () => {");
-        String criarAnuncio = recorte(wizard, "const submitAnuncio = async () => {", "const ensureKycReady = async () => {");
+        String criarAnuncio = recorte(wizard, "const submitAnuncio = async (generation: number) => {", "const ensureKycReady = async () => {");
         String validador = Files.readString(FRONTEND.resolve(Path.of("lib", "photo-upload-validation.ts")));
 
         assertThat(adapter)
@@ -227,6 +228,7 @@ class MeusAnunciosFrontendContractTest {
         apareceAntes(lote, "await validateMediaUploadPhotos(arquivos)", "const csrfValue =");
         apareceAntes(lote, "await validateMediaUploadPhotos(arquivos)", "const xhr = new XMLHttpRequest()");
         apareceAntes(lote, "const result = mapMinhasMidias(body, slug)", "mediaBatchIdempotencyKeys.delete(signature)");
+        apareceAntes(lote, "expectedAnuncioId && result.anuncio.id !== expectedAnuncioId", "mediaBatchIdempotencyKeys.delete(signature)");
         assertThat(adapter).contains("const mediaBatchFileIds = new WeakMap<File, string>()");
         assertThat(assinaturaLote)
                 .contains("return [accountScope, slug, ...files")
@@ -308,11 +310,17 @@ class MeusAnunciosFrontendContractTest {
                 .contains("throw new Error(result && !result.valid");
         apareceAntes(fluxoFinal, "const results = await Promise.all", "const changed =");
         apareceAntes(fluxoFinal, "throw new Error(result && !result.valid", "await ensureKycReady()");
-        apareceAntes(fluxoFinal, "await ensureKycReady()", "else await submitAnuncio()");
+        apareceAntes(fluxoFinal, "await ensureKycReady()", "else await submitAnuncio(generation)");
         assertThat(criarAnuncio)
-                .contains("const created = await submitWizardAnuncio(state)")
+                .contains("created = await submitWizardAnuncio(state, operation.sessionId)")
+                .contains("recoverWizardAnuncio(operation.sessionId)")
+                .contains("updated.id !== createdAnuncioIdRef.current || updated.slug !== targetSlug")
+                .contains("progressScope, createdAnuncioIdRef.current ?? undefined")
                 .contains("setFotos([])")
-                .contains("setVideos([])");
+                .contains("setVideos([])")
+                .doesNotContain("consultarLimitesMinhasMidias");
+        apareceAntes(criarAnuncio, "saveWizardCreationOperation(progressScope, operation)",
+                "await submitWizardAnuncio(state, operation.sessionId)");
         apareceAntes(criarAnuncio, "await enviarMinhasMidiasEmLote(", "setFotos([])");
         assertThat(wizard).contains("return () => urls.forEach((url) => URL.revokeObjectURL(url))");
         assertThat(validador)

@@ -45,6 +45,7 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepositor
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.wizard.WizardProgressJdbcRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -104,7 +105,7 @@ class MinhasMidiasServiceTest {
     private final SolicitarAnuncioPublicoService criacaoService = new SolicitarAnuncioPublicoService(
             consultaService, mock(KycPublicoService.class), mock(AnuncioRepository.class), localizacaoRepository,
             mock(DocumentoBuscaAnuncioRepository.class), revisaoRepository, estadoRepository, cidadeRepository,
-            mock(BairroRepository.class), new ObjectMapper(), midiaRepository);
+            mock(BairroRepository.class), new ObjectMapper(), midiaRepository, mock(WizardProgressJdbcRepository.class));
     private final MinhasMidiasService service = new MinhasMidiasService(
             consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
             new MidiaUploadProperties(), new MinhaMidiaPreviewService(storageProperties, storageProvider,

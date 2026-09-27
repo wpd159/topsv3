@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -25,9 +26,12 @@ public class PublicAnunciarController {
     @PostMapping
     public ResponseEntity<?> solicitar(
             @RequestBody(required = false) JsonNode payload,
+            @RequestHeader(value = "X-Wizard-Session-Id", required = false) String sessionId,
             Authentication authentication) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(service.solicitar(payload, authentication));
+            return ResponseEntity.status(HttpStatus.CREATED).body(sessionId == null
+                    ? service.solicitar(payload, authentication)
+                    : service.solicitar(payload, authentication, sessionId));
         } catch (SolicitarAnuncioValidationException exception) {
             return ResponseEntity.badRequest().body(SolicitarAnuncioValidationErrorResponseDto.from(exception.errors()));
         }

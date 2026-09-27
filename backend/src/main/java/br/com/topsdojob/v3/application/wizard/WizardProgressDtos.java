@@ -22,4 +22,6 @@ public final class WizardProgressDtos {
       String ultimoStep,
       OffsetDateTime atualizadoEm) {
   }
+
+  public record AnuncioResponse(UUID anuncioId, String slug, String status, String statusModeracao) { }
 }

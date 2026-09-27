@@ -7,6 +7,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -16,6 +19,8 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.wizard.WizardProgressJdbcRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -24,6 +29,9 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -50,7 +58,97 @@ class WizardProgressSyncServiceTest {
         repository,
         clock);
     when(meusAnunciosService.usuarioAutenticadoParaAtualizacao(authentication)).thenReturn(usuario);
+    when(meusAnunciosService.usuarioAutenticado(authentication)).thenReturn(usuario);
     when(usuario.getId()).thenReturn(usuarioId);
+  }
+
+  @Test
+  void recuperaIdentidadeExataEEstadoAtualSemLockDeEscrita() {
+    AnuncioEntity anuncio = anuncioDaSessao("CREATE", StatusAnuncio.PENDENTE_REVISAO);
+
+    var response = service.recuperarAnuncio("wizard-create-recovery", authentication);
+
+    assertThat(response.anuncioId()).isEqualTo(anuncio.getId());
+    assertThat(response.slug()).isEqualTo(anuncio.getSlug());
+    assertThat(response.status()).isEqualTo("PENDENTE_REVISAO");
+    assertThat(response.statusModeracao()).isEqualTo("PENDENTE");
+    verify(meusAnunciosService).usuarioAutenticado(authentication);
+    verify(meusAnunciosService, never()).usuarioAutenticadoParaAtualizacao(any());
+    verify(anuncioRepository, never()).findByIdForModeration(any());
+    verify(repository).findSessaoPorUsuario(usuarioId, "wizard-create-recovery");
+  }
+
+  @Test
+  void recuperacaoAnonimaNaoConsultaNenhumaSessao() {
+    doThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica obrigatoria"))
+        .when(meusAnunciosService).usuarioAutenticado(null);
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", null))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("401 UNAUTHORIZED");
+    verifyNoInteractions(repository, anuncioRepository);
+  }
+
+  @Test
+  void sessaoAusenteNoEscopoDoUsuarioRetorna404SemBuscarAnuncio() {
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", authentication))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404 NOT_FOUND");
+    verify(repository).findSessaoPorUsuario(usuarioId, "wizard-create-recovery");
+    verifyNoInteractions(anuncioRepository);
+  }
+
+  @Test
+  void sessaoCreateAindaSemVinculoRetorna404() {
+    when(repository.findSessaoPorUsuario(usuarioId, "wizard-create-recovery"))
+        .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow("CREATE", null)));
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", authentication))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("404 NOT_FOUND");
+    verifyNoInteractions(anuncioRepository);
+  }
+
+  @Test
+  void sessaoEditSemVinculoNaoSePassaPorCreateNaoConfirmado() {
+    when(repository.findSessaoPorUsuario(usuarioId, "wizard-create-recovery"))
+        .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow("EDIT", null)));
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", authentication))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409 CONFLICT");
+    verifyNoInteractions(anuncioRepository);
+  }
+
+  @Test
+  void recuperacaoNaoExpoeAnuncioDeOutroProprietarioMesmoComVinculoInconsistente() {
+    AnuncioEntity anuncio = anuncioDaSessao("CREATE", StatusAnuncio.PENDENTE_REVISAO);
+    when(anuncio.getUsuarioId()).thenReturn(UUID.randomUUID());
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", authentication))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403 FORBIDDEN");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"REMOVIDO", "BLOQUEADO"})
+  void recuperacaoDeVinculoEncerradoOuBloqueadoRetornaConflito(String status) {
+    anuncioDaSessao("CREATE", StatusAnuncio.valueOf(status));
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", authentication))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409 CONFLICT");
+  }
+
+  @Test
+  void vinculoComAnuncioAusenteEhConflitoNao404DeCriacaoNaoConfirmada() {
+    when(repository.findSessaoPorUsuario(usuarioId, "wizard-create-recovery"))
+        .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow("CREATE", UUID.randomUUID())));
+    assertThatThrownBy(() -> service.recuperarAnuncio("wizard-create-recovery", authentication))
+        .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409 CONFLICT");
+  }
+
+  private AnuncioEntity anuncioDaSessao(String mode, StatusAnuncio status) {
+    UUID anuncioId = UUID.randomUUID();
+    AnuncioEntity anuncio = mock(AnuncioEntity.class);
+    when(anuncio.getId()).thenReturn(anuncioId);
+    when(anuncio.getUsuarioId()).thenReturn(usuarioId);
+    when(anuncio.getSlug()).thenReturn("anuncio-sintetico-recuperado");
+    when(anuncio.getStatus()).thenReturn(status);
+    when(anuncio.getStatusModeracao()).thenReturn(StatusModeracaoAnuncio.PENDENTE);
+    when(repository.findSessaoPorUsuario(usuarioId, "wizard-create-recovery"))
+        .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow(mode, anuncioId)));
+    when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+    return anuncio;
   }
 
   @Test

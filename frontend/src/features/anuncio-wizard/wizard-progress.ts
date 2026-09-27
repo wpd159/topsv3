@@ -19,6 +19,52 @@ export type WizardProgressStatus =
   | 'REJEITADO'
 
 const SESSION_PREFIX = 'topsdojob:wizard-progress:v1'
+const CREATION_PREFIX = 'topsdojob:wizard-creation:v1'
+
+export type WizardCreationOperation = {
+  sessionId: string
+  phase: 'PENDING' | 'CONFIRMED'
+  anuncioId?: string
+  slugLocal?: string
+}
+
+function creationMetadata(value: unknown): WizardCreationOperation {
+  const item = value as Partial<WizardCreationOperation> | null
+  if (!item || typeof item.sessionId !== 'string'
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$/.test(item.sessionId)
+    || !['PENDING', 'CONFIRMED'].includes(item.phase ?? '')
+    || (item.phase === 'CONFIRMED' && (!item.anuncioId || !item.slugLocal
+      || typeof item.anuncioId !== 'string' || typeof item.slugLocal !== 'string'))) {
+    throw new Error('Não foi possível identificar a tentativa anterior. Abra Meus anúncios antes de continuar.')
+  }
+  // Only operation identity survives reload. Never persist form data or Files here.
+  return item.phase === 'CONFIRMED'
+    ? { sessionId: item.sessionId, phase: 'CONFIRMED', anuncioId: item.anuncioId, slugLocal: item.slugLocal }
+    : { sessionId: item.sessionId, phase: 'PENDING' }
+}
+
+export function loadWizardCreationOperation(scope: string): WizardCreationOperation | null {
+  const raw = window.sessionStorage.getItem(`${CREATION_PREFIX}:${encodeURIComponent(scope)}`)
+  return raw === null ? null : creationMetadata(JSON.parse(raw))
+}
+
+export function saveWizardCreationOperation(scope: string, operation: WizardCreationOperation) {
+  const key = `${CREATION_PREFIX}:${encodeURIComponent(scope)}`
+  const value = JSON.stringify(creationMetadata(operation))
+  try {
+    window.sessionStorage.setItem(key, value)
+    if (window.sessionStorage.getItem(key) !== value) throw new Error('metadata not retained')
+  } catch {
+    // Unlike best-effort progress, a durable operation key is required before CREATE.
+    throw new Error('Não foi possível guardar a identidade desta tentativa. Permita o armazenamento da sessão e verifique a retomada antes de continuar.')
+  }
+}
+
+export function clearWizardCreationOperation(scope: string) {
+  try { window.sessionStorage.removeItem(`${CREATION_PREFIX}:${encodeURIComponent(scope)}`) } catch {
+    // Keeping an old identity is safe: recovery must still consult the authenticated backend.
+  }
+}
 
 function randomSessionId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

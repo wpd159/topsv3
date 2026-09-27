@@ -52,6 +52,11 @@ function hooks(onRef) {
         values[slot].value = value
       }]
     },
+    useReducer(reducer, initial) {
+      const [value, setValue] = react.useState(initial)
+      const dispatch = react.useCallback((action) => setValue((current) => reducer(current, action)), [])
+      return [value, dispatch]
+    },
     useRef(initial) {
       const slot = index++
       if (!values[slot]) {
@@ -329,6 +334,10 @@ await assert.rejects(advertiserApi.enviarMinhasMidiasEmLote('local', [good, vide
 assert.equal(requests.at(-1).headers.get('idempotency-key'), retryBatchKey)
 await assert.rejects(advertiserApi.enviarMinhasMidiasEmLote('local', [replacement, video]))
 assert.notEqual(requests.at(-1).headers.get('idempotency-key'), retryBatchKey, 'Arquivo novo com mesmos metadados não herda chave do lote anterior.')
+await assert.rejects(advertiserApi.enviarMinhasMidiasEmLote('local', [good, video], undefined, 'account-a:create:novo'))
+const accountBatchKey = requests.at(-1).headers.get('idempotency-key')
+await assert.rejects(advertiserApi.enviarMinhasMidiasEmLote('local', [good, video], undefined, 'account-b:create:novo'))
+assert.notEqual(requests.at(-1).headers.get('idempotency-key'), accountBatchKey, 'Outra conta não herda a chave do mesmo File/lote.')
 nextResponse = { status: 200, body: mediaResponse }
 await advertiserApi.enviarMinhasMidiasEmLote('local', [good, video])
 assert.equal(requests.at(-1).body.getAll('arquivos').length, 2, 'Vídeo continua no lote original sem conversão.')
@@ -438,6 +447,8 @@ console.log('PHOTO_FILE_PICKER_BOUNDARIES_RESULT=OK selectionAndDrop=true kycUnc
 
 const wizardTypes = moduleFromSource('features/anuncio-wizard/types.ts')
 const wizardConstants = moduleFromSource('features/anuncio-wizard/wizard-constants.ts')
+const wizardCacheFunctions = moduleFromSource('features/anuncio-wizard/wizard-storage.ts', { './types': wizardTypes })
+const wizardProgressApi = moduleFromSource('features/anuncio-wizard/wizard-progress.ts', { '@/lib/api-contract': apiContract })
 const wizardRunner = hooks()
 const wizardCalls = { create: 0, upload: 0, kyc: 0, update: 0 }
 let wizardUploadFailure = null
@@ -493,6 +504,7 @@ const wizardImports = componentImports(wizardRunner, {
   },
   './wizard-constants': wizardConstants,
   './wizard-utils': { calculateAge: () => 36, formatWizardCategory: (value) => value },
+  './wizard-storage': wizardCacheFunctions,
   './use-anuncio-wizard-store': {
     useAnuncioWizardStore: () => wizardStore,
     // Unrelated profile/KYC form rules are pre-satisfied. Photo coordination and
@@ -501,6 +513,7 @@ const wizardImports = componentImports(wizardRunner, {
   },
   './types': wizardTypes,
   './wizard-progress': {
+    ...wizardProgressApi,
     clearWizardProgressSessionId() { wizardProgressClears++ },
     createWizardProgressSessionId: () => 'synthetic-session',
     syncWizardProgress: async (value) => { wizardProgress.push(value) },
@@ -512,7 +525,15 @@ for (const [file, name] of [
   ['wizard-step-localizacao', 'WizardStepLocalizacao'], ['wizard-step-perfil', 'WizardStepPerfil'],
   ['wizard-step-premium', 'WizardStepPremium'], ['wizard-step-servicos', 'WizardStepServicos'],
 ]) wizardImports[`./components/${file}`] = { [name]: name }
-globalThis.window = { requestAnimationFrame: (callback) => callback() }
+const wizardSessionStorage = new Map()
+globalThis.window = {
+  requestAnimationFrame: (callback) => callback(),
+  sessionStorage: {
+    getItem: (key) => wizardSessionStorage.get(key) ?? null,
+    setItem: (key, value) => wizardSessionStorage.set(key, String(value)),
+    removeItem: (key) => wizardSessionStorage.delete(key),
+  },
+}
 const { default: AnuncioWizard } = moduleFromSource('features/anuncio-wizard/anuncio-wizard.tsx', wizardImports)
 wizardRunner.mount(AnuncioWizard, {})
 await wizardRunner.settle()
@@ -699,6 +720,7 @@ const draftImports = {
   },
   './use-anuncio-wizard-store': { ...wizardImports['./use-anuncio-wizard-store'], useAnuncioWizardStore: () => draftStore },
   './wizard-progress': {
+    ...wizardProgressApi,
     createWizardProgressSessionId: () => 'synthetic-draft-session',
     clearWizardProgressSessionId() { draftProgressClears++ },
     syncWizardProgress: async (value) => { draftProgress.push(value) },
@@ -756,6 +778,358 @@ assert.equal(draftCacheClears, 1)
 assert.equal(draftProgressClears, 1)
 draftRunner.unmount()
 console.log('PHOTO_WIZARD_REOPENED_DRAFT_RESULT=OK dataOnlySaveNotModerated=true pendingFilesPreserved=true validPhotoReviewSuccess=true')
+
+// A committed batch may lose its response. Exercise the real XHR/key helper,
+// with authoritative capacity exhausted after the first request. On reload only
+// operation metadata survives: Files do not, and recovery must use exact identity.
+async function verifyWizardRecovery(reload, scenario = 'normal') {
+  let accountId = `recovery-account-${reload}-${scenario}`
+  const originalAccount = accountId
+  const createdAd = { anuncioId: '10000000-0000-4000-8000-000000000001', slugLocal: `recovery-${reload}-${scenario}` }
+  const files = [1, 2, 3, 4].map((index) => fixture(`recovery-${reload}-${index}.jpg`))
+  const calls = { create: [], upload: [], recover: [], navigation: [], navigationMethods: [], success: [], errors: [] }
+  const finishHandoff = scenario.startsWith('finish-')
+  const originalLocalStorage = window.localStorage
+  const cacheScope = { userId: originalAccount, mode: 'create' }
+  let finishSnapshot
+  let cacheDisabled = false
+  if (finishHandoff) {
+    const cacheValues = new Map()
+    window.localStorage = {
+      getItem: (key) => cacheValues.get(key) ?? null,
+      setItem: (key, value) => cacheValues.set(key, String(value)),
+      removeItem: (key) => {
+        if (scenario === 'finish-cache-denied') throw new Error('synthetic cache cleanup denied')
+        cacheValues.delete(key)
+      },
+    }
+    wizardCacheFunctions.saveWizardCache(cacheScope, { ...wizardTypes.initialWizardState,
+      form: { ...wizardTypes.initialWizardFormState, titulo: 'CREATE anterior ao refresh' } }, null)
+  }
+  let committed = false
+  let creationCommitted = false
+  let wrongUploadIdentity = scenario === 'upload-identity-mismatch'
+  let wrongPatchIdentity = scenario === 'patch-identity-mismatch'
+  let failStorage = scenario.startsWith('storage-')
+  let releaseCreate
+  const createResponse = new Promise((resolve) => { releaseCreate = resolve })
+  const storage = window.sessionStorage
+  window.sessionStorage = {
+    ...storage,
+    setItem(key, value) {
+      if (failStorage && key.startsWith('topsdojob:wizard-creation:')
+        && JSON.parse(value).phase === (scenario === 'storage-before' ? 'PENDING' : 'CONFIRMED')) {
+        throw new Error('synthetic storage denied')
+      }
+      storage.setItem(key, value)
+    },
+  }
+  const recoveryStore = {
+    ...wizardStore,
+    state: { form: { ...wizardTypes.initialWizardFormState, titulo: 'Metadados não são conteúdo', fotos: files, fotoNomes: files.map((file) => file.name) }, kyc: { ...wizardTypes.initialWizardKycState } },
+    currentIndex: 6,
+    setFotos(value) { recoveryStore.state.form = { ...recoveryStore.state.form, fotos: value } },
+    setVideos(value) { recoveryStore.state.form = { ...recoveryStore.state.form, videos: value } },
+    setStep(step) { recoveryStore.currentIndex = steps.findIndex((item) => item.id === step) },
+    reset() {}, clearCurrentCache() { cacheDisabled = true },
+  }
+  const response = () => ({ ...mediaResponse, fotosValidasAtivasTotal: committed ? 4 : 0,
+    midias: committed ? files.map((_file, index) => ({ id: `confirmed-photo-${index}`, tipo: 'FOTO' })) : [],
+    limites: { ...mediaResponse.limites, maxFotos: 4, fotosDisponiveis: committed ? 0 : 4 },
+    anuncio: { ...mediaResponse.anuncio, id: wrongUploadIdentity ? 'different-ad-id' : createdAd.anuncioId, slug: createdAd.slugLocal } })
+  function mount() {
+    const runner = hooks()
+    const imports = {
+      ...wizardImports,
+      react: runner.react,
+      '@/context/AuthContext': { useAuth: () => ({ usuario: { ...user, id: accountId }, carregando: false,
+        refresh: async () => {
+          if (finishHandoff) finishSnapshot = {
+            cache: wizardCacheFunctions.loadWizardCache(cacheScope),
+            operation: wizardProgressApi.loadWizardCreationOperation(`${originalAccount}:create:novo`),
+            cacheDisabled,
+          }
+        } }) },
+      'next/navigation': { useRouter: () => ({
+        push: (href) => { calls.navigation.push(href); calls.navigationMethods.push('push') },
+        replace: (href) => { calls.navigation.push(href); calls.navigationMethods.push('replace') },
+      }) },
+      sonner: { toast: { error: (message) => calls.errors.push(message), warning() {}, success: (message) => calls.success.push(message) } },
+      './use-anuncio-wizard-store': { ...wizardImports['./use-anuncio-wizard-store'], useAnuncioWizardStore: () => recoveryStore },
+      './wizard-progress': { ...wizardProgressApi, syncWizardProgress: async () => null },
+      './api': {
+        ...wizardImports['./api'],
+        submitWizardAnuncio: async (_form, sessionId) => {
+          calls.create.push(sessionId)
+          if (scenario === 'unconfirmed-create' && calls.create.length === 1) throw new Error('synthetic CREATE unavailable')
+          creationCommitted = true
+          if (scenario === 'account-race') return createResponse
+          if (scenario === 'lost-create-response' && calls.create.length === 1) throw new Error('synthetic CREATE response lost')
+          return createdAd
+        },
+        recoverWizardAnuncio: async (sessionId) => {
+          calls.recover.push(sessionId)
+          if (!creationCommitted) return null
+          if (reload && scenario === 'identity-mismatch') return { ...createdAd, anuncioId: 'another-id', slugLocal: 'another-ad' }
+          if (reload && scenario === 'missing-confirmation') return null
+          if (reload && scenario === 'recovery-refused') throw new Error('synthetic 409: vínculo indisponível')
+          return { ...createdAd, status: 'PENDENTE_REVISAO', statusModeracao: 'PENDENTE' }
+        },
+      },
+      '@/lib/meus-anuncios-api': {
+        ...advertiserApi,
+        atualizarMeuAnuncio: async () => ({ id: wrongPatchIdentity ? 'different-ad-id' : createdAd.anuncioId, slug: createdAd.slugLocal }),
+        consultarLimitesMinhasMidias: async () => response().limites,
+        enviarMinhasMidiasEmLote: async (...args) => {
+          calls.upload.push(args)
+          nextResponse = { status: committed ? 200 : 0, body: response() }
+          committed = true
+          return advertiserApi.enviarMinhasMidiasEmLote(...args)
+        },
+      },
+    }
+    runner.mount(moduleFromSource('features/anuncio-wizard/anuncio-wizard.tsx', imports).default, {})
+    return runner
+  }
+  let runner = mount()
+  await runner.settle()
+  button(runner.tree, 'Enviar para moderação').props.onClick()
+  await runner.settle()
+  if (scenario === 'account-race') {
+    assert.equal(calls.create.length, 1)
+    accountId = `${accountId}-changed`
+    runner.render()
+    await runner.settle()
+    releaseCreate(createdAd)
+    await runner.settle()
+    assert.equal(calls.upload.length, 0, 'CREATE antigo não pode iniciar upload depois de troca de conta.')
+    assert.deepEqual(calls.navigation, [])
+    assert.deepEqual(calls.success, [])
+    assert.equal(wizardProgressApi.loadWizardCreationOperation(`${accountId}:create:novo`), null)
+    assert.equal(wizardProgressApi.loadWizardCreationOperation(`${originalAccount}:create:novo`).anuncioId, createdAd.anuncioId)
+    runner.unmount()
+    window.sessionStorage = storage
+    return
+  }
+  if (scenario === 'storage-before') {
+    assert.equal(calls.create.length, 0, 'Falha ao guardar PENDING deve impedir o primeiro POST.')
+    assert.equal(calls.upload.length, 0)
+    assert.equal(calls.success.length, 0)
+    assert.equal(wizardProgressApi.loadWizardCreationOperation(`${accountId}:create:novo`), null)
+    runner.unmount()
+    window.sessionStorage = storage
+    return
+  }
+  if (scenario === 'storage-after' || scenario === 'unconfirmed-create' || scenario === 'patch-identity-mismatch') {
+    assert.equal(calls.create.length, 1)
+    assert.equal(calls.upload.length, 0)
+    assert.equal(wizardProgressApi.loadWizardCreationOperation(`${accountId}:create:novo`).phase,
+      scenario === 'patch-identity-mismatch' ? 'CONFIRMED' : 'PENDING')
+    assert.ok(calls.errors.every((message) => !message.includes('Nenhum novo anúncio')))
+    failStorage = false
+    wrongPatchIdentity = false
+    button(runner.tree, 'Enviar para moderação').props.onClick()
+    await runner.settle()
+  }
+  assert.equal(calls.create.length, scenario === 'unconfirmed-create' ? 2 : 1)
+  assert.equal(calls.upload.length, 1)
+  assert.equal(calls.success.length, 0)
+  assert.equal(calls.upload[0][3], `${accountId}:create:novo`, 'Idempotência de upload inclui o escopo da conta.')
+  assert.ok(calls.create[0] && calls.create.every((sessionId) => sessionId === calls.create[0]), 'Todo POST usa a mesma sessão durável.')
+  const operation = wizardProgressApi.loadWizardCreationOperation(`${accountId}:create:novo`)
+  assert.deepEqual(Object.keys(operation).sort(), ['anuncioId', 'phase', 'sessionId', 'slugLocal'])
+  assert.equal(operation.sessionId, calls.create[0])
+  assert.ok(!JSON.stringify(operation).includes(recoveryStore.state.form.titulo))
+  assert.ok(files.every((file) => !JSON.stringify(operation).includes(file.name)))
+  const batchKey = requests.at(-1).headers.get('idempotency-key')
+  if (reload) {
+    runner.unmount()
+    recoveryStore.state.form = { ...recoveryStore.state.form, fotos: [] }
+    runner = mount()
+    await runner.settle()
+    if (['identity-mismatch', 'missing-confirmation', 'recovery-refused'].includes(scenario)) {
+      assert.deepEqual(calls.navigation, [], 'Resposta de outra identidade não pode abrir editor nem criar anúncio.')
+      assert.ok(nodes(runner.tree).some((node) => node?.props?.role === 'alert'))
+    } else {
+      assert.deepEqual(calls.navigation, [`/meus-anuncios/${createdAd.slugLocal}/editar`],
+        'Reload deve recuperar a identidade confirmada e abrir o editor exato, sem depender de File/useRef.')
+      assert.deepEqual(calls.navigationMethods, ['replace'], 'Retomada não deixa o CREATE antigo no histórico de navegação.')
+    }
+    assert.equal(calls.create.length, 1, 'Reload não pode criar outro anúncio.')
+    assert.equal(calls.upload.length, 1, 'Reload não pode fabricar/repetir arquivos perdidos.')
+    assert.ok(calls.recover.every((sessionId) => sessionId === calls.create[0]))
+  } else {
+    recoveryStore.currentIndex = 6
+    runner.render()
+    await runner.settle()
+    button(runner.tree, 'Enviar para moderação').props.onClick()
+    await runner.settle()
+    assert.equal(calls.upload.length, 2, 'Zero vagas após commit não pode barrar replay do mesmo lote.')
+    assert.equal(requests.at(-1).headers.get('idempotency-key'), batchKey, 'Replay deve preservar a chave exata do lote.')
+    assert.equal(calls.create.length, scenario === 'unconfirmed-create' ? 2 : 1)
+    if (scenario === 'upload-identity-mismatch') {
+      assert.equal(calls.success.length, 0, 'Mesmo slug com outro id não confirma o upload.')
+      wrongUploadIdentity = false
+      recoveryStore.currentIndex = 6
+      runner.render()
+      await runner.settle()
+      button(runner.tree, 'Enviar para moderação').props.onClick()
+      await runner.settle()
+      assert.equal(calls.upload.length, 3)
+      assert.equal(requests.at(-1).headers.get('idempotency-key'), batchKey, 'Resposta inválida não descarta a chave idempotente.')
+    }
+    assert.equal(calls.success.length, 1)
+    if (finishHandoff) {
+      assert.ok(finishSnapshot, 'A prova deve alcançar o await refresh após o lote confirmado.')
+      assert.equal(finishSnapshot.cacheDisabled, true, 'Autosave deve ser desativado antes de esquecer a identidade da criação.')
+      if (scenario === 'finish-cache-denied') {
+        assert.ok(finishSnapshot.cache)
+        assert.equal(finishSnapshot.operation?.phase, 'CONFIRMED', 'Falha ao remover CREATE antigo deve manter a identidade durante refresh.')
+      } else {
+        assert.equal(finishSnapshot.cache, null, 'Antes de refresh, o CREATE antigo não pode sobreviver sem identidade.')
+        assert.equal(finishSnapshot.operation, null)
+      }
+    }
+  }
+  runner.unmount()
+  window.sessionStorage = storage
+  if (finishHandoff) window.localStorage = originalLocalStorage
+}
+async function verifyWizardEditorHandoff(storageFails = false) {
+  const wizardCacheApi = moduleFromSource('features/anuncio-wizard/wizard-storage.ts', { './types': wizardTypes })
+  const cacheValues = new Map()
+  window.localStorage = {
+    getItem: (key) => cacheValues.get(key) ?? null,
+    setItem: (key, value) => cacheValues.set(key, String(value)),
+    removeItem: (key) => {
+      if (storageFails) throw new Error('synthetic cache cleanup denied')
+      cacheValues.delete(key)
+    },
+  }
+  const owner = `handoff-account-${storageFails}`
+  const identity = { anuncioId: '10000000-0000-4000-8000-000000000088', slugLocal: 'handoff-exact' }
+  const cacheScope = { userId: owner, mode: 'create' }
+  wizardCacheApi.saveWizardCache(cacheScope, { ...wizardTypes.initialWizardState,
+    form: { ...wizardTypes.initialWizardFormState, titulo: 'Cache de CREATE anterior' } }, null)
+  wizardProgressApi.saveWizardCreationOperation(`${owner}:create:novo`, {
+    sessionId: 'handoff-session-001', phase: 'CONFIRMED', ...identity,
+  })
+  const runner = hooks()
+  const ad = { ...draftAd, id: identity.anuncioId, slug: identity.slugLocal }
+  const store = { ...draftStore, state: { form: { ...wizardTypes.initialWizardFormState }, kyc: { ...wizardTypes.initialWizardKycState } },
+    hydrateFromBackend(value) { store.state = value }, currentIndex: 0 }
+  const imports = {
+    ...draftImports,
+    react: runner.react,
+    './wizard-storage': wizardCacheApi,
+    '@/context/AuthContext': { useAuth: () => ({ usuario: { ...user, id: owner }, carregando: false, refresh: async () => {} }) },
+    './use-anuncio-wizard-store': { ...draftImports['./use-anuncio-wizard-store'], useAnuncioWizardStore: () => store },
+    '@/lib/meus-anuncios-api': { ...advertiserApi, buscarMeuAnuncio: async () => ad,
+      listarMinhasMidias: async () => ({ ...draftMedia, anuncio: ad }) },
+    './wizard-progress': { ...wizardProgressApi, syncWizardProgress: async () => null },
+  }
+  runner.mount(moduleFromSource('features/anuncio-wizard/anuncio-wizard.tsx', imports).default,
+    { mode: 'edit', slug: identity.slugLocal })
+  await runner.settle()
+  if (storageFails) {
+    assert.equal(wizardProgressApi.loadWizardCreationOperation(`${owner}:create:novo`).anuncioId, identity.anuncioId,
+      'Falha ao limpar cache antigo mantém a identidade da operação, impedindo CREATE acidental.')
+    assert.ok(wizardCacheApi.loadWizardCache(cacheScope))
+  } else {
+    assert.equal(wizardProgressApi.loadWizardCreationOperation(`${owner}:create:novo`), null)
+    assert.equal(wizardCacheApi.loadWizardCache(cacheScope), null,
+      'Handoff autenticado ao editor deve remover também o formulário antigo de CREATE, não só a identidade.')
+  }
+  runner.unmount()
+}
+async function verifyWizardAutosaveStopsBeforeRefresh() {
+  const previousWindow = window
+  const cacheValues = new Map()
+  const timers = new Map()
+  let timerId = 0
+  globalThis.window = { ...previousWindow,
+    localStorage: {
+      getItem: (key) => cacheValues.get(key) ?? null,
+      setItem: (key, value) => cacheValues.set(key, String(value)),
+      removeItem: (key) => cacheValues.delete(key),
+    },
+    setTimeout: (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id },
+    clearTimeout: (id) => timers.delete(id),
+  }
+  const runner = hooks()
+  const { useAnuncioWizardStore } = moduleFromSource('features/anuncio-wizard/use-anuncio-wizard-store.ts', {
+    react: runner.react,
+    '@/lib/cpf-mask': { isValidCpf: () => true },
+    './wizard-storage': wizardCacheFunctions,
+    './types': wizardTypes,
+  })
+  const cacheScope = { userId: 'autosave-refresh-account', mode: 'create' }
+  try {
+    runner.mount(() => useAnuncioWizardStore({ cacheScope }), {})
+    await runner.settle()
+    runner.tree.updateForm({ titulo: 'Formulário anterior à criação confirmada' })
+    await runner.settle()
+    assert.ok([...timers.values()].some((timer) => timer.delay === 500), 'A prova deve armar o debounce real do store.')
+    runner.tree.setFotos([])
+    runner.tree.setVideos([])
+    runner.tree.clearCurrentCache()
+    await runner.settle()
+    // Advance the controlled browser clock past the real 500 ms debounce while
+    // refresh remains pending; no old CREATE data may be written again.
+    for (const [id, timer] of timers) {
+      if (timer.delay <= 600) { timers.delete(id); timer.callback() }
+    }
+    await runner.settle()
+    assert.equal(wizardCacheFunctions.loadWizardCache(cacheScope), null)
+    assert.equal(timers.size, 0, 'Autosave deve continuar desligado durante refresh pendente.')
+  } finally {
+    runner.unmount()
+    globalThis.window = previousWindow
+  }
+}
+const recoveryFailures = []
+for (const [reload, scenario] of [[false, 'normal'], [true, 'normal'], [false, 'lost-create-response'],
+  [false, 'unconfirmed-create'], [false, 'storage-before'], [false, 'storage-after'],
+  [true, 'identity-mismatch'], [true, 'missing-confirmation'], [true, 'recovery-refused'],
+  [false, 'account-race'], [false, 'patch-identity-mismatch'], [false, 'upload-identity-mismatch'],
+  [false, 'finish-handoff'], [false, 'finish-cache-denied']]) {
+  try { await verifyWizardRecovery(reload, scenario) } catch (error) { recoveryFailures.push(error); console.error(`PHOTO_WIZARD_RECOVERY_FAILURE reload=${reload} scenario=${scenario}: ${error.message}`) }
+}
+for (const storageFails of [false, true]) {
+  try { await verifyWizardEditorHandoff(storageFails) } catch (error) { recoveryFailures.push(error); console.error(`PHOTO_WIZARD_HANDOFF_FAILURE: ${error.message}`) }
+}
+await verifyWizardAutosaveStopsBeforeRefresh()
+assert.equal(recoveryFailures.length, 0, 'Retomada deve preservar identidade da criação e do lote.')
+console.log('PHOTO_WIZARD_RECOVERY_RESULT=OK committedBatchLostResponse=true exactSessionReload=true noDuplicateCreate=true')
+
+const realWizardApi = moduleFromSource('features/anuncio-wizard/api.ts', {
+  '@/utils/image-upload': { UNSUPPORTED_IMAGE_MESSAGE: 'unsupported' },
+  '@/lib/cpf-mask': { isValidCpf: () => true },
+  '@/lib/date/birth-date': { birthDateToIso: (value) => value },
+  '@/lib/api-contract': apiContract,
+})
+const exactWizardSession = '10000000-0000-4000-8000-000000000099'
+const exactWizardAd = { anuncioId: '10000000-0000-4000-8000-000000000001', slugLocal: 'exact-recovery' }
+nextResponse = { status: 201, body: exactWizardAd }
+assert.deepEqual(await realWizardApi.submitWizardAnuncio(wizardTypes.initialWizardFormState, exactWizardSession), exactWizardAd)
+assert.equal(requests.at(-1).headers['X-Wizard-Session-Id'], exactWizardSession)
+assert.equal(requests.at(-1).credentials, 'include')
+nextResponse = { status: 200, body: { anuncioId: exactWizardAd.anuncioId, slug: exactWizardAd.slugLocal, status: 'RASCUNHO', statusModeracao: 'NAO_ENVIADO' } }
+assert.deepEqual(await realWizardApi.recoverWizardAnuncio(exactWizardSession), exactWizardAd)
+assert.ok(requests.at(-1).url.endsWith(`/wizard-progress/${exactWizardSession}/anuncio`))
+assert.equal(requests.at(-1).cache, 'no-store')
+assert.equal(requests.at(-1).credentials, 'include')
+nextResponse = { status: 404, body: {} }
+assert.equal(await realWizardApi.recoverWizardAnuncio(exactWizardSession), null)
+for (const status of [403, 409, 503]) {
+  nextResponse = { status, body: {} }
+  await assert.rejects(realWizardApi.recoverWizardAnuncio(exactWizardSession))
+}
+for (const body of [{ anuncioId: 'not-a-uuid', slug: 'exact-recovery' }, { anuncioId: exactWizardAd.anuncioId, slug: '' }]) {
+  nextResponse = { status: 200, body }
+  await assert.rejects(realWizardApi.recoverWizardAnuncio(exactWizardSession))
+}
+console.log('PHOTO_WIZARD_RECOVERY_CONTRACT_RESULT=OK sessionHeader=true noStoreExactGet=true invalidIdentityRefused=true')
 
 const editorRefs = []
 mediaResponse.anuncio.slug = 'synthetic'

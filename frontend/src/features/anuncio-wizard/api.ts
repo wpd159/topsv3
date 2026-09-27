@@ -188,7 +188,27 @@ function readCsrfValue() {
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
 }
 
-export async function submitWizardAnuncio(state: WizardFormState) {
+type WizardCreatedAnuncio = { anuncioId: string; slugLocal: string }
+
+function createdIdentity(value: unknown): WizardCreatedAnuncio {
+  const item = value as Partial<WizardCreatedAnuncio> | null
+  if (!item || typeof item.anuncioId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item.anuncioId)
+    || typeof item.slugLocal !== 'string' || !item.slugLocal.trim()) {
+    throw new Error('A criação ainda não foi confirmada. Verifique a tentativa antes de continuar.')
+  }
+  return { anuncioId: item.anuncioId, slugLocal: item.slugLocal }
+}
+
+export async function recoverWizardAnuncio(sessionId: string): Promise<WizardCreatedAnuncio | null> {
+  const res = await fetch(publicApiUrl(`/wizard-progress/${encodeURIComponent(sessionId)}/anuncio`), {
+    credentials: 'include', cache: 'no-store',
+  })
+  if (res.status === 404) return null
+  const recovered = await readResponse<{ anuncioId: string; slug: string }>(res, 'retomar_anuncio')
+  return createdIdentity({ anuncioId: recovered?.anuncioId, slugLocal: recovered?.slug })
+}
+
+export async function submitWizardAnuncio(state: WizardFormState, sessionId?: string) {
   const csrf = readCsrfValue()
   const descricao = state.descricao.trim() || state.descricaoPerfil.trim()
   const res = await fetch(publicApiUrl('/anunciar'), {
@@ -196,6 +216,7 @@ export async function submitWizardAnuncio(state: WizardFormState) {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(sessionId ? { 'X-Wizard-Session-Id': sessionId } : {}),
       ...(csrf ? { [csrfHeaderName()]: csrf } : {}),
     },
     body: JSON.stringify({
@@ -214,7 +235,7 @@ export async function submitWizardAnuncio(state: WizardFormState) {
       confirmacaoIdade: true,
     }),
   })
-  return readResponse<{ anuncioId: string; slugLocal: string }>(res, 'publicar_anuncio')
+  return createdIdentity(await readResponse<unknown>(res, 'publicar_anuncio'))
 }
 
 export async function fetchWizardCategories(): Promise<WizardCategoryOption[]> {

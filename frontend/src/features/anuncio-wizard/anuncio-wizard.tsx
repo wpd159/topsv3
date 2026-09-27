@@ -19,7 +19,6 @@ import {
 import {
   atualizarMeuAnuncio,
   buscarMeuAnuncio,
-  consultarLimitesMinhasMidias,
   enviarMinhasMidiasEmLote,
   listarMinhasMidias,
   meusAnunciosErrorMessage,
@@ -35,6 +34,7 @@ import {
   fetchWizardKycStatus,
   submitWizardKyc,
   submitWizardAnuncio,
+  recoverWizardAnuncio,
   type WizardCategoryOption,
   type WizardKycStatus,
 } from './api'
@@ -43,6 +43,7 @@ import {
   type SearchableSelectOption,
 } from './wizard-constants'
 import { calculateAge, formatWizardCategory } from './wizard-utils'
+import { clearWizardCache } from './wizard-storage'
 import {
   useAnuncioWizardStore,
   validateWizardKycState,
@@ -65,8 +66,12 @@ import { WizardStepPremium } from './components/wizard-step-premium'
 import { WizardStepServicos } from './components/wizard-step-servicos'
 import {
   clearWizardProgressSessionId,
+  clearWizardCreationOperation,
   createWizardProgressSessionId,
+  loadWizardCreationOperation,
+  saveWizardCreationOperation,
   syncWizardProgress,
+  type WizardCreationOperation,
   type WizardProgressStatus,
   type WizardProgressStep,
 } from './wizard-progress'
@@ -167,6 +172,8 @@ function uploadFileKey(file: File) {
 
 export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardProps) {
   const router = useRouter()
+  const routerRef = useRef(router)
+  routerRef.current = router
   const { usuario, carregando, refresh } = useAuth()
   const isEdit = mode === 'edit'
   const localidades = useLocalidades()
@@ -265,6 +272,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const createdSlugRef = useRef<string | null>(null)
   const createdAnuncioIdRef = useRef<string | null>(null)
   const createdDetailsSyncedRef = useRef(false)
+  const creationOperationRef = useRef<WizardCreationOperation | null>(null)
+  const [creationRecovery, setCreationRecovery] = useState<'LOADING' | 'READY' | 'REDIRECTING' | 'ERROR'>(isEdit ? 'READY' : 'LOADING')
+  const [creationRecoveryError, setCreationRecoveryError] = useState('')
+  const [creationRecoveryAttempt, setCreationRecoveryAttempt] = useState(0)
   const kycLoadedUserRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -275,6 +286,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     mediaPreviewRefreshRef.current = null
     previousAnuncioRef.current = null
     mediaBusyRef.current = false
+    createdSlugRef.current = null
+    createdAnuncioIdRef.current = null
+    createdDetailsSyncedRef.current = false
+    creationOperationRef.current = null
+    wizardSessionIdRef.current = null
+    lastSyncedStepRef.current = null
     setMediaBusy(false)
     flowGenerationRef.current += 1
     return () => {
@@ -283,6 +300,43 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       editLoadGenerationRef.current += 1
     }
   }, [progressScope])
+
+  useEffect(() => {
+    if (isEdit || carregando || !cacheUserId) return
+    let current = true
+    setCreationRecovery('LOADING')
+    setCreationRecoveryError('')
+    void (async () => {
+      const operation = loadWizardCreationOperation(progressScope)
+      creationOperationRef.current = operation
+      if (!operation) {
+        setCreationRecovery('READY')
+        return
+      }
+      wizardSessionIdRef.current = operation.sessionId
+      const recovered = await recoverWizardAnuncio(operation.sessionId)
+      if (!current || !mountedRef.current || progressScopeRef.current !== progressScope) return
+      if (!recovered) {
+        if (operation.phase === 'CONFIRMED') throw new Error('A identidade anterior não foi confirmada. Verifique Meus anúncios antes de continuar.')
+        // No confirmation yet. An explicit retry still uses the same durable key.
+        setCreationRecovery('READY')
+        return
+      }
+      if (operation.phase === 'CONFIRMED'
+        && (operation.anuncioId !== recovered.anuncioId || operation.slugLocal !== recovered.slugLocal)) {
+        throw new Error('A resposta não corresponde ao anúncio desta tentativa.')
+      }
+      saveWizardCreationOperation(progressScope, { ...operation, ...recovered, phase: 'CONFIRMED' })
+      setCreationRecovery('REDIRECTING')
+      toast.warning('Retomando seu anúncio. Se faltarem fotos, selecione os arquivos novamente no editor.')
+      routerRef.current.replace(`/meus-anuncios/${encodeURIComponent(recovered.slugLocal)}/editar`)
+    })().catch((error) => {
+      if (!current || !mountedRef.current || progressScopeRef.current !== progressScope) return
+      setCreationRecoveryError(error?.message || 'Não foi possível verificar a tentativa anterior. Tente novamente.')
+      setCreationRecovery('ERROR')
+    })
+    return () => { current = false }
+  }, [cacheUserId, carregando, creationRecoveryAttempt, isEdit, progressScope])
 
   const closeWizard = useCallback((anuncio: MeuAnuncioCicloVida) => {
     if (!mountedRef.current || terminalAnuncioRef.current || progressScopeRef.current !== progressScope) return
@@ -319,10 +373,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (!mountedRef.current || terminalAnuncioRef.current || progressScopeRef.current !== progressScope) return
     const targetSlug = slug ?? createdSlugRef.current
     if (response.anuncio.slug !== targetSlug) throw new Error('A resposta não corresponde ao anúncio em edição.')
+    const targetId = isEdit ? previousAnuncioRef.current?.id : createdAnuncioIdRef.current
+    if (targetId && response.anuncio.id !== targetId) throw new Error('A resposta não corresponde à identidade do anúncio em edição.')
     setEditMedia(response)
     setEditAnuncio((current) => current ? { ...current, ...response.anuncio } : current)
     if (response.anuncio.status === 'REMOVIDO') closeWizard(response.anuncio)
-  }, [closeWizard, progressScope, slug])
+  }, [closeWizard, isEdit, progressScope, slug])
 
   const refreshMediaPreview = useCallback(() => {
     if (mediaPreviewRefreshRef.current) return mediaPreviewRefreshRef.current
@@ -458,6 +514,16 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       .then(([anuncio, media]) => {
         if (!mountedRef.current || generation !== editLoadGenerationRef.current || terminalAnuncioRef.current) return
         if (anuncio.id !== media.anuncio.id || anuncio.slug !== media.anuncio.slug) throw new Error('As respostas não correspondem ao mesmo anúncio.')
+        try {
+          const createScope = `${cacheUserId}:create:novo`
+          const operation = loadWizardCreationOperation(createScope)
+          if (operation?.phase === 'CONFIRMED' && operation.anuncioId === anuncio.id && operation.slugLocal === anuncio.slug) {
+            if (clearWizardCache({ userId: cacheUserId, mode: 'create' })) {
+              clearWizardCreationOperation(createScope)
+              clearWizardProgressSessionId(createScope)
+            }
+          }
+        } catch { /* Recovery metadata must not prevent editing an authenticated, exact ad. */ }
         previousAnuncioRef.current = anuncio
         setEditAnuncio(anuncio)
         acceptMediaResponse(media)
@@ -785,30 +851,52 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     router.push(`/meus-anuncios/${encodeURIComponent(atualizado.slug)}`)
   }
 
-  const submitAnuncio = async () => {
+  const submitAnuncio = async (generation: number) => {
+    const current = () => flowIsCurrent(generation) && progressScopeRef.current === progressScope
     if (!usuario?.id) {
       toast.error('Faça login para publicar.')
       return
     }
 
     if (!createdSlugRef.current) {
-      const created = await submitWizardAnuncio(state)
+      let operation = creationOperationRef.current
+      const repeated = Boolean(operation)
+      if (!operation) {
+        operation = { sessionId: wizardSessionIdRef.current ?? createWizardProgressSessionId(progressScope), phase: 'PENDING' }
+        saveWizardCreationOperation(progressScope, operation)
+        creationOperationRef.current = operation
+      }
+      wizardSessionIdRef.current = operation.sessionId
+      let created = repeated ? await recoverWizardAnuncio(operation.sessionId) : null
+      if (!current()) return
+      if (!created) {
+        try {
+          created = await submitWizardAnuncio(state, operation.sessionId)
+        } catch (error) {
+          if (!current()) return
+          created = await recoverWizardAnuncio(operation.sessionId)
+          if (!created) throw error
+        }
+      }
+      // Save the original scope even if its view unmounted while CREATE completed.
+      saveWizardCreationOperation(progressScope, { ...operation, ...created, phase: 'CONFIRMED' })
+      if (!current()) return
+      creationOperationRef.current = { ...operation, ...created, phase: 'CONFIRMED' }
       createdSlugRef.current = created.slugLocal
       createdAnuncioIdRef.current = created.anuncioId
     }
     const targetSlug = createdSlugRef.current
     if (!targetSlug) throw new Error('Não foi possível identificar o anúncio criado.')
     if (!createdDetailsSyncedRef.current) {
-      await atualizarMeuAnuncio(targetSlug, editPayload(state))
+      const updated = await atualizarMeuAnuncio(targetSlug, editPayload(state))
+      if (!current()) return
+      if (updated.id !== createdAnuncioIdRef.current || updated.slug !== targetSlug) {
+        throw new Error('A resposta não corresponde à identidade do anúncio criado.')
+      }
       createdDetailsSyncedRef.current = true
     }
-    const limites = await consultarLimitesMinhasMidias(targetSlug)
-    if (state.fotos.length > limites.fotosDisponiveis) {
-      throw new Error(`Seu limite atual permite mais ${limites.fotosDisponiveis} foto(s). Remova o excedente para continuar.`)
-    }
-    if (state.videos.length > limites.videosDisponiveis) {
-      throw new Error('Este anúncio já atingiu o limite de vídeos.')
-    }
+    // The backend checks idempotent replay before capacity. A committed batch
+    // with a lost response can legitimately have zero remaining slots.
     setCreateMediaErrors({})
     const arquivos = [...state.fotos, ...state.videos]
     const abrirMonetizacao = state.premiumChoice === 'destaque'
@@ -819,16 +907,19 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (arquivos.length) {
       try {
         const media = await enviarMinhasMidiasEmLote(targetSlug, arquivos, (value) => {
+          if (!current()) return
           setCreateMediaProgress(Object.fromEntries(
             arquivos.map((file) => [uploadFileKey(file), value])
           ))
-        })
+        }, progressScope, createdAnuncioIdRef.current ?? undefined)
+        if (!current()) return
         acceptMediaResponse(media)
         if (terminalAnuncioRef.current || !mountedRef.current) return
         if (media.anuncio.status === 'RASCUNHO') {
           throw new Error('O envio ainda não confirmou uma foto válida. Revise as fotos antes de continuar.')
         }
       } catch (error) {
+        if (!current()) return
         if (error instanceof MeusAnunciosApiError && error.unsupportedPhotoUpload) {
           // A photo-only 415 does not identify the offending part of the batch.
           // Keep its File identities blocked until removed or replaced.
@@ -846,13 +937,23 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     }
     setFotos([])
     setVideos([])
+    clearCurrentCache()
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', createdAnuncioIdRef.current)
-    clearWizardProgressSessionId(progressScope)
+    if (!current()) return
+    // Forget the confirmed identity only after the old CREATE form is gone.
+    // If storage refuses cleanup, a reload must still recover this exact ad.
+    if (clearWizardCache({ userId: String(usuario.id), mode: 'create' })) {
+      clearWizardCreationOperation(progressScope)
+      clearWizardProgressSessionId(progressScope)
+    }
     await refresh().catch(() => null)
+    if (!current()) return
     reset()
     createdSlugRef.current = null
     createdAnuncioIdRef.current = null
     createdDetailsSyncedRef.current = false
+    creationOperationRef.current = null
+    wizardSessionIdRef.current = null
     setCreateMediaProgress({})
     setCreateMediaErrors({})
     toast.success('Anúncio enviado para moderação.')
@@ -920,7 +1021,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       await ensureKycReady()
       if (!flowIsCurrent(generation)) return
       if (isEdit) await submitEdit(generation)
-      else await submitAnuncio()
+      else await submitAnuncio(generation)
     } catch (err: any) {
       if (!flowIsCurrent(generation)) return
       const validation = isEdit ? editValidationError(err) : null
@@ -943,6 +1044,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }
 
   const requestPublish = () => {
+    if (!isEdit && creationRecovery !== 'READY') return
     if (publishing || publishLockRef.current || mediaBusyRef.current || terminalAnuncioRef.current || (isEdit && !editMedia)) return
     if (isEdit && editPendingMedia.length) {
       setPendingSaveNotice(true)
@@ -1136,6 +1238,20 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       <div className="mx-auto max-w-5xl px-4 py-20 text-sm text-zinc-500">
         Preparando seu anúncio...
       </div>
+    )
+  }
+
+  if (!isEdit && creationRecovery !== 'READY' && usuario) {
+    return (
+      <main className="mx-auto max-w-3xl space-y-4 px-4 py-20">
+        <p role={creationRecovery === 'ERROR' ? 'alert' : 'status'}>
+          {creationRecovery === 'ERROR' ? creationRecoveryError : 'Verificando a retomada do seu anúncio...'}
+        </p>
+        {creationRecovery === 'ERROR' ? (
+          <Button type="button" onClick={() => setCreationRecoveryAttempt((value) => value + 1)}>Verificar retomada</Button>
+        ) : null}
+        <Button type="button" variant="outline" onClick={() => router.push('/meus-anuncios')}>Voltar para Meus anúncios</Button>
+      </main>
     )
   }
 

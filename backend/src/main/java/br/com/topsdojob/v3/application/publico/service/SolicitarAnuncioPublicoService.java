@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioPublicoRespon
 import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioValidationErrorDto;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
+import br.com.topsdojob.v3.application.wizard.WizardCreationSessionPolicy;
 import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
@@ -22,6 +23,7 @@ import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.wizard.WizardProgressJdbcRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
@@ -109,6 +111,7 @@ public class SolicitarAnuncioPublicoService {
     private final BairroRepository bairroRepository;
     private final ObjectMapper objectMapper;
     private final AnuncioMidiaRepository midiaRepository;
+    private final WizardProgressJdbcRepository wizardRepository;
 
     public SolicitarAnuncioPublicoService(
             MeusAnunciosConsultaService usuarioService,
@@ -121,7 +124,8 @@ public class SolicitarAnuncioPublicoService {
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             ObjectMapper objectMapper,
-            AnuncioMidiaRepository midiaRepository) {
+            AnuncioMidiaRepository midiaRepository,
+            WizardProgressJdbcRepository wizardRepository) {
         this.usuarioService = usuarioService;
         this.kycService = kycService;
         this.anuncioRepository = anuncioRepository;
@@ -133,11 +137,32 @@ public class SolicitarAnuncioPublicoService {
         this.bairroRepository = bairroRepository;
         this.objectMapper = objectMapper;
         this.midiaRepository = midiaRepository;
+        this.wizardRepository = wizardRepository;
     }
 
     @Transactional
     public SolicitarAnuncioPublicoResponseDto solicitar(JsonNode payload, Authentication authentication) {
+        return solicitar(payload, authentication, null);
+    }
+
+    @Transactional
+    public SolicitarAnuncioPublicoResponseDto solicitar(
+            JsonNode payload, Authentication authentication, String sessionId) {
         UsuarioEntity usuario = usuarioService.usuarioAutenticadoParaAtualizacao(authentication);
+        String sessaoId = sessionId == null ? null : WizardCreationSessionPolicy.sessionId(sessionId);
+        if (sessaoId != null) {
+            var sessao = wizardRepository.findSessaoPorUsuario(usuario.getId(), sessaoId).orElse(null);
+            if (sessao != null) {
+                WizardCreationSessionPolicy.exigirCreate(sessao.modo());
+                if (sessao.anuncioId() != null) {
+                    AnuncioEntity existente = anuncioRepository.findByIdForModeration(sessao.anuncioId())
+                            .orElseThrow(() -> new ResponseStatusException(
+                                    HttpStatus.CONFLICT, "vinculo da sessao invalido"));
+                    WizardCreationSessionPolicy.anuncioRecuperavel(existente, usuario.getId());
+                    return resposta(existente, false);
+                }
+            }
+        }
         kycService.garantirProntoParaAnuncio(usuario.getId());
         ValidatedRequest validated = validar(payload, usuario.getTelefoneNormalizado());
         OffsetDateTime now = OffsetDateTime.now();
@@ -176,11 +201,22 @@ public class SolicitarAnuncioPublicoService {
                 validated.preco(),
                 now));
 
+        if (sessaoId != null) {
+            // JDBC shares this transaction; materialize the new FK before binding the session.
+            anuncioRepository.flush();
+            var row = wizardRepository.sincronizar(UUID.randomUUID(), sessaoId, usuario.getId(), anuncioId,
+                    "CREATE", "FOTOS", 3, "EM_PREENCHIMENTO", now);
+            WizardCreationSessionPolicy.exigirCreate(row.modo());
+        }
+        return resposta(anuncio, true);
+    }
+
+    private SolicitarAnuncioPublicoResponseDto resposta(AnuncioEntity anuncio, boolean criado) {
         return new SolicitarAnuncioPublicoResponseDto(
-                true,
-                anuncioId,
+                criado,
+                anuncio.getId(),
                 null,
-                slug,
+                anuncio.getSlug(),
                 anuncio.getStatus().name(),
                 anuncio.getStatusModeracao().name(),
                 false,
@@ -192,7 +228,8 @@ public class SolicitarAnuncioPublicoService {
                 false,
                 false,
                 false,
-                "rascunho criado; envie ao menos uma foto para encaminhar a revisao");
+                criado ? "rascunho criado; envie ao menos uma foto para encaminhar a revisao"
+                        : "anuncio da sessao recuperado; nenhuma nova criacao executada");
     }
 
     /** Chamado pelo upload confirmado, na mesma transacao e sob o lock do proprietario/anuncio. */
