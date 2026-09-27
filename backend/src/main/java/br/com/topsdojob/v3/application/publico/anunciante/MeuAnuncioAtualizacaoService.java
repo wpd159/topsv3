@@ -159,6 +159,10 @@ public class MeuAnuncioAtualizacaoService {
         }
         documentoBuscaRepository.save(documento);
 
+        if (anuncio.criacaoNaoEnviada()) {
+            return consultaService.detalhar(anuncio.getSlug(), authentication);
+        }
+
         String payload = payloadRevisao(validado, estado, cidade, bairro);
         RevisaoAnuncioEntity revisaoAberta = revisaoRepository
                 .findFirstByAnuncioIdAndStatusOrderByCriadoEmDesc(

@@ -157,6 +157,21 @@ class MeuAnuncioAtualizacaoServiceTest {
     }
 
     @Test
+    void edicaoInicialPreservaRascunhoSemCriarRevisao() {
+        AnuncioEntity anuncio = AnuncioEntity.criarFixtureHomologacao(
+                ANUNCIO_ID, USUARIO_ID, "slug-preservado", "Titulo inicial", "Descricao inicial valida",
+                StatusAnuncio.RASCUNHO, StatusModeracaoAnuncio.NAO_ENVIADO, PUBLICADO_EM);
+        prepararLocalidadeSemBairro(anuncio);
+
+        service.atualizar("slug-preservado", requestSemBairro(), authentication);
+
+        assertThat(anuncio.getTitulo()).isEqualTo("Novo titulo publico");
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.RASCUNHO);
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.NAO_ENVIADO);
+        verify(revisaoRepository, never()).save(any());
+    }
+
+    @Test
     void payloadInvalidoRetorna400SemPersistir() {
         when(consultaService.anuncioDoUsuarioParaAtualizacao("slug-preservado", authentication)).thenReturn(anuncio());
         MeuAnuncioAtualizacaoRequestDto invalido = new MeuAnuncioAtualizacaoRequestDto(

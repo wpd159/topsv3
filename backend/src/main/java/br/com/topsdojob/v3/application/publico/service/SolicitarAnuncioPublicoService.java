@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioPublicoRespon
 import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioValidationErrorDto;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
+import br.com.topsdojob.v3.application.wizard.WizardCreationSessionPolicy;
 import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
@@ -16,13 +17,16 @@ import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.wizard.WizardProgressJdbcRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -44,6 +48,9 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.core.Authentication;
 
 @Service
@@ -103,6 +110,8 @@ public class SolicitarAnuncioPublicoService {
     private final CidadeRepository cidadeRepository;
     private final BairroRepository bairroRepository;
     private final ObjectMapper objectMapper;
+    private final AnuncioMidiaRepository midiaRepository;
+    private final WizardProgressJdbcRepository wizardRepository;
 
     public SolicitarAnuncioPublicoService(
             MeusAnunciosConsultaService usuarioService,
@@ -114,7 +123,9 @@ public class SolicitarAnuncioPublicoService {
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AnuncioMidiaRepository midiaRepository,
+            WizardProgressJdbcRepository wizardRepository) {
         this.usuarioService = usuarioService;
         this.kycService = kycService;
         this.anuncioRepository = anuncioRepository;
@@ -125,11 +136,33 @@ public class SolicitarAnuncioPublicoService {
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
         this.objectMapper = objectMapper;
+        this.midiaRepository = midiaRepository;
+        this.wizardRepository = wizardRepository;
     }
 
     @Transactional
     public SolicitarAnuncioPublicoResponseDto solicitar(JsonNode payload, Authentication authentication) {
+        return solicitar(payload, authentication, null);
+    }
+
+    @Transactional
+    public SolicitarAnuncioPublicoResponseDto solicitar(
+            JsonNode payload, Authentication authentication, String sessionId) {
         UsuarioEntity usuario = usuarioService.usuarioAutenticadoParaAtualizacao(authentication);
+        String sessaoId = sessionId == null ? null : WizardCreationSessionPolicy.sessionId(sessionId);
+        if (sessaoId != null) {
+            var sessao = wizardRepository.findSessaoPorUsuario(usuario.getId(), sessaoId).orElse(null);
+            if (sessao != null) {
+                WizardCreationSessionPolicy.exigirCreate(sessao.modo());
+                if (sessao.anuncioId() != null) {
+                    AnuncioEntity existente = anuncioRepository.findByIdForModeration(sessao.anuncioId())
+                            .orElseThrow(() -> new ResponseStatusException(
+                                    HttpStatus.CONFLICT, "vinculo da sessao invalido"));
+                    WizardCreationSessionPolicy.anuncioRecuperavel(existente, usuario.getId());
+                    return resposta(existente, false);
+                }
+            }
+        }
         kycService.garantirProntoParaAnuncio(usuario.getId());
         ValidatedRequest validated = validar(payload, usuario.getTelefoneNormalizado());
         OffsetDateTime now = OffsetDateTime.now();
@@ -149,6 +182,7 @@ public class SolicitarAnuncioPublicoService {
                 validated.atendimentoExclusivamenteVirtual(),
                 validated.linkConteudo(),
                 now);
+        anuncio.aplicarModeracao(StatusAnuncio.RASCUNHO, StatusModeracaoAnuncio.NAO_ENVIADO, now);
         anuncioRepository.save(anuncio);
         localizacaoRepository.save(AnuncioLocalizacaoEntity.criarSolicitacaoLocal(
                 anuncioId,
@@ -167,24 +201,24 @@ public class SolicitarAnuncioPublicoService {
                 validated.preco(),
                 now));
 
-        UUID revisaoId = UUID.randomUUID();
-        revisaoRepository.save(RevisaoAnuncioEntity.abrir(
-                revisaoId,
-                anuncioId,
-                TipoRevisaoAnuncio.CRIACAO,
-                payloadSolicitado(validated),
-                usuario.getId(),
-                now));
+        if (sessaoId != null) {
+            // JDBC shares this transaction; materialize the new FK before binding the session.
+            anuncioRepository.flush();
+            var row = wizardRepository.sincronizar(UUID.randomUUID(), sessaoId, usuario.getId(), anuncioId,
+                    "CREATE", "FOTOS", 3, "EM_PREENCHIMENTO", now);
+            WizardCreationSessionPolicy.exigirCreate(row.modo());
+        }
+        return resposta(anuncio, true);
+    }
 
+    private SolicitarAnuncioPublicoResponseDto resposta(AnuncioEntity anuncio, boolean criado) {
         return new SolicitarAnuncioPublicoResponseDto(
-                true,
-                anuncioId,
-                revisaoId,
-                slug,
-                StatusAnuncio.PENDENTE_REVISAO.name(),
-                StatusModeracaoAnuncio.PENDENTE.name(),
-                false,
-                true,
+                criado,
+                anuncio.getId(),
+                null,
+                anuncio.getSlug(),
+                anuncio.getStatus().name(),
+                anuncio.getStatusModeracao().name(),
                 false,
                 false,
                 false,
@@ -192,7 +226,34 @@ public class SolicitarAnuncioPublicoService {
                 false,
                 false,
                 false,
-                "solicitacao local criada para revisao");
+                false,
+                false,
+                criado ? "rascunho criado; envie ao menos uma foto para encaminhar a revisao"
+                        : "anuncio da sessao recuperado; nenhuma nova criacao executada");
+    }
+
+    /** Chamado pelo upload confirmado, na mesma transacao e sob o lock do proprietario/anuncio. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void concluirCriacaoAposUpload(AnuncioEntity anuncio) {
+        if (!anuncio.criacaoNaoEnviada()) return;
+        midiaRepository.flush();
+        if (midiaRepository.findFotosValidasAtivasIds(anuncio.getId()).isEmpty()) return;
+        if (revisaoRepository.existsByAnuncioIdAndStatusIn(
+                anuncio.getId(), List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "criacao ja possui revisao aberta");
+        }
+        AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncio.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "localizacao da criacao ausente"));
+        EstadoEntity estado = estadoRepository.findById(localizacao.getEstadoId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "estado da criacao ausente"));
+        CidadeEntity cidade = cidadeRepository.findById(localizacao.getCidadeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "cidade da criacao ausente"));
+        OffsetDateTime agora = OffsetDateTime.now();
+        revisaoRepository.save(RevisaoAnuncioEntity.abrir(
+                UUID.randomUUID(), anuncio.getId(), TipoRevisaoAnuncio.CRIACAO,
+                payloadSolicitado(anuncio, localizacao, estado, cidade), anuncio.getUsuarioId(), agora));
+        anuncio.remeterParaRevisao(agora);
+        anuncioRepository.saveAndFlush(anuncio);
     }
 
     ValidatedRequest validar(JsonNode payload, String telefoneDaConta) {
@@ -336,21 +397,22 @@ public class SolicitarAnuncioPublicoService {
         return base + "-solicitacao-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }
 
-    private String payloadSolicitado(ValidatedRequest request) {
+    private String payloadSolicitado(
+            AnuncioEntity anuncio, AnuncioLocalizacaoEntity localizacao, EstadoEntity estado, CidadeEntity cidade) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("origem", "ANUNCIE_GRATIS_LOCAL");
-        payload.put("titulo", request.titulo());
-        payload.put("uf", request.uf());
-        payload.put("cidade", request.cidade());
-        payload.put("bairroInformado", request.bairro() != null);
-        payload.put("enderecoResumidoInformado", request.enderecoResumido() != null);
-        payload.put("statusInicial", StatusAnuncio.PENDENTE_REVISAO.name());
-        payload.put("statusModeracaoInicial", StatusModeracaoAnuncio.PENDENTE.name());
-        payload.put("categoria", request.categoria());
-        payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
-        payload.put("atendimentoExclusivamenteVirtual", request.atendimentoExclusivamenteVirtual());
-        payload.put("linkConteudoInformado", request.linkConteudo() != null);
-        payload.put("uploadRealExecutado", false);
+        payload.put("titulo", anuncio.getTitulo());
+        payload.put("uf", estado.getUf());
+        payload.put("cidade", cidade.getNome());
+        payload.put("bairroInformado", localizacao.getBairroId() != null);
+        payload.put("enderecoResumidoInformado", localizacao.getEnderecoResumido() != null);
+        payload.put("statusInicial", anuncio.getStatus().name());
+        payload.put("statusModeracaoInicial", anuncio.getStatusModeracao().name());
+        payload.put("categoria", anuncio.getCategoria());
+        payload.put("servicos", anuncio.getServicos().stream().map(Enum::name).sorted().toList());
+        payload.put("atendimentoExclusivamenteVirtual", anuncio.isAtendimentoExclusivamenteVirtual());
+        payload.put("linkConteudoInformado", anuncio.getLinkConteudo() != null);
+        payload.put("uploadRealExecutado", true);
         payload.put("pagamentoCriado", false);
         payload.put("creditoCriado", false);
         payload.put("premiumObrigatorio", false);

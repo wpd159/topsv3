@@ -415,6 +415,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
     UUID ad = UUID.randomUUID();
     UUID benefit = UUID.randomUUID();
     UUID activation = UUID.randomUUID();
+    UUID group = UUID.randomUUID();
     UUID story = UUID.randomUUID();
     UUID firstMedia = UUID.randomUUID();
     UUID secondMedia = UUID.randomUUID();
@@ -438,13 +439,18 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
         """, ad, user, "story-" + ad, start, start);
     jdbc.update("""
         INSERT INTO beneficio_premium(id,codigo,nome,descricao,escopo,criado_em,atualizado_em)
-        VALUES (?,'STORIES','Stories','Fixture sintética','MIDIA',?,?)
+        VALUES (?,'STORIES','Stories','Fixture sintética','ANUNCIO',?,?)
         """, benefit, start, start);
     jdbc.update("""
-        INSERT INTO ativacao_beneficio(id,beneficio_id,usuario_id,anuncio_id,origem,inicio_em,fim_em,
+        INSERT INTO grupo_ativacao_beneficio(id,tipo,origem,usuario_id,anuncio_id,
+          validade_inicio_em,validade_fim_em,status,criado_em,atualizado_em)
+        VALUES (?,'PACOTE','CREDITO',?,?,?,?,'ATIVO',?,?)
+        """, group, user, ad, start, deadline, start, start);
+    jdbc.update("""
+        INSERT INTO ativacao_beneficio(id,beneficio_id,usuario_id,anuncio_id,grupo_ativacao_id,origem,inicio_em,fim_em,
           status,custo_creditos_snapshot,criado_em)
-        VALUES (?,?,?,?,'CREDITO',?,?,'ATIVA',1,?)
-        """, activation, benefit, user, ad, start, deadline, start);
+        VALUES (?,?,?,?,?,'CREDITO',?,?,'ATIVA',1,?)
+        """, activation, benefit, user, ad, group, start, deadline, start);
     insertFile(jdbc, firstMedia, "hml/public/primeira.jpg", hash, bytes.length, start);
     insertFile(jdbc, secondMedia, "hml/public/segunda.jpg", hash, bytes.length, start);
     insertLink(jdbc, firstLink, ad, firstMedia, 0, start);
@@ -514,6 +520,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
       byte[] bytes) throws Exception {
     UUID story = UUID.randomUUID();
     UUID activation = UUID.randomUUID();
+    UUID group = UUID.randomUUID();
     UUID benefit = jdbc.queryForObject(
         "SELECT id FROM beneficio_premium WHERE codigo='STORIES'", UUID.class);
     OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
@@ -526,10 +533,15 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
         VALUES (?,'R2','privado','hml/private/direct.jpg','image/jpeg',?,?,'VALIDADO',?)
         """, file, bytes.length, hash, start);
     jdbc.update("""
-        INSERT INTO ativacao_beneficio(id,beneficio_id,usuario_id,origem,inicio_em,fim_em,
+        INSERT INTO grupo_ativacao_beneficio(id,tipo,origem,usuario_id,anuncio_id,
+          validade_inicio_em,validade_fim_em,status,criado_em,atualizado_em)
+        VALUES (?,'PACOTE','CREDITO',?,NULL,?,?,'ATIVO',?,?)
+        """, group, user, start, deadline, start, start);
+    jdbc.update("""
+        INSERT INTO ativacao_beneficio(id,beneficio_id,usuario_id,grupo_ativacao_id,origem,inicio_em,fim_em,
           status,custo_creditos_snapshot,criado_em)
-        VALUES (?,?,?,'CREDITO',?,?,'ATIVA',1,?)
-        """, activation, benefit, user, start, deadline, start);
+        VALUES (?,?,?,?,'CREDITO',?,?,'ATIVA',1,?)
+        """, activation, benefit, user, group, start, deadline, start);
     jdbc.update("""
         INSERT INTO story_anuncio(id,status,inicio_em,fim_em,criado_por,criado_em,atualizado_em,
           arquivo_midia_id,modo_conteudo,ativacao_beneficio_id,idempotency_key,request_fingerprint)

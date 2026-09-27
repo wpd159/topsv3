@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -23,11 +24,13 @@ import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.wizard.WizardProgressJdbcRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusPublicacaoBusca;
@@ -36,6 +39,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +68,7 @@ class SolicitarAnuncioPublicoServiceTest {
     private final CidadeRepository cidadeRepository = mock(CidadeRepository.class);
     private final BairroRepository bairroRepository = mock(BairroRepository.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final WizardProgressJdbcRepository wizardRepository = mock(WizardProgressJdbcRepository.class);
     private final SolicitarAnuncioPublicoService service = new SolicitarAnuncioPublicoService(
             usuarioService,
             kycService,
@@ -74,7 +79,8 @@ class SolicitarAnuncioPublicoServiceTest {
             estadoRepository,
             cidadeRepository,
             bairroRepository,
-            objectMapper);
+            objectMapper,
+            mock(AnuncioMidiaRepository.class), wizardRepository);
 
     @BeforeEach
     void setUp() {
@@ -84,7 +90,105 @@ class SolicitarAnuncioPublicoServiceTest {
     }
 
     @Test
-    void payloadValidoCriaAnuncioNaoPublicoComRevisaoAberta() {
+    void sessaoNovaEhVinculadaDepoisDoFlushSobLockDoProprietario() {
+        mockLocalidadeValida();
+        when(wizardRepository.sincronizar(any(), eq("wizard-create-new"), eq(usuarioId), any(),
+                eq("CREATE"), eq("FOTOS"), eq(3), eq("EM_PREENCHIMENTO"), any()))
+                .thenReturn(new WizardProgressJdbcRepository.SyncRow(UUID.randomUUID(), "CREATE",
+                        "EM_PREENCHIMENTO", "FOTOS", OffsetDateTime.now()));
+
+        var response = service.solicitar(validPayload(), authentication, "wizard-create-new");
+
+        assertThat(response.criado()).isTrue();
+        InOrder order = Mockito.inOrder(usuarioService, wizardRepository, anuncioRepository);
+        order.verify(usuarioService).usuarioAutenticadoParaAtualizacao(authentication);
+        order.verify(wizardRepository).findSessaoPorUsuario(usuarioId, "wizard-create-new");
+        order.verify(anuncioRepository).save(any(AnuncioEntity.class));
+        order.verify(anuncioRepository).flush();
+        order.verify(wizardRepository).sincronizar(any(), eq("wizard-create-new"), eq(usuarioId),
+                eq(response.anuncioId()), eq("CREATE"), eq("FOTOS"), eq(3), eq("EM_PREENCHIMENTO"), any());
+    }
+
+    @Test
+    void replayRecuperaIdentidadeEEstadoAtualSemRevalidarPayloadNemCriarEfeitos() {
+        AnuncioEntity existente = anuncioDaSessao(StatusAnuncio.PENDENTE_REVISAO, StatusModeracaoAnuncio.PENDENTE);
+
+        var response = service.solicitar(null, authentication, "wizard-create-replay");
+
+        assertThat(response.criado()).isFalse();
+        assertThat(response.anuncioId()).isEqualTo(existente.getId());
+        assertThat(response.slugLocal()).isEqualTo(existente.getSlug());
+        assertThat(response.statusAnuncio()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(response.statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(response.revisaoCriada()).isFalse();
+        verifyNoInteractions(kycService, localizacaoRepository, documentoBuscaRepository, revisaoRepository);
+        verify(anuncioRepository, never()).save(any());
+        verify(wizardRepository, never()).sincronizar(any(), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyInt(), any(), any());
+    }
+
+    @Test
+    void sessaoEditMesmoSemAnuncioNaoAutorizaCriacao() {
+        when(wizardRepository.findSessaoPorUsuario(usuarioId, "wizard-session-edit"))
+                .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow("EDIT", null)));
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication, "wizard-session-edit"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409 CONFLICT");
+        verifyNoInteractions(anuncioRepository, kycService, revisaoRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"REMOVIDO", "BLOQUEADO"})
+    void sessaoDeAnuncioEncerradoOuBloqueadoNuncaCriaSubstituto(String status) {
+        anuncioDaSessao(StatusAnuncio.valueOf(status), StatusModeracaoAnuncio.PENDENTE);
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication, "wizard-create-replay"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409 CONFLICT");
+        verify(anuncioRepository, never()).save(any());
+        verifyNoInteractions(kycService, revisaoRepository);
+    }
+
+    @Test
+    void vinculoDeOutroProprietarioEhRecusadoSemCriacao() {
+        AnuncioEntity anuncio = anuncioDaSessao(StatusAnuncio.RASCUNHO, StatusModeracaoAnuncio.NAO_ENVIADO);
+        when(anuncio.getUsuarioId()).thenReturn(UUID.randomUUID());
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication, "wizard-create-replay"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403 FORBIDDEN");
+        verify(anuncioRepository, never()).save(any());
+    }
+
+    @Test
+    void vinculoAusenteNoBancoNuncaEhTratadoComoNovaCriacao() {
+        when(wizardRepository.findSessaoPorUsuario(usuarioId, "wizard-create-missing"))
+                .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow("CREATE", UUID.randomUUID())));
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication, "wizard-create-missing"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409 CONFLICT");
+        verify(anuncioRepository, never()).save(any());
+        verifyNoInteractions(kycService, revisaoRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "short", "wizard/session-invalid"})
+    void headerPresenteInvalidoNaoCaiNoFluxoLegado(String sessionId) {
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication, sessionId))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("400 BAD_REQUEST");
+        verifyNoInteractions(wizardRepository, anuncioRepository, kycService);
+    }
+
+    private AnuncioEntity anuncioDaSessao(StatusAnuncio status, StatusModeracaoAnuncio moderation) {
+        UUID id = UUID.randomUUID();
+        AnuncioEntity anuncio = mock(AnuncioEntity.class);
+        when(anuncio.getId()).thenReturn(id);
+        when(anuncio.getUsuarioId()).thenReturn(usuarioId);
+        when(anuncio.getSlug()).thenReturn("anuncio-sintetico-da-sessao");
+        when(anuncio.getStatus()).thenReturn(status);
+        when(anuncio.getStatusModeracao()).thenReturn(moderation);
+        when(wizardRepository.findSessaoPorUsuario(usuarioId, "wizard-create-replay"))
+                .thenReturn(Optional.of(new WizardProgressJdbcRepository.SessionRow("CREATE", id)));
+        when(anuncioRepository.findByIdForModeration(id)).thenReturn(Optional.of(anuncio));
+        return anuncio;
+    }
+
+    @Test
+    void payloadValidoCriaRascunhoSemRevisaoAntesDoUpload() {
         UUID estadoId = UUID.randomUUID();
         UUID cidadeId = UUID.randomUUID();
         UUID bairroId = UUID.randomUUID();
@@ -103,8 +207,10 @@ class SolicitarAnuncioPublicoServiceTest {
 
         assertThat(response.criado()).isTrue();
         assertThat(response.publicado()).isFalse();
-        assertThat(response.statusAnuncio()).isEqualTo("PENDENTE_REVISAO");
-        assertThat(response.statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(response.statusAnuncio()).isEqualTo("RASCUNHO");
+        assertThat(response.statusModeracao()).isEqualTo("NAO_ENVIADO");
+        assertThat(response.revisaoCriada()).isFalse();
+        assertThat(response.revisaoId()).isNull();
         assertThat(response.uploadRealExecutado()).isFalse();
         assertThat(response.pagamentoCriado()).isFalse();
         assertThat(response.creditoCriado()).isFalse();
@@ -119,27 +225,20 @@ class SolicitarAnuncioPublicoServiceTest {
         ArgumentCaptor<AnuncioEntity> anuncio = ArgumentCaptor.forClass(AnuncioEntity.class);
         ArgumentCaptor<AnuncioLocalizacaoEntity> localizacao = ArgumentCaptor.forClass(AnuncioLocalizacaoEntity.class);
         ArgumentCaptor<DocumentoBuscaAnuncioEntity> documentoBusca = ArgumentCaptor.forClass(DocumentoBuscaAnuncioEntity.class);
-        ArgumentCaptor<RevisaoAnuncioEntity> revisao = ArgumentCaptor.forClass(RevisaoAnuncioEntity.class);
         verify(anuncioRepository).save(anuncio.capture());
         verify(localizacaoRepository).save(localizacao.capture());
         verify(documentoBuscaRepository).save(documentoBusca.capture());
-        verify(revisaoRepository).save(revisao.capture());
+        verifyNoInteractions(revisaoRepository);
 
         assertThat(anuncio.getValue().getUsuarioId()).isEqualTo(usuarioId);
         assertThat(anuncio.getValue().getWhatsappNormalizado()).isEqualTo("+5562999999999");
-        assertThat(anuncio.getValue().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
-        assertThat(anuncio.getValue().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.PENDENTE);
+        assertThat(anuncio.getValue().getStatus()).isEqualTo(StatusAnuncio.RASCUNHO);
+        assertThat(anuncio.getValue().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.NAO_ENVIADO);
         assertThat(anuncio.getValue().getPublicadoEm()).isNull();
         assertThat(localizacao.getValue().getEstadoId()).isEqualTo(estadoId);
         assertThat(localizacao.getValue().getEnderecoResumido()).isNull();
         assertThat(documentoBusca.getValue().getStatusPublicacao()).isEqualTo(StatusPublicacaoBusca.NAO_PUBLICAVEL);
         assertThat(documentoBusca.getValue().getTemMidiaValida()).isFalse();
-        assertThat(revisao.getValue().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
-        assertThat(revisao.getValue().getPayloadSolicitado())
-                .contains("ANUNCIE_GRATIS_LOCAL")
-                .contains("\"pagamentoCriado\":false")
-                .doesNotContain("+5562999999999")
-                .doesNotContain("example.invalid");
     }
 
     @Test

@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
+import br.com.topsdojob.v3.application.publico.service.SolicitarAnuncioPublicoService;
+import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
@@ -28,15 +30,29 @@ import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
+import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
+import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
+import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
+import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
+import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.wizard.WizardProgressJdbcRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import java.net.URI;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -45,6 +61,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,11 +99,18 @@ class MinhasMidiasServiceTest {
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy = mock(FotoElegivelAnuncioPolicy.class);
     private final AnuncioMidiaUploadCoreService uploadCoreService = new AnuncioMidiaUploadCoreService(
             midiaRepository, arquivoRepository, validator, fotoProcessor, storageProperties, storageProvider);
+    private final AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
+    private final EstadoRepository estadoRepository = mock(EstadoRepository.class);
+    private final CidadeRepository cidadeRepository = mock(CidadeRepository.class);
+    private final SolicitarAnuncioPublicoService criacaoService = new SolicitarAnuncioPublicoService(
+            consultaService, mock(KycPublicoService.class), mock(AnuncioRepository.class), localizacaoRepository,
+            mock(DocumentoBuscaAnuncioRepository.class), revisaoRepository, estadoRepository, cidadeRepository,
+            mock(BairroRepository.class), new ObjectMapper(), midiaRepository, mock(WizardProgressJdbcRepository.class));
     private final MinhasMidiasService service = new MinhasMidiasService(
             consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
             new MidiaUploadProperties(), new MinhaMidiaPreviewService(storageProperties, storageProvider,
                     Clock.fixed(AGORA_PREVIEW.toInstant(), ZoneOffset.UTC)),
-            uploadCoreService, fotoElegivelPolicy, cicloVidaService, arquivoPublicidade);
+            uploadCoreService, fotoElegivelPolicy, cicloVidaService, arquivoPublicidade, criacaoService);
 
     @BeforeEach
     void setUp() {
@@ -154,6 +178,81 @@ class MinhasMidiasServiceTest {
             arquivos.put(value.getId(), value);
             return value;
         });
+    }
+
+    @Test
+    void primeiraFotoConfirmadaEnviaRascunhoEAbreCriacaoUmaVezNoRetry() {
+        AnuncioEntity anuncio = rascunho();
+        List<MultipartFile> lote = multiparts(2);
+        lote.forEach(arquivo -> when(validator.validar(arquivo)).thenReturn(validada(false)));
+
+        var response = service.enviarLote(SLUG, lote, "criacao-fotos", authentication);
+        var ordem = inOrder(storage, revisaoRepository);
+        ordem.verify(storage, org.mockito.Mockito.times(2)).get(eq(StorageArea.PRIVATE_MEDIA), any());
+        ordem.verify(revisaoRepository).save(any());
+        service.enviarLote(SLUG, lote, "criacao-fotos", authentication);
+
+        assertThat(response.anuncio().status()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.PENDENTE);
+        var revisao = org.mockito.ArgumentCaptor.forClass(RevisaoAnuncioEntity.class);
+        verify(revisaoRepository).save(revisao.capture());
+        assertThat(revisao.getValue().getTipo()).isEqualTo(TipoRevisaoAnuncio.CRIACAO);
+        assertThat(revisao.getValue().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
+        assertThat(revisao.getValue().getCriadoPor()).isEqualTo(anuncio.getUsuarioId());
+        assertThat(revisao.getValue().getPayloadSolicitado())
+                .contains("ANUNCIE_GRATIS_LOCAL", "\"uploadRealExecutado\":true", "\"pagamentoCriado\":false",
+                        "\"uf\":\"GO\"", "\"cidade\":\"Goiania\"",
+                        "\"statusInicial\":\"RASCUNHO\"", "\"statusModeracaoInicial\":\"NAO_ENVIADO\"")
+                .doesNotContain("storage", "bucket", "sha256", "+5562", "https://");
+        assertThat(vinculos).hasSize(2);
+    }
+
+    @Test
+    void falhaR2MantemRascunhoSemRevisao() {
+        AnuncioEntity anuncio = rascunho();
+        MultipartFile arquivo = mock(MultipartFile.class);
+        when(validator.validar(arquivo)).thenReturn(validada(false));
+        when(storage.get(eq(StorageArea.PRIVATE_MEDIA), any()))
+                .thenThrow(new IllegalStateException("R2 sintetico indisponivel"));
+
+        assertThatThrownBy(() -> service.enviarLote(SLUG, List.of(arquivo), "criacao-falha", authentication))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.RASCUNHO);
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.NAO_ENVIADO);
+        verify(revisaoRepository, never()).save(any());
+    }
+
+    @Test
+    void apenasVideoNaoEncaminhaRascunhoParaModeracao() {
+        AnuncioEntity anuncio = rascunho();
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 1, false, true));
+        MultipartFile arquivo = mock(MultipartFile.class);
+        when(validator.validar(arquivo)).thenReturn(validada(true));
+
+        service.enviarLote(SLUG, List.of(arquivo), "criacao-video", authentication);
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.RASCUNHO);
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.NAO_ENVIADO);
+        verify(revisaoRepository, never()).save(any());
+    }
+
+    private AnuncioEntity rascunho() {
+        AnuncioEntity anuncio = AnuncioEntity.criarFixtureHomologacao(
+                ANUNCIO_ID, UUID.randomUUID(), SLUG, "Titulo sintetico", "Descricao sintetica valida",
+                StatusAnuncio.RASCUNHO, StatusModeracaoAnuncio.NAO_ENVIADO, AGORA_PREVIEW);
+        when(consultaService.anuncioDoUsuario(SLUG, authentication)).thenReturn(anuncio);
+        when(consultaService.anuncioDoUsuarioParaAtualizacao(SLUG, authentication)).thenReturn(anuncio);
+        UUID estadoId = UUID.randomUUID();
+        UUID cidadeId = UUID.randomUUID();
+        when(localizacaoRepository.findByAnuncioId(ANUNCIO_ID)).thenReturn(Optional.of(
+                AnuncioLocalizacaoEntity.criarSolicitacaoLocal(ANUNCIO_ID, estadoId, cidadeId, null, AGORA_PREVIEW)));
+        when(estadoRepository.findById(estadoId)).thenReturn(Optional.of(
+                EstadoEntity.criarFixtureHomologacao(estadoId, "GO", "Goias", "goias", AGORA_PREVIEW)));
+        when(cidadeRepository.findById(cidadeId)).thenReturn(Optional.of(
+                CidadeEntity.criarFixtureHomologacao(cidadeId, estadoId, "Goiania", "goiania", "goiania", AGORA_PREVIEW)));
+        return anuncio;
     }
 
     @Test

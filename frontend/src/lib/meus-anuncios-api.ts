@@ -670,6 +670,7 @@ export async function enviarMinhasMidiasEmLote(
   arquivos: File[],
   onProgress?: (percentual: number) => void,
   accountScope = '',
+  expectedAnuncioId?: string,
 ) {
   if (!arquivos.length) throw new MeusAnunciosApiError('Selecione ao menos um arquivo.', 400)
   await validateMediaUploadPhotos(arquivos)
@@ -712,6 +713,9 @@ export async function enviarMinhasMidiasEmLote(
       }
       try {
         const result = mapMinhasMidias(body, slug)
+        if (expectedAnuncioId && result.anuncio.id !== expectedAnuncioId) {
+          throw new MeusAnunciosApiError('A resposta não corresponde à identidade do anúncio. Verifique a tentativa antes de continuar.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+        }
         onProgress?.(100)
         mediaBatchIdempotencyKeys.delete(signature)
         resolve(result)

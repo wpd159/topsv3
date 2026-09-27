@@ -161,10 +161,12 @@ export function saveWizardCache(
 }
 
 export function clearWizardCache(scope: WizardCacheScope) {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined') return false
   try {
     window.localStorage.removeItem(wizardCacheKey(scope))
+    return window.localStorage.getItem(wizardCacheKey(scope)) === null
   } catch {
     // Falha de storage não pode interromper o wizard.
+    return false
   }
 }

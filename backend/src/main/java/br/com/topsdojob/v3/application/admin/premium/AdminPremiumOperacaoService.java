@@ -22,6 +22,7 @@ import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
@@ -55,6 +56,7 @@ public class AdminPremiumOperacaoService {
     private final BeneficioPremiumOpcaoRepository opcaoRepository;
     private final GrupoAtivacaoBeneficioRepository grupoRepository;
     private final AnuncioRepository anuncioRepository;
+    private final UsuarioRepository usuarioRepository;
     private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository;
     private final BeneficioAnuncioConsultaService beneficioConsultaService;
     private final ArquivoPublicidadeRegistroService arquivoPublicidade;
@@ -67,6 +69,7 @@ public class AdminPremiumOperacaoService {
             BeneficioPremiumOpcaoRepository opcaoRepository,
             GrupoAtivacaoBeneficioRepository grupoRepository,
             AnuncioRepository anuncioRepository,
+            UsuarioRepository usuarioRepository,
             AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository,
             BeneficioAnuncioConsultaService beneficioConsultaService,
             ArquivoPublicidadeRegistroService arquivoPublicidade) {
@@ -77,6 +80,7 @@ public class AdminPremiumOperacaoService {
         this.opcaoRepository = opcaoRepository;
         this.grupoRepository = grupoRepository;
         this.anuncioRepository = anuncioRepository;
+        this.usuarioRepository = usuarioRepository;
         this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
         this.beneficioConsultaService = beneficioConsultaService;
         this.arquivoPublicidade = arquivoPublicidade;
@@ -346,8 +350,28 @@ public class AdminPremiumOperacaoService {
         if (motivoSeguro.length() < 5 || motivoSeguro.length() > 500) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "motivo obrigatorio");
         }
+        // Read only scalar identity before waiting: preloading the entity would
+        // retain its old state while moderation starts the pending activation.
+        var referencia = ativacaoRepository.findReferenciaById(ativacaoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ativacao nao encontrada"));
+        // Match credit purchase/refund serialization before taking ad/activation locks.
+        var usuario = usuarioRepository.findByIdForUpdate(referencia.getUsuarioId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+        AnuncioEntity anuncio = referencia.getAnuncioId() == null ? null
+                : anuncioRepository.findByIdForModeration(referencia.getAnuncioId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         AtivacaoBeneficioEntity ativacao = ativacaoRepository.findByIdForUpdate(ativacaoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ativacao nao encontrada"));
+        if (!Objects.equals(ativacaoId, referencia.getId())
+                || !Objects.equals(ativacaoId, ativacao.getId())
+                || !Objects.equals(referencia.getAnuncioId(), ativacao.getAnuncioId())
+                || !Objects.equals(referencia.getUsuarioId(), ativacao.getUsuarioId())
+                || !Objects.equals(referencia.getUsuarioId(), usuario.getId())
+                || !Objects.equals(referencia.getBeneficioId(), ativacao.getBeneficioId())
+                || (anuncio != null && (!Objects.equals(anuncio.getId(), ativacao.getAnuncioId())
+                        || !Objects.equals(anuncio.getUsuarioId(), ativacao.getUsuarioId())))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "vinculo da ativacao mudou durante o cancelamento");
+        }
         if (ativacao.getStatus() == StatusAtivacaoBeneficio.REVOGADA
                 || ativacao.getStatus() == StatusAtivacaoBeneficio.CANCELADA) {
             return toDto(ativacao, 0, true);

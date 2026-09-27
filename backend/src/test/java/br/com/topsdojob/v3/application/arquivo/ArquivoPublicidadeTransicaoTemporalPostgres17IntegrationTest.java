@@ -811,6 +811,7 @@ class ArquivoPublicidadeTransicaoTemporalPostgres17IntegrationTest {
       OffsetDateTime fim) throws Exception {
     UUID novoBeneficio = UUID.randomUUID();
     UUID ativacao = UUID.randomUUID();
+    UUID grupo = UUID.randomUUID();
     UUID story = UUID.randomUUID();
     UUID janela = UUID.randomUUID();
     UUID fonte = UUID.randomUUID();
@@ -818,17 +819,22 @@ class ArquivoPublicidadeTransicaoTemporalPostgres17IntegrationTest {
     OffsetDateTime inicio = fim.minusHours(5);
     jdbc.update("""
         INSERT INTO beneficio_premium(id,codigo,nome,descricao,escopo,criado_em,atualizado_em)
-        VALUES (?, 'STORIES', 'Stories', 'Fixture temporal', 'MIDIA', ?, ?)
+        VALUES (?, 'STORIES', 'Stories', 'Fixture temporal', 'ANUNCIO', ?, ?)
         ON CONFLICT (codigo) DO NOTHING
         """, novoBeneficio, inicio, inicio);
     UUID beneficio = jdbc.queryForObject("""
         SELECT id FROM beneficio_premium WHERE codigo = 'STORIES'
         """, UUID.class);
     jdbc.update("""
-        INSERT INTO ativacao_beneficio(id,beneficio_id,usuario_id,anuncio_id,origem,
+        INSERT INTO grupo_ativacao_beneficio(id,tipo,origem,usuario_id,anuncio_id,
+          validade_inicio_em,validade_fim_em,status,criado_em,atualizado_em)
+        VALUES (?, 'PACOTE', 'CREDITO', ?, ?, ?, ?, 'ATIVO', ?, ?)
+        """, grupo, anuncio.usuario(), anuncio.anuncio(), inicio, fim, inicio, inicio);
+    jdbc.update("""
+        INSERT INTO ativacao_beneficio(id,beneficio_id,usuario_id,anuncio_id,grupo_ativacao_id,origem,
           inicio_em,fim_em,status,custo_creditos_snapshot,criado_em)
-        VALUES (?, ?, ?, ?, 'CREDITO', ?, ?, 'ATIVA', 1, ?)
-        """, ativacao, beneficio, anuncio.usuario(), anuncio.anuncio(), inicio, fim, inicio);
+        VALUES (?, ?, ?, ?, ?, 'CREDITO', ?, ?, 'ATIVA', 1, ?)
+        """, ativacao, beneficio, anuncio.usuario(), anuncio.anuncio(), grupo, inicio, fim, inicio);
     jdbc.update("""
         INSERT INTO story_anuncio(id,status,inicio_em,fim_em,criado_por,criado_em,atualizado_em,
           anuncio_id,modo_conteudo,ativacao_beneficio_id,idempotency_key,request_fingerprint)

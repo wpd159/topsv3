@@ -321,6 +321,12 @@ public class AnuncioEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public boolean criacaoNaoEnviada() {
+    return status == StatusAnuncio.RASCUNHO
+        && statusModeracao == StatusModeracaoAnuncio.NAO_ENVIADO
+        && publicadoEm == null && removidoEm == null;
+  }
+
   public void sincronizarAtendimentoEstruturado(
       Set<LocalAtendimentoAnuncio> locaisAtendimento,
       Set<ServicoAnuncio> servicos) {
@@ -364,7 +370,11 @@ public class AnuncioEntity {
     this.linkConteudo = linkConteudo;
     sincronizarAtendimentoEstruturado(
         locaisAtendimento, servicos, atendimentoExclusivamenteVirtual);
-    remeterParaRevisao(atualizadoEm);
+    if (criacaoNaoEnviada()) {
+      this.atualizadoEm = atualizadoEm;
+    } else {
+      remeterParaRevisao(atualizadoEm);
+    }
   }
 
   public void atualizarPeloProprietario(

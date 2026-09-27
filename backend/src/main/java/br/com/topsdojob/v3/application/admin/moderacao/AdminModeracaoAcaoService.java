@@ -643,6 +643,11 @@ public class AdminModeracaoAcaoService {
                     HttpStatus.CONFLICT,
                     "estado do anuncio impede abertura de revisao");
         }
+        if (anuncio.getStatus() == StatusAnuncio.RASCUNHO
+                && anuncioMidiaRepository.findFotosValidasAtivasIds(anuncio.getId()).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "envie ao menos uma foto valida antes de encaminhar a criacao para revisao");
+        }
         String motivo = motivoSeguroObrigatorio(
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao(),

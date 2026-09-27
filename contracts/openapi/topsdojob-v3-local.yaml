@@ -1143,11 +1143,20 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
   /api/public/anunciar:
     post:
-      summary: Cria anuncio do usuario autenticado para revisao
-      description: Resolve o proprietario exclusivamente pela sessao publica e exige KYC enviado ou aprovado. Cria anuncio nao publico e revisao aberta; nao publica automaticamente nem cria pagamento, credito ou Premium.
+      summary: Cria rascunho do usuario autenticado ou recupera a mesma tentativa
+      description: Resolve o proprietario pela sessao publica e exige KYC enviado ou aprovado para criar. O rascunho permanece sem revisao ate a primeira foto confirmada. Com X-Wizard-Session-Id, vincula conta, sessao CREATE e anuncio na mesma transacao; replay retorna a identidade e o estado atual sem novo anuncio, revisao ou alteracao de payload. Sem o header, preserva a criacao legada. Nao publica automaticamente nem cria pagamento, credito ou Premium.
       operationId: postPublicAnunciar
+      security:
+        - PublicSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/RequestId"
+        - name: X-Wizard-Session-Id
+          in: header
+          required: false
+          description: Chave opaca reutilizada na mesma tentativa, inclusive apos resposta ambigua. Uma sessao EDIT ou vinculada a anuncio invalido, encerrado ou bloqueado nao pode criar outro anuncio.
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$"
       requestBody:
         required: true
         content:
@@ -1156,11 +1165,7 @@ paths:
               $ref: "#/components/schemas/SolicitarAnuncioPublicoRequest"
       responses:
         "201":
-          description: solicitacao local criada para revisao
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "409":
-          $ref: "#/components/responses/Conflict"
+          description: Rascunho criado ou identidade da tentativa anterior recuperada
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
@@ -1168,6 +1173,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolicitarAnuncioPublicoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "400":
           description: validacao do funil local recusada
           headers:
@@ -7353,6 +7364,37 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/wizard-progress/{sessionId}/anuncio:
+    get:
+      summary: Recupera o anuncio confirmado da sessao CREATE da propria conta
+      description: Retorna somente identidade e estado atual, sem dados do formulario. Ausencia de vinculo confirmado retorna 404; isso nao autoriza gerar nova chave. Um retry de criacao deve reutilizar a mesma sessao. Modo EDIT ou vinculo invalido, encerrado ou bloqueado retorna conflito.
+      operationId: recoverWizardAnuncio
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$"
+      responses:
+        "200":
+          description: Identidade e estado do anuncio confirmado da propria conta
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WizardAnuncioResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /api/public/wizard-progress/sync:
     post:
       summary: Sincroniza o progresso operacional do wizard de anuncio
@@ -8017,28 +8059,28 @@ components:
       properties:
         criado:
           type: boolean
-          const: true
+          description: false quando a identidade da mesma tentativa foi recuperada sem nova criacao.
         anuncioId:
           type: string
           format: uuid
         revisaoId:
-          type: string
+          type: [string, "null"]
           format: uuid
         slugLocal:
           type: string
           pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
         statusAnuncio:
           type: string
-          const: PENDENTE_REVISAO
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO]
         statusModeracao:
           type: string
-          const: PENDENTE
+          enum: [NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO]
         publicado:
           type: boolean
           const: false
         revisaoCriada:
           type: boolean
-          const: true
+          const: false
         publicacaoAutomaticaExecutada:
           type: boolean
           const: false
@@ -15063,6 +15105,19 @@ components:
         papel: { type: string, enum: [ADMIN, MODERADOR] }
         ativo: { type: boolean }
         versao: { type: integer, minimum: 0 }
+    WizardAnuncioResponse:
+      type: object
+      additionalProperties: false
+      required: [anuncioId, slug, status, statusModeracao]
+      properties:
+        anuncioId: { type: string, format: uuid }
+        slug: { type: string }
+        status:
+          type: string
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO]
+        statusModeracao:
+          type: string
+          enum: [NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO]
     WizardProgressSyncRequest:
       type: object
       additionalProperties: false

@@ -97,6 +97,17 @@ public class WizardProgressJdbcRepository {
   }
 
   // The synchronization service holds the owner lock before resolving this link.
+  public Optional<SessionRow> findSessaoPorUsuario(UUID usuarioId, String sessaoId) {
+    return jdbc.query("""
+        SELECT modo, anuncio_id FROM wizard_progresso
+        WHERE usuario_id = :usuario_id AND sessao_id = :sessao_id
+        """, new MapSqlParameterSource()
+            .addValue("usuario_id", usuarioId)
+            .addValue("sessao_id", sessaoId),
+        (rs, rowNum) -> new SessionRow(rs.getString("modo"), rs.getObject("anuncio_id", UUID.class)))
+        .stream().findFirst();
+  }
+
   public Optional<UUID> findAnuncioIdPorSessao(UUID usuarioId, String sessaoId) {
     return jdbc.query("""
         SELECT anuncio_id FROM wizard_progresso
@@ -338,6 +349,8 @@ public class WizardProgressJdbcRepository {
         .addValue("kyc", kyc)
         .addValue("anuncio_status", anuncioStatus);
   }
+
+  public record SessionRow(String modo, UUID anuncioId) { }
 
   public record SyncRow(
       UUID id,

@@ -20,6 +20,11 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class PremiumExpiracaoPolicyServiceTest {
 
@@ -283,6 +288,88 @@ class PremiumExpiracaoPolicyServiceTest {
 
         assertThat(resultado.status()).isEqualTo(PremiumBeneficioStatusCalculado.INATIVO);
         assertThat(resultado.codigos()).contains(PremiumConsistenciaCodigo.BENEFICIO_CATALOGO_INATIVO);
+    }
+
+    @Test
+    void revogacaoAntesDoUsoEInativaSemInventarDatas() {
+        Cenario cenario = revogadaAntesDoUso();
+        PremiumBeneficioCalculado resultado = avaliar(cenario, agora);
+        assertThat(resultado.status()).isEqualTo(PremiumBeneficioStatusCalculado.INATIVO);
+        assertThat(resultado.inconsistente()).isFalse();
+        assertThat(resultado.codigos()).contains(PremiumConsistenciaCodigo.BENEFICIO_CANCELADO_OU_REVOGADO)
+                .doesNotContain(PremiumConsistenciaCodigo.DATA_INVALIDA);
+        assertThat(cenario.ativacao().getInicioEm()).isNull();
+        assertThat(cenario.ativacao().getFimEm()).isNull();
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    void revogacaoSemJanelaExigeMotivo(String motivo) {
+        Cenario cenario = revogadaAntesDoUso();
+        cenario.ativacao().revogar(motivo, agora);
+        assertThat(avaliar(cenario, agora).codigos()).contains(PremiumConsistenciaCodigo.DATA_INVALIDA);
+    }
+
+    @Test
+    void revogacaoSemJanelaExigeInstanteDaRevogacao() {
+        Cenario cenario = revogadaAntesDoUso();
+        cenario.ativacao().revogar("Motivo sintetico", null);
+        assertThat(avaliar(cenario, agora).status()).isEqualTo(PremiumBeneficioStatusCalculado.INCONSISTENTE);
+        assertThat(avaliar(cenario, agora).codigos()).contains(PremiumConsistenciaCodigo.DATA_INVALIDA);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = StatusAtivacaoBeneficio.class, names = {"ATIVA", "AGENDADA", "EXPIRADA", "CANCELADA"})
+    void outrosEstadosSemJanelaContinuamInvalidos(StatusAtivacaoBeneficio status) {
+        Cenario cenario = revogadaAntesDoUso();
+        ReflectionTestUtils.setField(cenario.ativacao(), "status", status);
+        assertThat(avaliar(cenario, agora).status()).isEqualTo(PremiumBeneficioStatusCalculado.INCONSISTENTE);
+        assertThat(avaliar(cenario, agora).codigos()).contains(PremiumConsistenciaCodigo.DATA_INVALIDA);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"inicio_em", "fim_em", "igual", "invertida"})
+    void revogadaNaoAdmiteJanelaParcialOuInvalida(String caso) {
+        Cenario cenario = revogadaAntesDoUso();
+        if (!caso.equals("fim_em")) ReflectionTestUtils.setField(cenario.ativacao(), "inicioEm", agora);
+        if (!caso.equals("inicio_em")) ReflectionTestUtils.setField(cenario.ativacao(), "fimEm",
+                caso.equals("invertida") ? agora.minusSeconds(1) : agora);
+        assertThat(avaliar(cenario, agora).codigos()).contains(PremiumConsistenciaCodigo.DATA_INVALIDA);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"beneficioId", "grupoAtivacaoId", "usuarioId", "anuncioId", "origem"})
+    void revogacaoAntesDoUsoNaoMascaraIdentidadeVinculoOuOrigem(String campo) {
+        Cenario cenario = revogadaAntesDoUso();
+        ReflectionTestUtils.setField(cenario.ativacao(), campo,
+                campo.equals("origem") ? OrigemBeneficio.CREDITO : UUID.randomUUID());
+        PremiumBeneficioCalculado resultado = avaliar(cenario, agora);
+        assertThat(resultado.status()).isEqualTo(PremiumBeneficioStatusCalculado.INCONSISTENTE);
+        assertThat(resultado.inconsistente()).isTrue();
+        assertThat(resultado.codigos()).doesNotContain(PremiumConsistenciaCodigo.DATA_INVALIDA)
+                .contains(campo.equals("beneficioId") ? PremiumConsistenciaCodigo.BENEFICIO_NAO_ENCONTRADO
+                        : campo.equals("origem") ? PremiumConsistenciaCodigo.ORIGEM_GRUPO_DIVERGENTE
+                        : PremiumConsistenciaCodigo.VINCULO_GRUPO_DIVERGENTE);
+    }
+
+    @Test
+    void revogacaoAntesDoUsoNaoMascaraGrupoAusente() {
+        Cenario cenario = revogadaAntesDoUso();
+        PremiumBeneficioCalculado resultado = service.avaliar(cenario.ativacao(), cenario.beneficio(), null, agora);
+        assertThat(resultado.status()).isEqualTo(PremiumBeneficioStatusCalculado.INCONSISTENTE);
+        assertThat(resultado.codigos()).contains(PremiumConsistenciaCodigo.BENEFICIO_SEM_GRUPO);
+    }
+
+    private Cenario revogadaAntesDoUso() {
+        Cenario base = cenario(FOTOS_EXTRA_5, StatusAtivacaoBeneficio.ATIVA, StatusGrupoAtivacaoBeneficio.ATIVO,
+                agora.minusDays(1), agora.plusDays(6), OrigemBeneficio.ADMIN, OrigemBeneficio.ADMIN);
+        AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
+                base.ativacao().getId(), base.beneficio().getId(), UUID.randomUUID(), base.ativacao().getUsuarioId(),
+                base.ativacao().getAnuncioId(), base.grupo().getId(), UUID.randomUUID(),
+                "revogacao-pendente-sintetica", agora.minusDays(1));
+        ativacao.revogar("Cortesia encerrada antes do uso", agora);
+        return new Cenario(ativacao, base.beneficio(), base.grupo());
     }
 
     private PremiumBeneficioCalculado avaliar(Cenario cenario, OffsetDateTime referencia) {

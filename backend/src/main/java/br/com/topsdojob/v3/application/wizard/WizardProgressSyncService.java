@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.wizard;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.wizard.WizardProgressDtos.SyncRequest;
 import br.com.topsdojob.v3.application.wizard.WizardProgressDtos.SyncResponse;
+import br.com.topsdojob.v3.application.wizard.WizardProgressDtos.AnuncioResponse;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
@@ -13,7 +14,6 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -24,8 +24,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class WizardProgressSyncService {
 
-  private static final Pattern SESSION_ID =
-      Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$");
   private static final List<String> MODOS = List.of("CREATE", "EDIT");
   private static final List<String> STEPS = List.of(
       "PERFIL", "LOCALIZACAO", "SERVICOS", "FOTOS",
@@ -63,10 +61,7 @@ public class WizardProgressSyncService {
       throw invalido("progresso do wizard obrigatorio");
     }
     UsuarioEntity usuario = meusAnunciosService.usuarioAutenticadoParaAtualizacao(authentication);
-    String sessaoId = texto(request.sessionId());
-    if (!SESSION_ID.matcher(sessaoId).matches()) {
-      throw invalido("identificador de sessao invalido");
-    }
+    String sessaoId = WizardCreationSessionPolicy.sessionId(request.sessionId());
     String modo = codigo(request.mode());
     String step = codigo(request.ultimoStep());
     String status = codigo(request.status());
@@ -102,6 +97,23 @@ public class WizardProgressSyncService {
           "sessao do wizard pertence a outro modo");
     }
     return new SyncResponse(row.id(), row.status(), row.ultimoStep(), row.atualizadoEm());
+  }
+
+  @Transactional(readOnly = true)
+  public AnuncioResponse recuperarAnuncio(String sessionId, Authentication authentication) {
+    UsuarioEntity usuario = meusAnunciosService.usuarioAutenticado(authentication);
+    String sessaoId = WizardCreationSessionPolicy.sessionId(sessionId);
+    var sessao = repository.findSessaoPorUsuario(usuario.getId(), sessaoId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "sessao sem anuncio confirmado"));
+    WizardCreationSessionPolicy.exigirCreate(sessao.modo());
+    if (sessao.anuncioId() == null) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "sessao sem anuncio confirmado");
+    }
+    AnuncioEntity anuncio = anuncioRepository.findById(sessao.anuncioId())
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "vinculo da sessao invalido"));
+    WizardCreationSessionPolicy.anuncioRecuperavel(anuncio, usuario.getId());
+    return new AnuncioResponse(anuncio.getId(), anuncio.getSlug(),
+        anuncio.getStatus().name(), anuncio.getStatusModeracao().name());
   }
 
   private UUID parseAnuncioId(String raw) {

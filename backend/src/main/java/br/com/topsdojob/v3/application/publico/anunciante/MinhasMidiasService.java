@@ -9,6 +9,7 @@ import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreServi
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService.CapacidadeProprietario;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
+import br.com.topsdojob.v3.application.publico.service.SolicitarAnuncioPublicoService;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
@@ -56,6 +57,7 @@ public class MinhasMidiasService {
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy;
     private final MeuAnuncioCicloVidaService cicloVidaService;
     private final ArquivoPublicidadeRegistroService arquivoPublicidade;
+    private final SolicitarAnuncioPublicoService criacaoService;
 
     public MinhasMidiasService(
             MeusAnunciosConsultaService consultaService,
@@ -68,7 +70,8 @@ public class MinhasMidiasService {
             AnuncioMidiaUploadCoreService uploadCoreService,
             FotoElegivelAnuncioPolicy fotoElegivelPolicy,
             MeuAnuncioCicloVidaService cicloVidaService,
-            ArquivoPublicidadeRegistroService arquivoPublicidade) {
+            ArquivoPublicidadeRegistroService arquivoPublicidade,
+            SolicitarAnuncioPublicoService criacaoService) {
         this.consultaService = consultaService;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
@@ -80,6 +83,7 @@ public class MinhasMidiasService {
         this.fotoElegivelPolicy = fotoElegivelPolicy;
         this.cicloVidaService = cicloVidaService;
         this.arquivoPublicidade = arquivoPublicidade;
+        this.criacaoService = criacaoService;
     }
 
     @Transactional(readOnly = true)
@@ -129,6 +133,7 @@ public class MinhasMidiasService {
                         limites.fotosDisponiveis(),
                         limites.videosDisponiveis(),
                         limites.videoAtivo()));
+        criacaoService.concluirCriacaoAposUpload(anuncio);
         return resposta(anuncio);
     }
 

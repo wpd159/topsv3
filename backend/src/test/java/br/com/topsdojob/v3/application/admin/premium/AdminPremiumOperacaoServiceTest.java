@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -28,6 +29,8 @@ import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepositor
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
@@ -43,10 +46,14 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class AdminPremiumOperacaoServiceTest {
 
@@ -57,9 +64,11 @@ class AdminPremiumOperacaoServiceTest {
     private final BeneficioPremiumOpcaoRepository opcaoRepository = mock(BeneficioPremiumOpcaoRepository.class);
     private final GrupoAtivacaoBeneficioRepository grupoRepository = mock(GrupoAtivacaoBeneficioRepository.class);
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+    private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
     private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository =
             mock(AnuncioBloqueioJuridicoRepository.class);
     private final BeneficioAnuncioConsultaService consultaService = mock(BeneficioAnuncioConsultaService.class);
+    private final ArquivoPublicidadeRegistroService arquivoPublicidade = mock(ArquivoPublicidadeRegistroService.class);
     private final AdminPremiumOperacaoService service = new AdminPremiumOperacaoService(
             ativacaoRepository,
             movimentoRepository,
@@ -68,9 +77,10 @@ class AdminPremiumOperacaoServiceTest {
             opcaoRepository,
             grupoRepository,
             anuncioRepository,
+            usuarioRepository,
             bloqueioJuridicoRepository,
             consultaService,
-            mock(ArquivoPublicidadeRegistroService.class));
+            arquivoPublicidade);
 
     @BeforeEach
     void salvarEntidadesSemAlterarArgumentos() {
@@ -471,7 +481,7 @@ class AdminPremiumOperacaoServiceTest {
                 inicio.plusDays(7),
                 "ativacao-admin-cancelar",
                 inicio);
-        when(ativacaoRepository.findByIdForUpdate(ativacaoId)).thenReturn(Optional.of(ativacao));
+        prepararCancelamento(ativacao);
 
         var response = service.cancelar(
                 ativacaoId,
@@ -493,6 +503,168 @@ class AdminPremiumOperacaoServiceTest {
                 any(),
                 any(),
                 eq("req-cancelamento"));
+        var locks = inOrder(ativacaoRepository, usuarioRepository, anuncioRepository, arquivoPublicidade);
+        locks.verify(ativacaoRepository).findReferenciaById(ativacaoId);
+        locks.verify(usuarioRepository).findByIdForUpdate(ativacao.getUsuarioId());
+        locks.verify(anuncioRepository).findByIdForModeration(anuncioId);
+        locks.verify(ativacaoRepository).findByIdForUpdate(ativacaoId);
+        locks.verify(ativacaoRepository).save(ativacao);
+        locks.verify(arquivoPublicidade).registrarEstado(eq(anuncioId), eq("PREMIUM_ATIVACAO_CANCELADA"),
+                eq("req-cancelamento"), any());
+        verify(ativacaoRepository, never()).findById(any());
+    }
+
+    @Test
+    void cancelamentoSemReferenciaNaoBloqueiaNemAltera() {
+        UUID id = UUID.randomUUID();
+        assertCancelamentoRecusado(id, HttpStatus.NOT_FOUND);
+        verify(ativacaoRepository, never()).findByIdForUpdate(any());
+        verifyNoInteractions(usuarioRepository, anuncioRepository, creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @Test
+    void cancelamentoSemTitularNaoBloqueiaAnuncioNemAtivacao() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        when(usuarioRepository.findByIdForUpdate(ativacao.getUsuarioId())).thenReturn(Optional.empty());
+        assertCancelamentoRecusado(ativacao.getId(), HttpStatus.NOT_FOUND);
+        verify(ativacaoRepository, never()).findByIdForUpdate(any());
+        verifyNoInteractions(anuncioRepository, creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @Test
+    void cancelamentoSemAnuncioNaoBloqueiaAtivacao() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        when(anuncioRepository.findByIdForModeration(ativacao.getAnuncioId())).thenReturn(Optional.empty());
+        assertCancelamentoRecusado(ativacao.getId(), HttpStatus.NOT_FOUND);
+        verify(ativacaoRepository, never()).findByIdForUpdate(any());
+        verifyNoInteractions(creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @Test
+    void cancelamentoRevalidaExistenciaDepoisDoLockDoAnuncio() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        when(ativacaoRepository.findByIdForUpdate(ativacao.getId())).thenReturn(Optional.empty());
+        assertCancelamentoRecusado(ativacao.getId(), HttpStatus.NOT_FOUND);
+        verify(anuncioRepository).findByIdForModeration(ativacao.getAnuncioId());
+        verify(ativacaoRepository, never()).save(any());
+        verifyNoInteractions(creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"id", "anuncioId", "usuarioId", "beneficioId"})
+    void cancelamentoRevalidaIdentidadeEVinculosDepoisDaEspera(String campo) {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        UUID id = ativacao.getId();
+        prepararCancelamento(ativacao);
+        ReflectionTestUtils.setField(ativacao, campo, UUID.randomUUID());
+        assertCancelamentoRecusado(id, HttpStatus.CONFLICT);
+        assertThat(ativacao.getStatus()).isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
+        verify(ativacaoRepository, never()).save(any());
+        verifyNoInteractions(creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @Test
+    void cancelamentoRevalidaProprietarioDoAnuncioBloqueado() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        when(anuncioRepository.findByIdForModeration(ativacao.getAnuncioId()))
+                .thenReturn(Optional.of(anuncioElegivel(ativacao.getAnuncioId())));
+        assertCancelamentoRecusado(ativacao.getId(), HttpStatus.CONFLICT);
+        verify(ativacaoRepository, never()).save(any());
+        verifyNoInteractions(creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = StatusAtivacaoBeneficio.class, names = {"REVOGADA", "CANCELADA"})
+    void cancelamentoUsaEstadoTerminalVigenteAposEsperaSemRepetirEfeitos(StatusAtivacaoBeneficio status) {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        when(ativacaoRepository.findByIdForUpdate(ativacao.getId())).thenAnswer(call -> {
+            ReflectionTestUtils.setField(ativacao, "status", status);
+            return Optional.of(ativacao);
+        });
+        var result = cancelar(ativacao.getId());
+        assertThat(result.idempotente()).isTrue();
+        assertThat(result.status()).isEqualTo(status.name());
+        verify(ativacaoRepository, never()).save(any());
+        verifyNoInteractions(creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @Test
+    void cancelamentoAceitaPrazoIniciadoPelaModeracaoEnquantoEsperava() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        OffsetDateTime inicio = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime fim = inicio.plusDays(7);
+        when(ativacaoRepository.findByIdForUpdate(ativacao.getId())).thenAnswer(call -> {
+            assertThat(ativacao.iniciarAposModeracao(inicio, fim)).isTrue();
+            return Optional.of(ativacao);
+        });
+        assertThat(cancelar(ativacao.getId()).status()).isEqualTo("REVOGADA");
+        assertThat(ativacao.getInicioEm()).isEqualTo(inicio);
+        assertThat(ativacao.getFimEm()).isEqualTo(fim);
+        verify(ativacaoRepository).save(ativacao);
+        verifyNoInteractions(movimentoRepository);
+    }
+
+    @Test
+    void cancelamentoRecusaEstadoNaoCancelavelVigenteAposEspera() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(UUID.randomUUID());
+        prepararCancelamento(ativacao);
+        when(ativacaoRepository.findByIdForUpdate(ativacao.getId())).thenAnswer(call -> {
+            ReflectionTestUtils.setField(ativacao, "status", StatusAtivacaoBeneficio.EXPIRADA);
+            return Optional.of(ativacao);
+        });
+        assertCancelamentoRecusado(ativacao.getId(), HttpStatus.CONFLICT);
+        verify(ativacaoRepository, never()).save(any());
+        verifyNoInteractions(creditoService, movimentoRepository, arquivoPublicidade);
+    }
+
+    @Test
+    void cancelamentoSemAnuncioPreservaDatasNulasENaoBuscaArquivo() {
+        AtivacaoBeneficioEntity ativacao = ativacaoPendente(null);
+        prepararCancelamento(ativacao);
+        assertThat(cancelar(ativacao.getId()).status()).isEqualTo("REVOGADA");
+        assertThat(ativacao.getInicioEm()).isNull();
+        assertThat(ativacao.getFimEm()).isNull();
+        verifyNoInteractions(anuncioRepository, arquivoPublicidade, movimentoRepository);
+    }
+
+    private AtivacaoBeneficioEntity ativacaoPendente(UUID anuncioId) {
+        return AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), anuncioId,
+                UUID.randomUUID(), UUID.randomUUID(), "cancelamento-pendente-sintetico", OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    private void prepararCancelamento(AtivacaoBeneficioEntity ativacao) {
+        var referencia = mock(AtivacaoBeneficioRepository.ReferenciaAtivacaoProjection.class);
+        when(referencia.getId()).thenReturn(ativacao.getId());
+        when(referencia.getAnuncioId()).thenReturn(ativacao.getAnuncioId());
+        when(referencia.getUsuarioId()).thenReturn(ativacao.getUsuarioId());
+        when(referencia.getBeneficioId()).thenReturn(ativacao.getBeneficioId());
+        when(ativacaoRepository.findReferenciaById(ativacao.getId())).thenReturn(Optional.of(referencia));
+        when(ativacaoRepository.findByIdForUpdate(ativacao.getId())).thenReturn(Optional.of(ativacao));
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        when(usuario.getId()).thenReturn(ativacao.getUsuarioId());
+        when(usuarioRepository.findByIdForUpdate(ativacao.getUsuarioId())).thenReturn(Optional.of(usuario));
+        if (ativacao.getAnuncioId() != null) {
+            AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(ativacao.getAnuncioId(), ativacao.getUsuarioId(),
+                    "cancelamento-sintetico", "Anuncio sintetico", "Descricao sintetica do cancelamento", "OUTROS",
+                    null, null, OffsetDateTime.now(ZoneOffset.UTC));
+            when(anuncioRepository.findByIdForModeration(ativacao.getAnuncioId())).thenReturn(Optional.of(anuncio));
+        }
+    }
+
+    private br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto cancelar(UUID id) {
+        return service.cancelar(id, "Motivo sintetico de cancelamento", "cancelamento-teste", admin(), "req-cancelamento");
+    }
+
+    private void assertCancelamentoRecusado(UUID id, HttpStatus status) {
+        assertThatThrownBy(() -> cancelar(id)).isInstanceOf(ResponseStatusException.class)
+                .satisfies(failure -> assertThat(((ResponseStatusException) failure).getStatusCode()).isEqualTo(status));
     }
 
     @Test

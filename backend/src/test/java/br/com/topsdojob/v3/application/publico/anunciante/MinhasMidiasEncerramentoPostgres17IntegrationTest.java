@@ -34,6 +34,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.CategoriaBloqueioJuridico;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
@@ -86,6 +87,7 @@ import org.springframework.test.util.AopTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
 @SpringBootTest(properties = {
         "app.env=homologacao", "app.event.hash-salt=hash-fixture",
@@ -357,15 +359,125 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
     void rascunhoInicialVazioAceitaSalvamentoEPrimeiroUploadSemEncerramentoAutomatico() throws Exception {
         Ad ad = ad("RASCUNHO", "NAO_ENVIADO");
         edicao.atualizar(ad.slug(), request(), ad.auth());
-        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PENDENTE_REVISAO");
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
         assertThat(vinculos.findFotosValidasAtivasIds(ad.id())).isEmpty();
         MeuAnuncioMidiasResponseDto response = upload(ad);
         assertThat(response.fotosValidasAtivasTotal()).isEqualTo(1);
         assertThat(response.anuncio().status()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(response.anuncio().statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", ad.id()))
+                .isEqualTo(1);
     }
 
     @Test
-    void criacaoRealPersisteAntesDoUploadEAceitaSalvamentoIntermediario() throws Exception {
+    void respostaDeCriacaoEUploadPerdidasRecuperamIdentidadeExataSemDuplicarMesmoComCapacidadeZero() throws Exception {
+        locality();
+        UUID owner = user();
+        Authentication authentication = auth(owner);
+        String session = "wizard-create-lost-" + UUID.randomUUID();
+        ObjectNode payload = creationPayload();
+        assertHttp(404, () -> progresso.recuperarAnuncio(session, authentication));
+
+        // Both requests commit, but their responses are deliberately discarded by the simulated client.
+        criacao.solicitar(payload, authentication, session);
+        UUID committedId = jdbc.queryForObject(
+                "select anuncio_id from wizard_progresso where usuario_id = ? and sessao_id = ?",
+                UUID.class, owner, session);
+        String committedSlug = value("select slug from anuncio where id = ?", committedId);
+        var recovered = progresso.recuperarAnuncio(session, authentication);
+        assertThat(recovered.anuncioId()).isEqualTo(committedId);
+        assertThat(recovered.slug()).isEqualTo(committedSlug);
+        assertThat(recovered.status()).isEqualTo("RASCUNHO");
+        assertThat(recovered.statusModeracao()).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from anuncio where usuario_id = ?", owner)).isEqualTo(1);
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", committedId)).isZero();
+
+        payload.put("titulo", "Este replay nao deve alterar o anuncio");
+        var replay = criacao.solicitar(payload, authentication, session);
+        assertThat(replay.criado()).isFalse();
+        assertThat(replay.anuncioId()).isEqualTo(committedId);
+        assertThat(replay.slugLocal()).isEqualTo(committedSlug);
+        assertThat(value("select titulo from anuncio where id = ?", committedId)).isEqualTo("Anuncio sintetico novo");
+        assertThat(count("select count(*) from anuncio where usuario_id = ?", owner)).isEqualTo(1);
+
+        Ad ad = new Ad(committedId, owner, committedSlug, authentication);
+        List<MultipartFile> files = fourPhotos();
+        String uploadKey = "wizard-lost-upload-" + UUID.randomUUID();
+        midias.enviarLote(ad.slug(), files, uploadKey, authentication);
+        List<UUID> persistedIds = jdbc.queryForList(
+                "select id from anuncio_midia where anuncio_id = ? order by ordem", UUID.class, committedId);
+        assertThat(persistedIds).hasSize(4);
+        assertThat(objects).hasSize(4);
+        long puts = storagePutCount();
+        assertThat(puts).isEqualTo(4);
+        assertThat(midias.listar(ad.slug(), authentication).limites().fotosDisponiveis()).isZero();
+
+        var uploadedReplay = midias.enviarLote(ad.slug(), files, uploadKey, authentication);
+        assertThat(uploadedReplay.midias()).extracting(item -> item.id()).containsExactlyElementsOf(persistedIds);
+        assertThat(uploadedReplay.fotosValidasAtivasTotal()).isEqualTo(4);
+        assertThat(uploadedReplay.limites().fotosDisponiveis()).isZero();
+        assertThat(storagePutCount()).isEqualTo(puts);
+        assertThat(objects).hasSize(4);
+        assertThat(count("select count(*) from anuncio_midia where anuncio_id = ?", committedId)).isEqualTo(4);
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", committedId))
+                .isEqualTo(1);
+        assertThat(count("select count(*) from anuncio where usuario_id = ?", owner)).isEqualTo(1);
+
+        var afterReload = progresso.recuperarAnuncio(session, authentication);
+        assertThat(afterReload.anuncioId()).isEqualTo(committedId);
+        assertThat(afterReload.slug()).isEqualTo(committedSlug);
+        assertThat(afterReload.status()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(afterReload.statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(criacao.solicitar(null, authentication, session).statusAnuncio()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", committedId)).isEqualTo(1);
+    }
+
+    @Test
+    void criacaoESessaoRevertemJuntasERepeticaoUsaMesmaChave() throws Exception {
+        locality();
+        UUID owner = user();
+        Authentication authentication = auth(owner);
+        String session = "wizard-rollback-" + UUID.randomUUID();
+        ObjectNode payload = creationPayload();
+        assertThatThrownBy(() -> transaction().executeWithoutResult(status -> {
+            criacao.solicitar(payload, authentication, session);
+            assertThat(count("select count(*) from wizard_progresso where usuario_id = ?", owner)).isEqualTo(1);
+            throw new IllegalStateException("falha sintetica antes do commit");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("falha sintetica antes do commit");
+        assertThat(count("select count(*) from anuncio where usuario_id = ?", owner)).isZero();
+        assertThat(count("select count(*) from wizard_progresso where usuario_id = ?", owner)).isZero();
+        assertHttp(404, () -> progresso.recuperarAnuncio(session, authentication));
+        var created = criacao.solicitar(payload, authentication, session);
+        assertThat(progresso.recuperarAnuncio(session, authentication).anuncioId()).isEqualTo(created.anuncioId());
+        assertThat(count("select count(*) from anuncio where usuario_id = ?", owner)).isEqualTo(1);
+    }
+
+    @Test
+    void recuperacaoExigeContaCorretaENaoRecriaSessaoEditOuAnuncioRemovido() throws Exception {
+        locality();
+        UUID owner = user();
+        Authentication authentication = auth(owner);
+        String session = "wizard-owner-" + UUID.randomUUID();
+        ObjectNode payload = creationPayload();
+        var created = criacao.solicitar(payload, authentication, session);
+        assertHttp(401, () -> progresso.recuperarAnuncio(session, null));
+        assertHttp(404, () -> progresso.recuperarAnuncio(session, auth(user())));
+        String editSession = "wizard-edit-" + UUID.randomUUID();
+        progresso.sincronizar(new SyncRequest(editSession, "EDIT", "PERFIL", "EM_PREENCHIMENTO", null), authentication);
+        assertHttp(409, () -> progresso.recuperarAnuncio(editSession, authentication));
+        assertHttp(409, () -> criacao.solicitar(payload, authentication, editSession));
+        jdbc.update("update anuncio set status = 'REMOVIDO', removido_em = now() where id = ?", created.anuncioId());
+        assertHttp(409, () -> progresso.recuperarAnuncio(session, authentication));
+        assertHttp(409, () -> criacao.solicitar(payload, authentication, session));
+        assertThat(count("select count(*) from anuncio where usuario_id = ?", owner)).isEqualTo(1);
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", created.anuncioId())).isZero();
+        assertThat(objects).isEmpty();
+    }
+
+    @Test
+    void criacaoRealPermaneceRascunhoAteFotoConfirmadaSemRevisaoAntecipada() throws Exception {
         locality();
         UUID owner = user();
         Authentication authentication = auth(owner);
@@ -377,13 +489,57 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
                 """), authentication);
         assertThat(created.criado()).isTrue();
         assertThat(created.uploadRealExecutado()).isFalse();
+        assertThat(created.revisaoCriada()).isFalse();
+        assertThat(created.revisaoId()).isNull();
         Ad ad = new Ad(created.anuncioId(), owner, created.slugLocal(), authentication);
         assertThat(vinculos.findFotosValidasAtivasIds(ad.id())).isEmpty();
-        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PENDENTE_REVISAO");
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
         edicao.atualizar(ad.slug(), request(), authentication);
         assertThat(vinculos.findFotosValidasAtivasIds(ad.id())).isEmpty();
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
         assertThat(count("select count(*) from anuncio_status_historico where anuncio_id = ?", ad.id())).isZero();
-        assertThat(upload(ad).fotosValidasAtivasTotal()).isEqualTo(1);
+        MeuAnuncioMidiasResponseDto uploaded = upload(ad);
+        assertThat(uploaded.fotosValidasAtivasTotal()).isEqualTo(1);
+        assertThat(uploaded.anuncio().status()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(uploaded.anuncio().statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).isEmpty();
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", ad.id()))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void retryConcorrenteDaPrimeiraFotoNaoDuplicaRevisaoOuMidia() throws Exception {
+        Ad ad = ad("RASCUNHO", "NAO_ENVIADO");
+        String key = "criacao-retry-" + UUID.randomUUID();
+
+        Ordered result = ordered(ad, () -> upload(ad, key), () -> upload(ad, key));
+
+        assertThat(result.failure()).isNull();
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PENDENTE_REVISAO");
+        assertThat(count("select count(*) from anuncio_midia where anuncio_id = ?", ad.id())).isEqualTo(1);
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", ad.id()))
+                .isEqualTo(1);
+        assertThat(objects).hasSize(1);
+    }
+
+    @Test
+    void falhaNaVerificacaoR2RevertePrimeiraFotoEMantemCriacaoForaDaFila() {
+        Ad ad = ad("RASCUNHO", "NAO_ENVIADO");
+        when(storage.get(any(), anyString())).thenThrow(new IllegalStateException("R2 sintetico indisponivel"));
+
+        assertThatThrownBy(() -> upload(ad)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from anuncio_midia where anuncio_id = ?", ad.id())).isZero();
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
+        assertThat(count("""
+                select count(*) from arquivo_midia
+                where chave_objeto like '%anuncios/' || cast(? as text) || '/%'
+                """, ad.id())).isZero();
     }
 
     @Test
@@ -903,11 +1059,38 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
 
     private TransactionTemplate transaction() { return new TransactionTemplate(transactionManager); }
 
+    private ObjectNode creationPayload() throws Exception {
+        return (ObjectNode) objectMapper.readTree("""
+                {"uf":"GO","cidade":"Goiania","titulo":"Anuncio sintetico novo",
+                 "descricao":"Descricao sintetica completa para solicitar anuncio novo.",
+                 "preco":100,"categoria":"ACOMPANHANTE_FEMININA","servicos":["ORAL"],
+                 "atendimentoExclusivamenteVirtual":false,"aceiteTermos":true,"confirmacaoIdade":true}
+                """);
+    }
+
+    private List<MultipartFile> fourPhotos() throws Exception {
+        BufferedImage image = new BufferedImage(120, 160, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        assertThat(ImageIO.write(image, "jpeg", bytes)).isTrue();
+        byte[] content = bytes.toByteArray();
+        return java.util.stream.IntStream.range(0, 4).mapToObj(index -> (MultipartFile) new MockMultipartFile(
+                "arquivos", "foto-sintetica-" + index + ".jpg", "image/jpeg", content)).toList();
+    }
+
+    private long storagePutCount() {
+        return mockingDetails(storage).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("putIfAbsent")).count();
+    }
+
     private MeuAnuncioMidiasResponseDto remove(Ad ad, Media media) {
         return midias.remover(ad.slug(), media.id(), ad.auth(), "ultima-foto-" + media.id());
     }
 
     private MeuAnuncioMidiasResponseDto upload(Ad ad) throws Exception {
+        return upload(ad, "ultima-foto-upload-" + UUID.randomUUID());
+    }
+
+    private MeuAnuncioMidiasResponseDto upload(Ad ad, String idempotencyKey) throws Exception {
         BufferedImage image = new BufferedImage(120, 160, BufferedImage.TYPE_INT_RGB);
         var graphics = image.createGraphics();
         graphics.setColor(Color.GREEN);
@@ -917,7 +1100,7 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
         assertThat(ImageIO.write(image, "jpeg", bytes)).isTrue();
         return midias.enviarLote(ad.slug(), List.of(new MockMultipartFile(
                 "arquivos", "foto-sintetica.jpg", "image/jpeg", bytes.toByteArray())),
-                "ultima-foto-upload-" + UUID.randomUUID(), ad.auth());
+                idempotencyKey, ad.auth());
     }
 
     private Ad ad(String status, String moderation) {
