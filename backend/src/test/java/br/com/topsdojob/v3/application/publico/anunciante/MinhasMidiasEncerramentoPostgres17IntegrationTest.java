@@ -357,15 +357,20 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
     void rascunhoInicialVazioAceitaSalvamentoEPrimeiroUploadSemEncerramentoAutomatico() throws Exception {
         Ad ad = ad("RASCUNHO", "NAO_ENVIADO");
         edicao.atualizar(ad.slug(), request(), ad.auth());
-        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PENDENTE_REVISAO");
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
         assertThat(vinculos.findFotosValidasAtivasIds(ad.id())).isEmpty();
         MeuAnuncioMidiasResponseDto response = upload(ad);
         assertThat(response.fotosValidasAtivasTotal()).isEqualTo(1);
         assertThat(response.anuncio().status()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(response.anuncio().statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", ad.id()))
+                .isEqualTo(1);
     }
 
     @Test
-    void criacaoRealPersisteAntesDoUploadEAceitaSalvamentoIntermediario() throws Exception {
+    void criacaoRealPermaneceRascunhoAteFotoConfirmadaSemRevisaoAntecipada() throws Exception {
         locality();
         UUID owner = user();
         Authentication authentication = auth(owner);
@@ -377,13 +382,57 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
                 """), authentication);
         assertThat(created.criado()).isTrue();
         assertThat(created.uploadRealExecutado()).isFalse();
+        assertThat(created.revisaoCriada()).isFalse();
+        assertThat(created.revisaoId()).isNull();
         Ad ad = new Ad(created.anuncioId(), owner, created.slugLocal(), authentication);
         assertThat(vinculos.findFotosValidasAtivasIds(ad.id())).isEmpty();
-        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PENDENTE_REVISAO");
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
         edicao.atualizar(ad.slug(), request(), authentication);
         assertThat(vinculos.findFotosValidasAtivasIds(ad.id())).isEmpty();
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
         assertThat(count("select count(*) from anuncio_status_historico where anuncio_id = ?", ad.id())).isZero();
-        assertThat(upload(ad).fotosValidasAtivasTotal()).isEqualTo(1);
+        MeuAnuncioMidiasResponseDto uploaded = upload(ad);
+        assertThat(uploaded.fotosValidasAtivasTotal()).isEqualTo(1);
+        assertThat(uploaded.anuncio().status()).isEqualTo("PENDENTE_REVISAO");
+        assertThat(uploaded.anuncio().statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(vinculos.findFotosAprovadasElegiveisIds(ad.id())).isEmpty();
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", ad.id()))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void retryConcorrenteDaPrimeiraFotoNaoDuplicaRevisaoOuMidia() throws Exception {
+        Ad ad = ad("RASCUNHO", "NAO_ENVIADO");
+        String key = "criacao-retry-" + UUID.randomUUID();
+
+        Ordered result = ordered(ad, () -> upload(ad, key), () -> upload(ad, key));
+
+        assertThat(result.failure()).isNull();
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("PENDENTE_REVISAO");
+        assertThat(count("select count(*) from anuncio_midia where anuncio_id = ?", ad.id())).isEqualTo(1);
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ? and tipo = 'CRIACAO' and status = 'ABERTA'", ad.id()))
+                .isEqualTo(1);
+        assertThat(objects).hasSize(1);
+    }
+
+    @Test
+    void falhaNaVerificacaoR2RevertePrimeiraFotoEMantemCriacaoForaDaFila() {
+        Ad ad = ad("RASCUNHO", "NAO_ENVIADO");
+        when(storage.get(any(), anyString())).thenThrow(new IllegalStateException("R2 sintetico indisponivel"));
+
+        assertThatThrownBy(() -> upload(ad)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(value("select status from anuncio where id = ?", ad.id())).isEqualTo("RASCUNHO");
+        assertThat(value("select status_moderacao from anuncio where id = ?", ad.id())).isEqualTo("NAO_ENVIADO");
+        assertThat(count("select count(*) from anuncio_midia where anuncio_id = ?", ad.id())).isZero();
+        assertThat(count("select count(*) from revisao_anuncio where anuncio_id = ?", ad.id())).isZero();
+        assertThat(count("""
+                select count(*) from arquivo_midia
+                where chave_objeto like '%anuncios/' || cast(? as text) || '/%'
+                """, ad.id())).isZero();
     }
 
     @Test
@@ -908,6 +957,10 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
     }
 
     private MeuAnuncioMidiasResponseDto upload(Ad ad) throws Exception {
+        return upload(ad, "ultima-foto-upload-" + UUID.randomUUID());
+    }
+
+    private MeuAnuncioMidiasResponseDto upload(Ad ad, String idempotencyKey) throws Exception {
         BufferedImage image = new BufferedImage(120, 160, BufferedImage.TYPE_INT_RGB);
         var graphics = image.createGraphics();
         graphics.setColor(Color.GREEN);
@@ -917,7 +970,7 @@ class MinhasMidiasEncerramentoPostgres17IntegrationTest {
         assertThat(ImageIO.write(image, "jpeg", bytes)).isTrue();
         return midias.enviarLote(ad.slug(), List.of(new MockMultipartFile(
                 "arquivos", "foto-sintetica.jpg", "image/jpeg", bytes.toByteArray())),
-                "ultima-foto-upload-" + UUID.randomUUID(), ad.auth());
+                idempotencyKey, ad.auth());
     }
 
     private Ad ad(String status, String moderation) {

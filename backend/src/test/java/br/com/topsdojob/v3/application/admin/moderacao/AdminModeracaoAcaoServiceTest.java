@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService;
@@ -99,6 +100,26 @@ class AdminModeracaoAcaoServiceTest {
                 mock(ArquivoPublicidadeRegistroService.class),
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @Test
+    void remeterRascunhoSemFotoNaoAbreRevisaoNemNotifica() {
+        UUID anuncioId = UUID.randomUUID();
+        AnuncioEntity anuncio = AnuncioEntity.criarFixtureHomologacao(
+                anuncioId, UUID.randomUUID(), "criacao-incompleta", "Titulo sintetico", "Descricao sintetica",
+                StatusAnuncio.RASCUNHO, StatusModeracaoAnuncio.NAO_ENVIADO, OffsetDateTime.now());
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(midiaRepository.findFotosValidasAtivasIds(anuncioId)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.remeterAnuncioParaRevisao(
+                anuncioId, new AdminRemeterRevisaoRequestDto("Revisar criacao", null, null),
+                principal(), "req-criacao-incompleta"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("409");
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.RASCUNHO);
+        verify(revisaoRepository, never()).save(any());
+        verify(outboxRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test

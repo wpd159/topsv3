@@ -23,6 +23,7 @@ import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
@@ -74,7 +75,8 @@ class SolicitarAnuncioPublicoServiceTest {
             estadoRepository,
             cidadeRepository,
             bairroRepository,
-            objectMapper);
+            objectMapper,
+            mock(AnuncioMidiaRepository.class));
 
     @BeforeEach
     void setUp() {
@@ -84,7 +86,7 @@ class SolicitarAnuncioPublicoServiceTest {
     }
 
     @Test
-    void payloadValidoCriaAnuncioNaoPublicoComRevisaoAberta() {
+    void payloadValidoCriaRascunhoSemRevisaoAntesDoUpload() {
         UUID estadoId = UUID.randomUUID();
         UUID cidadeId = UUID.randomUUID();
         UUID bairroId = UUID.randomUUID();
@@ -103,8 +105,10 @@ class SolicitarAnuncioPublicoServiceTest {
 
         assertThat(response.criado()).isTrue();
         assertThat(response.publicado()).isFalse();
-        assertThat(response.statusAnuncio()).isEqualTo("PENDENTE_REVISAO");
-        assertThat(response.statusModeracao()).isEqualTo("PENDENTE");
+        assertThat(response.statusAnuncio()).isEqualTo("RASCUNHO");
+        assertThat(response.statusModeracao()).isEqualTo("NAO_ENVIADO");
+        assertThat(response.revisaoCriada()).isFalse();
+        assertThat(response.revisaoId()).isNull();
         assertThat(response.uploadRealExecutado()).isFalse();
         assertThat(response.pagamentoCriado()).isFalse();
         assertThat(response.creditoCriado()).isFalse();
@@ -119,27 +123,20 @@ class SolicitarAnuncioPublicoServiceTest {
         ArgumentCaptor<AnuncioEntity> anuncio = ArgumentCaptor.forClass(AnuncioEntity.class);
         ArgumentCaptor<AnuncioLocalizacaoEntity> localizacao = ArgumentCaptor.forClass(AnuncioLocalizacaoEntity.class);
         ArgumentCaptor<DocumentoBuscaAnuncioEntity> documentoBusca = ArgumentCaptor.forClass(DocumentoBuscaAnuncioEntity.class);
-        ArgumentCaptor<RevisaoAnuncioEntity> revisao = ArgumentCaptor.forClass(RevisaoAnuncioEntity.class);
         verify(anuncioRepository).save(anuncio.capture());
         verify(localizacaoRepository).save(localizacao.capture());
         verify(documentoBuscaRepository).save(documentoBusca.capture());
-        verify(revisaoRepository).save(revisao.capture());
+        verifyNoInteractions(revisaoRepository);
 
         assertThat(anuncio.getValue().getUsuarioId()).isEqualTo(usuarioId);
         assertThat(anuncio.getValue().getWhatsappNormalizado()).isEqualTo("+5562999999999");
-        assertThat(anuncio.getValue().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
-        assertThat(anuncio.getValue().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.PENDENTE);
+        assertThat(anuncio.getValue().getStatus()).isEqualTo(StatusAnuncio.RASCUNHO);
+        assertThat(anuncio.getValue().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.NAO_ENVIADO);
         assertThat(anuncio.getValue().getPublicadoEm()).isNull();
         assertThat(localizacao.getValue().getEstadoId()).isEqualTo(estadoId);
         assertThat(localizacao.getValue().getEnderecoResumido()).isNull();
         assertThat(documentoBusca.getValue().getStatusPublicacao()).isEqualTo(StatusPublicacaoBusca.NAO_PUBLICAVEL);
         assertThat(documentoBusca.getValue().getTemMidiaValida()).isFalse();
-        assertThat(revisao.getValue().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
-        assertThat(revisao.getValue().getPayloadSolicitado())
-                .contains("ANUNCIE_GRATIS_LOCAL")
-                .contains("\"pagamentoCriado\":false")
-                .doesNotContain("+5562999999999")
-                .doesNotContain("example.invalid");
     }
 
     @Test

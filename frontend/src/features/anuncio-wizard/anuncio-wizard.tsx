@@ -770,6 +770,13 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       return
     }
     setEditAnuncio(atualizado)
+    if (atualizado.status === 'RASCUNHO') {
+      await syncProgress('fotos', 'EM_PREENCHIMENTO', atualizado.id)
+      if (!flowIsCurrent(generation)) return
+      setStep('fotos')
+      toast.success('Dados salvos. Envie ao menos uma foto para encaminhar o anúncio à revisão.')
+      return
+    }
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', atualizado.id)
     if (!flowIsCurrent(generation)) return
     clearWizardProgressSessionId(progressScope)
@@ -818,6 +825,9 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
         })
         acceptMediaResponse(media)
         if (terminalAnuncioRef.current || !mountedRef.current) return
+        if (media.anuncio.status === 'RASCUNHO') {
+          throw new Error('O envio ainda não confirmou uma foto válida. Revise as fotos antes de continuar.')
+        }
       } catch (error) {
         if (error instanceof MeusAnunciosApiError && error.unsupportedPhotoUpload) {
           // A photo-only 415 does not identify the offending part of the batch.

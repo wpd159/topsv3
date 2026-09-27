@@ -413,7 +413,8 @@ class MeusAnunciosConsultaServiceTest {
                 mock(LimiteMidiasAnuncioService.class), new MidiaUploadProperties(), previewService,
                 mock(AnuncioMidiaUploadCoreService.class), mock(FotoElegivelAnuncioPolicy.class),
                 mock(MeuAnuncioCicloVidaService.class),
-                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService.class));
+                mock(br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeRegistroService.class),
+                mock(br.com.topsdojob.v3.application.publico.service.SolicitarAnuncioPublicoService.class));
         var mvc = MockMvcBuilders.standaloneSetup(new MeusAnunciosController(
                 service, mock(MeuAnuncioAtualizacaoService.class), mock(MeuAnuncioCicloVidaService.class), midiasService))
                 .build();

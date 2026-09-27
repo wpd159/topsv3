@@ -441,7 +441,10 @@ const wizardConstants = moduleFromSource('features/anuncio-wizard/wizard-constan
 const wizardRunner = hooks()
 const wizardCalls = { create: 0, upload: 0, kyc: 0, update: 0 }
 let wizardUploadFailure = null
+let wizardUploadStatus = 'PENDENTE_REVISAO'
 const wizardErrors = []
+const wizardSuccesses = [], wizardProgress = [], wizardNavigations = [], wizardUploadSlugs = []
+let wizardCacheClears = 0, wizardProgressClears = 0, wizardResets = 0
 const steps = wizardTypes.wizardStepIds.map((id) => ({ id, title: id, eyebrow: id }))
 const wizardStore = {
   state: {
@@ -454,15 +457,16 @@ const wizardStore = {
   updateForm(patch) { wizardStore.state.form = { ...wizardStore.state.form, ...patch } },
   updateKyc(patch) { wizardStore.state.kyc = { ...wizardStore.state.kyc, ...patch } },
   setStep(step) { wizardStore.currentIndex = steps.findIndex((item) => item.id === step) },
-  setDocumentos() {}, nextStep() {}, previousStep() {}, reset() {}, clearCurrentCache() {}, hydrateFromBackend() {},
+  setDocumentos() {}, nextStep() {}, previousStep() {},
+  reset() { wizardResets++ }, clearCurrentCache() { wizardCacheClears++ }, hydrateFromBackend() {},
 }
 const user = { id: 'synthetic-user', dataNascimento: '1990-01-01' }
 const locations = { estados: [], cidades: [], bairros: [], loadBairros: async () => {}, loadCidades: async () => {} }
 const wizardImports = componentImports(wizardRunner, {
   '@/app/(painel-admin)/admin/anuncios/actions': { revalidarCacheCatalogoPublico: async () => {} },
   '@/lib/seo/indexnow-client': { anuncioEstaPublicamenteIndexavel: () => false },
-  'next/navigation': { useRouter: () => ({ push() {} }) },
-  sonner: { toast: { error: (message) => wizardErrors.push(message), warning: (message) => wizardErrors.push(message), success() {} } },
+  'next/navigation': { useRouter: () => ({ push: (href) => wizardNavigations.push(href) }) },
+  sonner: { toast: { error: (message) => wizardErrors.push(message), warning: (message) => wizardErrors.push(message), success: (message) => wizardSuccesses.push(message) } },
   '@/context/AuthContext': { useAuth: () => ({ usuario: user, carregando: false, refresh: async () => {} }) },
   '@/hooks/useLocalidades': { useLocalidades: () => locations },
   '@/lib/date/birth-date': { isoToBirthDate: (value) => value },
@@ -473,9 +477,11 @@ const wizardImports = componentImports(wizardRunner, {
     consultarLimitesMinhasMidias: async () => mediaResponse.limites,
     enviarMinhasMidiasEmLote: async (_slug, files) => {
       wizardCalls.upload++
+      wizardUploadSlugs.push(_slug)
       assert.ok(!files.includes(bad))
       if (wizardUploadFailure) throw wizardUploadFailure
-      return { ...mediaResponse, anuncio: { ...mediaResponse.anuncio, slug: 'synthetic' } }
+      return { ...mediaResponse, fotosValidasAtivasTotal: wizardUploadStatus === 'RASCUNHO' ? 0 : 1,
+        anuncio: { ...mediaResponse.anuncio, slug: 'synthetic', status: wizardUploadStatus } }
     },
   },
   '@/utils/formatter': { formatCurrencyBRL: (value) => String(value) },
@@ -494,7 +500,11 @@ const wizardImports = componentImports(wizardRunner, {
     validateWizardKycState: () => null, validateWizardStep: () => null, wizardSteps: steps,
   },
   './types': wizardTypes,
-  './wizard-progress': { clearWizardProgressSessionId() {}, createWizardProgressSessionId: () => 'synthetic-session', syncWizardProgress: async () => {} },
+  './wizard-progress': {
+    clearWizardProgressSessionId() { wizardProgressClears++ },
+    createWizardProgressSessionId: () => 'synthetic-session',
+    syncWizardProgress: async (value) => { wizardProgress.push(value) },
+  },
 })
 for (const [file, name] of [
   ['wizard-final-review', 'WizardFinalReview'], ['wizard-preview', 'WizardPreview'],
@@ -555,10 +565,12 @@ wizardStore.currentIndex = 6
 wizardRunner.render()
 await wizardRunner.settle()
 wizardUploadFailure = new advertiserApi.MeusAnunciosApiError('Falha transitória', 503, 'TEMPORARY', 'transient-rid')
+const successesBeforeTransientFailure = wizardSuccesses.length
 publish().props.onClick()
 await wizardRunner.settle()
 assert.equal(wizardCalls.create, 2)
 assert.deepEqual(wizardStore.state.form.fotos, [transientWizardPhoto])
+assert.equal(wizardSuccesses.length, successesBeforeTransientFailure, 'Upload falho não pode declarar publicação bem-sucedida.')
 wizardStore.currentIndex = 6
 wizardRunner.render()
 await wizardRunner.settle()
@@ -568,6 +580,7 @@ publish().props.onClick()
 await wizardRunner.settle()
 assert.equal(wizardCalls.create, 2, 'Retry não deve criar um segundo anúncio para a mesma publicação.')
 assert.equal(wizardCalls.upload, 3)
+assert.equal(wizardUploadSlugs.at(-1), wizardUploadSlugs.at(-2), 'Retry de upload mantém o slug criado antes da falha.')
 
 const serverRejectedWizardPhoto = fixture('server-rejected-wizard.jpg')
 wizardStore.setFotos([serverRejectedWizardPhoto])
@@ -602,8 +615,147 @@ publish().props.onClick()
 await wizardRunner.settle()
 assert.equal(wizardCalls.create, 3)
 assert.equal(wizardCalls.upload, beforeRejectedWizardRetry + 1)
+
+const unconfirmedPhoto = fixture('draft-unconfirmed.jpg')
+wizardStore.setFotos([unconfirmedPhoto])
+wizardStore.currentIndex = 6
+wizardRunner.render()
+await wizardRunner.settle()
+const beforeUnconfirmed = {
+  create: wizardCalls.create, update: wizardCalls.update, successes: wizardSuccesses.length,
+  navigation: wizardNavigations.length, progress: wizardProgress.length,
+  reset: wizardResets, clear: wizardCacheClears, progressClear: wizardProgressClears,
+}
+wizardUploadStatus = 'RASCUNHO'
+publish().props.onClick()
+await wizardRunner.settle()
+assert.equal(wizardCalls.create, beforeUnconfirmed.create + 1)
+assert.equal(wizardSuccesses.length, beforeUnconfirmed.successes, 'Resposta RASCUNHO sem foto válida não confirma envio para moderação.')
+assert.equal(wizardNavigations.length, beforeUnconfirmed.navigation)
+assert.equal(wizardResets, beforeUnconfirmed.reset)
+assert.equal(wizardCacheClears, beforeUnconfirmed.clear)
+assert.equal(wizardProgressClears, beforeUnconfirmed.progressClear)
+assert.ok(wizardProgress.slice(beforeUnconfirmed.progress).every((entry) => entry.status !== 'AGUARDANDO_MODERACAO'))
+assert.deepEqual(wizardStore.state.form.fotos, [unconfirmedPhoto], 'RASCUNHO mantém o File disponível para nova tentativa.')
+assert.equal(steps[wizardStore.currentIndex].id, 'fotos')
+assert.match(wizardErrors.at(-1), /não confirmou uma foto válida/)
+const unconfirmedProps = find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'Fotos do rascunho não confirmado').props
+assert.deepEqual(unconfirmedProps.initialFiles, [unconfirmedPhoto])
+assert.ok(Object.values(unconfirmedProps.createErrors).some((message) => /não confirmou uma foto válida/.test(message)))
+wizardStore.currentIndex = 6
+wizardUploadStatus = 'PENDENTE_REVISAO'
+wizardRunner.render()
+await wizardRunner.settle()
+publish().props.onClick()
+await wizardRunner.settle()
+assert.equal(wizardCalls.create, beforeUnconfirmed.create + 1, 'Retry do rascunho não cria outro anúncio.')
+assert.equal(wizardCalls.update, beforeUnconfirmed.update + 1, 'Dados já sincronizados não são reenviados na tentativa de upload.')
+assert.equal(wizardUploadSlugs.at(-1), wizardUploadSlugs.at(-2))
+assert.deepEqual(wizardStore.state.form.fotos, [])
+assert.equal(wizardSuccesses.length, beforeUnconfirmed.successes + 1)
+assert.equal(wizardSuccesses.at(-1), 'Anúncio enviado para moderação.')
+assert.equal(wizardNavigations.at(-1), '/meus-anuncios')
+assert.equal(wizardProgress.at(-1).status, 'AGUARDANDO_MODERACAO')
+console.log('PHOTO_WIZARD_DRAFT_UPLOAD_RESULT=OK unconfirmedDraftPreserved=true sameSlugRetry=true pendingReviewSuccess=true')
 wizardRunner.unmount()
 console.log('PHOTO_WIZARD_PUBLICATION_RESULT=OK createAndUploadBlocked=true asyncSelection=OK')
+
+// Reopen an incomplete ad from the backend, save only text, then add a valid
+// photo. Execute the real parent callbacks without mounting unrelated UI.
+const draftRunner = hooks()
+const draftCalls = [], draftSuccesses = [], draftErrors = [], draftProgress = [], draftNavigations = []
+let draftCacheClears = 0, draftProgressClears = 0
+const draftAd = {
+  ...mediaResponse.anuncio, slug: 'reopened-draft', status: 'RASCUNHO',
+  titulo: 'Rascunho reaberto', descricao: 'Descrição preservada do rascunho.', preco: 0,
+  categoria: 'SYNTHETIC', locaisAtendimento: [], servicos: [], atendimentoExclusivamenteVirtual: false,
+}
+let draftSaveResponse = draftAd
+const draftMedia = { ...mediaResponse, fotosValidasAtivasTotal: 0, anuncio: draftAd }
+const draftStore = {
+  state: { form: { ...wizardTypes.initialWizardFormState }, kyc: { ...wizardTypes.initialWizardKycState } },
+  hydrated: true, currentIndex: 0, lastSavedAt: null,
+  updateForm(patch) { draftStore.state.form = { ...draftStore.state.form, ...patch } },
+  updateKyc(patch) { draftStore.state.kyc = { ...draftStore.state.kyc, ...patch } },
+  setFotos(files) { draftStore.updateForm({ fotos: files, fotoNomes: files.map((file) => file.name) }) },
+  setVideos(files) { draftStore.updateForm({ videos: files }) },
+  setEditPendingMedia(scope, files) { draftStore.updateForm({ editPendingMediaScope: scope, editPendingMedia: files }) },
+  setEditUploadUnconfirmed(value) { draftStore.updateForm({ editUploadUnconfirmed: value }) },
+  setStep(step) { draftStore.currentIndex = steps.findIndex((item) => item.id === step) },
+  clearCurrentCache() { draftCacheClears++ },
+  hydrateFromBackend(state) { draftStore.state = { form: state.form, kyc: state.kyc }; draftStore.setStep(state.currentStep) },
+  setDocumentos() {}, nextStep() {}, previousStep() {}, reset() {},
+}
+const draftImports = {
+  ...wizardImports,
+  react: draftRunner.react,
+  'next/navigation': { useRouter: () => ({ push: (href) => draftNavigations.push(href) }) },
+  sonner: { toast: { error: (message) => draftErrors.push(message), warning: (message) => draftErrors.push(message), success: (message) => draftSuccesses.push(message) } },
+  '@/lib/meus-anuncios-api': {
+    ...advertiserApi,
+    buscarMeuAnuncio: async (slug) => { draftCalls.push(['GET', slug]); return draftAd },
+    listarMinhasMidias: async (slug) => { draftCalls.push(['MEDIA', slug]); return draftMedia },
+    atualizarMeuAnuncio: async (slug, payload) => { draftCalls.push(['UPDATE', slug, payload]); return draftSaveResponse },
+  },
+  './use-anuncio-wizard-store': { ...wizardImports['./use-anuncio-wizard-store'], useAnuncioWizardStore: () => draftStore },
+  './wizard-progress': {
+    createWizardProgressSessionId: () => 'synthetic-draft-session',
+    clearWizardProgressSessionId() { draftProgressClears++ },
+    syncWizardProgress: async (value) => { draftProgress.push(value) },
+  },
+}
+draftRunner.mount(moduleFromSource('features/anuncio-wizard/anuncio-wizard.tsx', draftImports).default,
+  { mode: 'edit', slug: draftAd.slug })
+await draftRunner.settle()
+assert.equal(draftStore.state.form.titulo, draftAd.titulo, 'Reabertura carrega o rascunho do backend.')
+assert.deepEqual(draftCalls, [['GET', draftAd.slug], ['MEDIA', draftAd.slug]])
+draftStore.updateForm({ titulo: 'Dados alterados sem foto' })
+draftStore.currentIndex = 6
+draftRunner.render()
+await draftRunner.settle()
+button(draftRunner.tree, 'Salvar alterações').props.onClick()
+await draftRunner.settle()
+assert.deepEqual(draftErrors, [])
+assert.equal(draftCalls.filter(([kind]) => kind === 'UPDATE').length, 1)
+assert.equal(draftCalls.at(-1)[2].titulo, 'Dados alterados sem foto')
+assert.equal(steps[draftStore.currentIndex].id, 'fotos', 'Salvar dados de um rascunho deve manter o editor na etapa de fotos.')
+assert.deepEqual(draftNavigations, [])
+assert.equal(draftCacheClears, 0)
+assert.equal(draftProgressClears, 0)
+assert.equal(draftSuccesses.at(-1), 'Dados salvos. Envie ao menos uma foto para encaminhar o anúncio à revisão.')
+assert.ok(draftProgress.every((entry) => entry.status !== 'AGUARDANDO_MODERACAO'))
+assert.equal(draftProgress.at(-1).status, 'EM_PREENCHIMENTO')
+const reopenedPhotos = find(draftRunner.tree, (node) => node.type === 'WizardStepFotos', 'Fotos após salvar rascunho').props
+assert.equal(reopenedPhotos.persistedState.anuncio.status, 'RASCUNHO')
+assert.equal(reopenedPhotos.persistedState.anuncio.slug, draftAd.slug)
+
+const pendingDraftPhoto = fixture('draft-pending-photo.jpg')
+reopenedPhotos.onPendingFilesChange([pendingDraftPhoto])
+draftStore.currentIndex = 6
+draftRunner.render()
+button(draftRunner.tree, 'Salvar alterações').props.onClick()
+await draftRunner.settle()
+assert.equal(draftCalls.filter(([kind]) => kind === 'UPDATE').length, 1, 'Foto pendente impede salvar/afirmar envio antes do upload.')
+assert.deepEqual(draftStore.state.form.editPendingMedia, [pendingDraftPhoto])
+const pendingDraftProps = find(draftRunner.tree, (node) => node.type === 'WizardStepFotos', 'Foto do rascunho pendente').props
+assert.deepEqual(pendingDraftProps.pendingFiles, [pendingDraftPhoto])
+assert.equal(pendingDraftProps.pendingSaveNotice, true)
+draftSaveResponse = { ...draftAd, status: 'PENDENTE_REVISAO', titulo: 'Dados alterados sem foto' }
+pendingDraftProps.onPersistedChange({ ...draftMedia, fotosValidasAtivasTotal: 1, anuncio: draftSaveResponse })
+pendingDraftProps.onPendingFilesChange([])
+draftStore.currentIndex = 6
+draftRunner.render()
+await draftRunner.settle()
+button(draftRunner.tree, 'Salvar alterações').props.onClick()
+await draftRunner.settle()
+assert.equal(draftCalls.filter(([kind]) => kind === 'UPDATE').length, 2)
+assert.equal(draftSuccesses.at(-1), 'Alterações salvas e enviadas para revisão.')
+assert.deepEqual(draftNavigations, [`/meus-anuncios/${draftAd.slug}`])
+assert.equal(draftProgress.at(-1).status, 'AGUARDANDO_MODERACAO')
+assert.equal(draftCacheClears, 1)
+assert.equal(draftProgressClears, 1)
+draftRunner.unmount()
+console.log('PHOTO_WIZARD_REOPENED_DRAFT_RESULT=OK dataOnlySaveNotModerated=true pendingFilesPreserved=true validPhotoReviewSuccess=true')
 
 const editorRefs = []
 mediaResponse.anuncio.slug = 'synthetic'
