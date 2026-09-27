@@ -38,7 +38,12 @@ public class PremiumExpiracaoPolicyService {
         }
         boolean aguardandoModeracao =
                 ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO;
-        if (aguardandoModeracao
+        boolean revogadaAntesDoInicio = ativacao.getStatus() == StatusAtivacaoBeneficio.REVOGADA
+                && ativacao.getInicioEm() == null && ativacao.getFimEm() == null
+                && ativacao.getRevogadaEm() != null
+                && ativacao.getMotivoRevogacao() != null
+                && !ativacao.getMotivoRevogacao().isBlank();
+        if (aguardandoModeracao || revogadaAntesDoInicio
                 ? ativacao.getInicioEm() != null || ativacao.getFimEm() != null
                 : ativacao.getInicioEm() == null
                         || ativacao.getFimEm() == null

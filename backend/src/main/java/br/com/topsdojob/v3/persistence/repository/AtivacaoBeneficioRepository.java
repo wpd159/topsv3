@@ -29,6 +29,13 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
 
     List<AtivacaoBeneficioEntity> findByGrupoAtivacaoId(UUID grupoAtivacaoId);
 
+    @Query("""
+            select ativacao.id as id, ativacao.anuncioId as anuncioId,
+                   ativacao.usuarioId as usuarioId, ativacao.beneficioId as beneficioId
+            from AtivacaoBeneficioEntity ativacao where ativacao.id = :id
+            """)
+    java.util.Optional<ReferenciaAtivacaoProjection> findReferenciaById(@Param("id") UUID id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select ativacao from AtivacaoBeneficioEntity ativacao where ativacao.id = :id")
     java.util.Optional<AtivacaoBeneficioEntity> findByIdForUpdate(@Param("id") UUID id);
@@ -210,6 +217,13 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
               and gb.validade_fim_em > :agora
             """, nativeQuery = true)
     long countVigentes(@Param("agora") OffsetDateTime agora);
+
+    interface ReferenciaAtivacaoProjection {
+        UUID getId();
+        UUID getAnuncioId();
+        UUID getUsuarioId();
+        UUID getBeneficioId();
+    }
 
     interface ContagemPremiumVigenteProjection {
         UUID getAnuncioId();
