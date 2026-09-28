@@ -809,8 +809,48 @@ class Origin451DiagnosticsTests(unittest.TestCase):
                 self.assertIn("REDACTED", sanitized)
         self.assertEqual(json.loads(DIAGNOSTICS.sanitized(embedded_json)),
                          dict([("password", "[REDACTED]")]))
+        diagnostic = self.assignment("Error", repr(embedded_json + " common diagnostic"))
+        self.assertNotIn(self.synthetic, DIAGNOSTICS.sanitized(diagnostic))
+        self.assertIn("common diagnostic", DIAGNOSTICS.sanitized(diagnostic))
 
-    def collection(self, folder, *, owner=None, logs_failure=False, stderr_logs=b"", journal_warning=b"", state_error=""):
+    def test_cookie_header_redacts_all_pairs_without_consuming_the_next_line(self):
+        cookies = "; ".join(self.assignment(key, self.synthetic) for key in ("session", "another"))
+        for header in ("Cookie", "Set-Cookie"):
+            with self.subTest(header=header):
+                value = "before\n2026-09-28T00:00:00Z " + self.assignment(header, cookies, ": ") + "\nafter"
+                clean = DIAGNOSTICS.sanitized(value)
+                self.assertNotIn(self.synthetic, clean)
+                self.assertIn("before\n", clean)
+                self.assertTrue(clean.endswith("\nafter"))
+                self.assertIn(header + ": [REDACTED]", clean)
+        encoded = json.dumps({"Cookie": cookies, "diagnostic": "preserved"})
+        self.assertEqual(json.loads(DIAGNOSTICS.sanitized(encoded)),
+                         {"Cookie": "[REDACTED]", "diagnostic": "preserved"})
+
+    def test_long_tokens_finish_within_a_bounded_synthetic_process(self):
+        code = f'''import importlib.util, json, time
+spec=importlib.util.spec_from_file_location('diagnostics', {str(ROOT / 'scripts/deploy/diagnosticar-origem451.py')!r})
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+timings=[]
+for label, value in [('short', 'x'*4096), ('long', 'x'*131072), ('repeated_name', 'password'*16384), ('punctuated', 'x-'*65536), ('dotted', 'x.'*65536)]:
+    start=time.monotonic_ns(); result=module.sanitized(value); end=time.monotonic_ns()
+    assert result==value, label
+    fixture_assignment='='.join(['password','CHANGE_ME'])
+    assert module.sanitized(value+'\\n'+fixture_assignment)==value+'\\n'+'='.join(['password','[REDACTED]']), label
+    timings.append({{'case':label,'bytes':len(value),'duration_ms':(end-start)/1_000_000}})
+print(json.dumps(timings))
+'''
+        # An isolated process bounds a pathological regex without a fragile ratio
+        # assertion or an unbounded wait in this test runner.
+        result = subprocess.run([sys.executable, "-B", "-c", code], capture_output=True,
+                                text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        timings = json.loads(result.stdout)
+        self.assertEqual([row["case"] for row in timings],
+                         ["short", "long", "repeated_name", "punctuated", "dotted"])
+        print("ORIGIN451_SANITIZER_SYNTHETIC=" + json.dumps(timings, sort_keys=True))
+
+    def collection(self, folder, *, owner=None, logs_failure=False, partial_logs=None, stderr_logs=b"", journal_warning=b"", state_error=""):
         (Path(folder) / "docker-calls.jsonl").write_text(json.dumps({"phase": "begin", "operation": "start", "resource_id": self.identifier, "utc": "2026-09-27T23:21:20+00:00"}) + "\n")
         value = {"id": self.identifier, "owner": self.owner if owner is None else owner,
                  "image": "sha256:" + "b" * 64, "restart_count": 0,
@@ -826,7 +866,8 @@ class Origin451DiagnosticsTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, json.dumps(value).encode(), b"")
             if args[:2] == ["docker", "logs"]:
                 if logs_failure:
-                    raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+                    stdout, stderr = partial_logs or (None, None)
+                    raise subprocess.TimeoutExpired(args, kwargs["timeout"], output=stdout, stderr=stderr)
                 logs = "\n".join(("Started synthetic Spring", self.assignment("password", self.synthetic),
                                   "Bearer " + self.synthetic, "https://example.invalid/file?" + self.assignment("token", self.synthetic),
                                   "synthetic@example.invalid"))
@@ -878,7 +919,32 @@ class Origin451DiagnosticsTests(unittest.TestCase):
             self.assertEqual(rc, 0)  # collection completed, NOT a gate result
             self.assertEqual(len(calls), 4)
             result = json.loads(next(Path(folder).glob("*-collection.json")).read_text())
-            self.assertIn({"source": "container_logs", "status": "timeout"}, result["probes"])
+            probe = next(row for row in result["probes"] if row["source"] == "container_logs")
+            self.assertEqual(probe["status"], "timeout")
+            self.assertFalse(probe["partial_output"])
+            self.assertFalse(probe["collection_complete"])
+            self.assertFalse(list(Path(folder).glob("*-logs.txt")))
+
+    def test_timeout_preserves_bounded_sanitized_partial_stdout_and_stderr(self):
+        with tempfile.TemporaryDirectory() as folder:
+            stdout = ("partial stdout\n" + self.assignment("password", self.synthetic) + "\n" + "x" * 131072 + "STDOUT_BEYOND_LIMIT").encode()
+            stderr = ("partial stderr\n" + self.assignment("token", self.synthetic) + "\n" + "y" * 131072 + "STDERR_BEYOND_LIMIT").encode()
+            rc, calls = self.collection(folder, logs_failure=True, partial_logs=(stdout, stderr))
+            self.assertEqual(rc, 0)  # diagnostics only, never a gate approval
+            self.assertEqual(len(calls), 4)
+            logs = next(Path(folder).glob("*-logs.txt")).read_text()
+            self.assertIn("[docker stdout]\npartial stdout", logs)
+            self.assertIn("[docker stderr]\npartial stderr", logs)
+            self.assertNotIn(self.synthetic, logs)
+            self.assertNotIn("BEYOND_LIMIT", logs)
+            self.assertLessEqual(len(logs.encode()), 2 * 131072 + 256)
+            metadata = json.loads(next(Path(folder).glob("*-collection.json")).read_text())
+            probe = next(row for row in metadata["probes"] if row["source"] == "container_logs")
+            self.assertEqual(probe["status"], "timeout")
+            self.assertTrue(probe["partial_output"])
+            self.assertTrue(probe["stdout_truncated"])
+            self.assertTrue(probe["stderr_truncated"])
+            self.assertFalse(probe["collection_complete"])
 
     def test_jvm_stderr_is_preserved_and_partial_journal_is_not_called_complete(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -933,8 +999,9 @@ if args[0]=='inspect':
 elif args[0]=='ps' and (root/'running').exists(): print(identifier)
 elif args[0]=='rm': (root/'running').unlink()
 elif args[0]=='logs':
+    print('Started synthetic Spring; '+'='.join(['password','CHANGE_ME']), flush=True)
+    print('java.lang.IllegalStateException: synthetic startup failure; '+': '.join(['Cookie','; '.join('='.join([key,'CHANGE_ME']) for key in ['session','another'])]), file=sys.stderr, flush=True)
     if {blocked_logs!r}: time.sleep(90)
-    print('Started synthetic Spring; '+'='.join(['password','CHANGE_ME']))
 ''')
                 executable.chmod(0o700)
                 script = f'''set -euo pipefail
@@ -965,10 +1032,19 @@ docker_mutate 30 start {self.identifier}
                     self.assertFalse((work / "cleanup-owner-container-after").read_text())
                     collection = json.loads(next(work.glob("*-collection.json")).read_text())
                     if blocked_logs:
-                        self.assertIn({"source": "container_logs", "status": "timeout"}, collection["probes"])
-                    else:
-                        self.assertIn("Started synthetic Spring", next(work.glob("*-logs.txt")).read_text())
-                        self.assertNotIn(self.synthetic, next(work.glob("*-logs.txt")).read_text())
+                        probe = next(row for row in collection["probes"] if row["source"] == "container_logs")
+                        self.assertEqual(probe["status"], "timeout")
+                        self.assertTrue(probe["partial_output"])
+                        self.assertFalse(probe["collection_complete"])
+                    logs = next(work.glob("*-logs.txt")).read_text()
+                    self.assertIn("Started synthetic Spring", logs)
+                    self.assertIn("[docker stderr]", logs)
+                    self.assertIn("java.lang.IllegalStateException: synthetic startup failure", logs)
+                    self.assertNotIn(self.synthetic, logs)
+                    if blocked_logs:
+                        print(f'ORIGIN451_PARTIAL_LOGS status={probe["status"]} partial_output={probe["partial_output"]} '
+                              f'collection_complete={probe["collection_complete"]} duration_ms={collection["duration_ms"]:.3f} '
+                              f'original_exit={result.returncode} termination=UNPROVEN stdout_stderr_sanitized=true owned_remaining=0')
 
 
 if __name__ == "__main__":

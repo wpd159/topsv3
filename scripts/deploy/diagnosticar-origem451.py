@@ -20,13 +20,19 @@ def sanitized(value):
                    "[PEM_REDACTED]", value, flags=re.S)
     value = re.sub(r"https?://[^\s<>\"']+", "[URL_REDACTED]", value)
     value = re.sub(r"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9+/=._-]+", "[AUTH_REDACTED]", value)
-    assignment = r'''(["']?[\w.-]*(?:password|secret|token|credential|cookie|authorization|access[_.-]?key|signing[_.-]?(?:key|value)|signature)[\w.-]*["']?)(\s*[:=]\s*)("(?:\\.|[^"\\\r\n])*(?:"|$)|'(?:\\.|[^'\\\r\n])*(?:'|$)|[^\s,;}]+)'''
+    # A Cookie header contains multiple pairs; redact the entire line value,
+    # not just the first pair. Quoted JSON keys use the assignment path below.
+    value = re.sub(r"(?i)(\b(?:set-cookie|cookie)[ \t]*[:=][ \t]*)[^\r\n]*",
+                   r"\1[REDACTED]", value)
+    # Match a full key once, with a bounded-keyword lookahead. The previous
+    # ambiguous prefix/suffix rescanned long tokens even without an assignment.
+    assignment = r'''(?<![\w.-])(["']?(?=[\w.-]*(?:password|secret|token|credential|cookie|authorization|access[_.-]?key|signing[_.-]?(?:key|value)|signature))[\w.-]+["']?)(\s*[:=]\s*)("(?:\\.|[^"\\\r\n])*(?:"|$)|'(?:\\.|[^'\\\r\n])*(?:'|$)|[^\s,;}]+)'''
     def redact(match):
         raw = match.group(3)
         quote = raw[0] if raw[0] in "\"'" else ""
         return match.group(1) + match.group(2) + quote + "[REDACTED]" + quote
     value = re.sub(assignment, redact, value, flags=re.I | re.M)
-    value = re.sub(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", "[EMAIL_REDACTED]", value, flags=re.I)
+    value = re.sub(r"(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", "[EMAIL_REDACTED]", value, flags=re.I)
     value = re.sub(r"\b\d{3}[.]?\d{3}[.]?\d{3}[-]?\d{2}\b", "[PERSONAL_ID_REDACTED]", value)
     value = re.sub(r"(?:\+55\s*)?\(\d{2}\)\s*\d{4,5}[- ]\d{4}\b", "[PHONE_REDACTED]", value)
     return value
@@ -89,6 +95,10 @@ def collect(evidence, identifier, owner):
     deadline = time.monotonic() + 15
     probes = []
 
+    def log_streams(stdout, stderr):
+        return "[docker stdout]\n" + stdout[:131072].decode("utf-8", errors="replace") + \
+               "\n[docker stderr]\n" + stderr[:131072].decode("utf-8", errors="replace")
+
     def read(name, args):
         remaining = min(3, deadline - time.monotonic())
         if remaining <= 0:
@@ -106,11 +116,22 @@ def collect(evidence, identifier, owner):
             if name == "container_logs":
                 # Docker logs demultiplexes application STDERR to CLI STDERR.
                 # Keep both bounded streams (including partial logs on an error).
-                return "[docker stdout]\n" + result.stdout[:131072].decode("utf-8", errors="replace") + \
-                       "\n[docker stderr]\n" + result.stderr[:131072].decode("utf-8", errors="replace")
+                return log_streams(result.stdout, result.stderr)
             return result.stdout[:131072].decode("utf-8", errors="replace") if result.returncode == 0 else None
-        except subprocess.TimeoutExpired:
-            probes.append({"source": name, "status": "timeout"})
+        except subprocess.TimeoutExpired as failure:
+            probe = {"source": name, "status": "timeout"}
+            probes.append(probe)
+            if name == "container_logs":
+                stdout = failure.output or failure.stdout or b""
+                stderr = failure.stderr or b""
+                probe.update(partial_output=bool(stdout or stderr), collection_complete=False,
+                             stderr_present=bool(stderr), stdout_truncated=len(stdout) > 131072,
+                             stderr_truncated=len(stderr) > 131072)
+                if stdout or stderr:
+                    # TimeoutExpired retains bytes received before the deadline.
+                    # Save them through the same bounds and sanitization, not as
+                    # a successful or complete collection.
+                    return log_streams(stdout, stderr)
         except OSError:
             probes.append({"source": name, "status": "unavailable"})
         return None
