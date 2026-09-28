@@ -17,6 +17,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("preview_runtime", Path(__file__).with_name("validar-transicao-previews-runtime.py"))
 RUNTIME = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNTIME)
+DIAGNOSTIC_SPEC = importlib.util.spec_from_file_location("origin451_diagnostics", Path(__file__).with_name("diagnosticar-origem451.py"))
+DIAGNOSTICS = importlib.util.module_from_spec(DIAGNOSTIC_SPEC)
+DIAGNOSTIC_SPEC.loader.exec_module(DIAGNOSTICS)
 
 
 def source():
@@ -751,6 +754,221 @@ class TransitionTests(unittest.TestCase):
                             RUNTIME.public_gate(folder, str(sql), "synthetic-validate")
                         calls.assert_not_called()
                         self.assertFalse((Path(folder) / "public-preview-contract.json").exists())
+
+
+class Origin451DiagnosticsTests(unittest.TestCase):
+    identifier = "a" * 64
+    owner = "synthetic-origin451-owner"
+    synthetic = "CHANGE_ME"
+
+    @staticmethod
+    def assignment(key, value, separator="="):
+        """Build synthetic log fields from the repository-approved placeholder."""
+        return key + separator + value
+
+    def test_call_keeps_timeout_and_freezes_end_before_diagnostics(self):
+        for rc in (0, 1, 124):
+            with self.subTest(rc=rc), tempfile.TemporaryDirectory() as folder:
+                process = unittest.mock.Mock(pid=999999999)
+                process.wait.return_value = rc
+                with patch.object(DIAGNOSTICS.subprocess, "Popen", return_value=process) as launch, \
+                        patch.object(DIAGNOSTICS.time, "monotonic_ns", side_effect=[1000000, 31000000]):
+                    result = DIAGNOSTICS.docker_call(Path(folder), 30, ["start", self.identifier])
+                self.assertEqual(result, rc)
+                launch.assert_called_once_with(["timeout", "--signal=TERM", "--kill-after=2s", "30s", "docker", "start", self.identifier])
+                begin, end = [json.loads(line) for line in (Path(folder) / "docker-calls.jsonl").read_text().splitlines()]
+                self.assertEqual(begin["timeout_seconds"], 30)
+                self.assertEqual(begin["resource_id"], self.identifier)
+                self.assertEqual(end["duration_ms"], 30)
+                self.assertEqual(end["exit"], rc)
+                self.assertNotIn("argv", begin)
+                self.assertNotIn("env", begin)
+
+    def test_record_failure_does_not_replace_command_exit(self):
+        process = unittest.mock.Mock(pid=999999999)
+        process.wait.return_value = 124
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(DIAGNOSTICS.subprocess, "Popen", return_value=process), \
+                patch.object(Path, "open", side_effect=PermissionError), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(DIAGNOSTICS.docker_call(Path(folder), 30, ["start", self.identifier]), 124)
+
+    def test_sanitizes_json_and_quoted_values_without_leaking_their_remainder(self):
+        embedded_json = json.dumps(dict([("password", self.synthetic)]))
+        for value in (embedded_json, self.assignment("password", json.dumps(self.synthetic + " SECRET WITH SPACES")),
+                      self.assignment("access_key", repr(self.synthetic + " SECRET")),
+                      self.assignment("token", '"' + self.synthetic + " unfinished"),
+                      self.assignment("Cookie", self.synthetic, ": "), self.assignment("X-Amz-Signature", self.synthetic),
+                      "\n".join(("-----BEGIN " + "PRIVATE KEY-----", self.synthetic, "-----END " + "PRIVATE KEY-----")),
+                      '(11) 99999-8888', '123.456.789-00'):
+            with self.subTest(value=value):
+                sanitized = DIAGNOSTICS.sanitized(value)
+                self.assertNotIn(self.synthetic, sanitized)
+                self.assertNotIn("WITH SPACES", sanitized)
+                self.assertNotIn("99999", sanitized)
+                self.assertNotIn("123.456", sanitized)
+                self.assertIn("REDACTED", sanitized)
+        self.assertEqual(json.loads(DIAGNOSTICS.sanitized(embedded_json)),
+                         dict([("password", "[REDACTED]")]))
+
+    def collection(self, folder, *, owner=None, logs_failure=False, stderr_logs=b"", journal_warning=b"", state_error=""):
+        (Path(folder) / "docker-calls.jsonl").write_text(json.dumps({"phase": "begin", "operation": "start", "resource_id": self.identifier, "utc": "2026-09-27T23:21:20+00:00"}) + "\n")
+        value = {"id": self.identifier, "owner": self.owner if owner is None else owner,
+                 "image": "sha256:" + "b" * 64, "restart_count": 0,
+                 "state": {"Running": True, "Pid": 42, "Error": state_error, "Health": {"Log": ["DO_NOT_EXPORT_HEALTH_PAYLOAD"]}}}
+        calls = []
+
+        def boundary(args, **kwargs):
+            calls.append(args)
+            self.assertLessEqual(kwargs["timeout"], 3)
+            self.assertGreater(kwargs["timeout"], 0)
+            if args[:2] == ["docker", "inspect"]:
+                self.assertNotIn(".Config.Env", args[3])
+                return subprocess.CompletedProcess(args, 0, json.dumps(value).encode(), b"")
+            if args[:2] == ["docker", "logs"]:
+                if logs_failure:
+                    raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+                logs = "\n".join(("Started synthetic Spring", self.assignment("password", self.synthetic),
+                                  "Bearer " + self.synthetic, "https://example.invalid/file?" + self.assignment("token", self.synthetic),
+                                  "synthetic@example.invalid"))
+                return subprocess.CompletedProcess(args, 0, logs.encode(), stderr_logs)
+            if args[:2] == ["docker", "events"]:
+                self.assertIn("--until", args)
+                self.assertIn(f"container={self.identifier}", args)
+                return subprocess.CompletedProcess(args, 0, b'{"action":"start"}\n', b"")
+            self.assertEqual(args[0], "journalctl")
+            self.assertNotIn("sudo", args)
+            return subprocess.CompletedProcess(args, 0, f"unrelated DO_NOT_EXPORT_OTHER_RESOURCE\n{self.identifier[:12]} synthetic daemon\n".encode(), journal_warning)
+
+        with patch.object(DIAGNOSTICS.subprocess, "run", side_effect=boundary):
+            rc = DIAGNOSTICS.collect(Path(folder), self.identifier, self.owner)
+        return rc, calls
+
+    def test_running_container_evidence_is_bounded_sanitized_and_not_approval(self):
+        with tempfile.TemporaryDirectory() as folder:
+            rc, calls = self.collection(folder)
+            self.assertEqual(rc, 0)
+            self.assertEqual(len(calls), 4)
+            files = "".join(path.read_text() for path in Path(folder).glob("diagnostic-*"))
+            self.assertNotIn("DO_NOT_EXPORT", files)
+            self.assertNotIn(self.synthetic, files)
+            self.assertIn("Started synthetic Spring", files)
+            self.assertIn('"does_not_prove_readiness_or_mutator_termination": true', files)
+            self.assertFalse((Path(folder) / "preview-source.json").exists())
+
+    def test_different_owner_refuses_logs_events_and_daemon_collection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            rc, calls = self.collection(folder, owner="different")
+            self.assertEqual(rc, 1)
+            self.assertEqual(len(calls), 1)
+            self.assertFalse(list(Path(folder).glob("*-logs.txt")))
+
+    def test_state_error_remains_valid_json_after_redacting_embedded_json(self):
+        with tempfile.TemporaryDirectory() as folder:
+            error = self.assignment("password", json.dumps(self.synthetic + " SECRET")) + "\n" + json.dumps(dict([("token", self.synthetic)]))
+            rc, _ = self.collection(folder, state_error=error)
+            self.assertEqual(rc, 0)
+            state = json.loads(next(Path(folder).glob("*-state.json")).read_text())
+            self.assertEqual(state["id"], self.identifier)
+            self.assertTrue(state["state"]["Running"])
+            self.assertNotIn(self.synthetic, state["state"]["Error"])
+
+    def test_failed_log_collection_preserves_other_sources(self):
+        with tempfile.TemporaryDirectory() as folder:
+            rc, calls = self.collection(folder, logs_failure=True)
+            self.assertEqual(rc, 0)  # collection completed, NOT a gate result
+            self.assertEqual(len(calls), 4)
+            result = json.loads(next(Path(folder).glob("*-collection.json")).read_text())
+            self.assertIn({"source": "container_logs", "status": "timeout"}, result["probes"])
+
+    def test_jvm_stderr_is_preserved_and_partial_journal_is_not_called_complete(self):
+        with tempfile.TemporaryDirectory() as folder:
+            stderr_logs = ("java.lang.IllegalStateException: synthetic startup failure\n" + self.assignment("password", repr(self.synthetic + " SECRET"))).encode()
+            rc, _ = self.collection(folder, stderr_logs=stderr_logs,
+                                    journal_warning=b"not seeing messages from other users")
+            self.assertEqual(rc, 0)
+            logs = next(Path(folder).glob("*-logs.txt")).read_text()
+            self.assertIn("Started synthetic Spring", logs)
+            self.assertIn("java.lang.IllegalStateException: synthetic startup failure", logs)
+            self.assertIn("[docker stderr]", logs)
+            self.assertNotIn(self.synthetic, logs)
+            result = json.loads(next(Path(folder).glob("*-collection.json")).read_text())
+            journal = next(probe for probe in result["probes"] if probe["source"] == "daemon_journal")
+            self.assertEqual(journal["status"], "coverage_unproven")
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires real Linux GNU timeout, no daemon")
+    def test_real_30_second_timeout_of_synthetic_docker_cli(self):
+        with tempfile.TemporaryDirectory() as folder:
+            executable = Path(folder) / "docker"
+            executable.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(90)\n")
+            executable.chmod(0o700)
+            with patch.dict(os.environ, {"PATH": folder + os.pathsep + os.environ["PATH"]}):
+                rc = DIAGNOSTICS.docker_call(Path(folder), 30, ["start", self.identifier])
+            end = json.loads((Path(folder) / "docker-calls.jsonl").read_text().splitlines()[-1])
+            self.assertEqual(rc, 124)
+            self.assertEqual(end["exit"], 124)
+            self.assertGreaterEqual(end["duration_ms"], 30000)
+            print(f'ORIGIN451_DIAGNOSTIC_TIMEOUT exit={rc} duration_ms={end["duration_ms"]:.3f} scope=real_GNU_timeout_synthetic_CLI')
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux Bash fixture functions, no daemon")
+    def test_real_fixture_cleanup_preserves_failure_and_removes_only_owned_resources(self):
+        fixture = (ROOT / "scripts/deploy/testar-origem451-spring-production.sh").read_text()
+        functions = fixture.split("docker_read() {", 1)[1].split("trap cleanup EXIT", 1)[0]
+        for start_exit, foreign, blocked_logs in ((0, False, False), (124, False, False), (124, False, True), (124, True, False)):
+            with self.subTest(start_exit=start_exit, foreign=foreign, blocked_logs=blocked_logs), tempfile.TemporaryDirectory() as folder:
+                work = Path(folder)
+                (work / "running").touch()
+                executable = work / "docker"
+                executable.write_text(f'''#!{sys.executable}
+import json, os, sys, time
+from pathlib import Path
+root=Path({folder!r}); args=sys.argv[1:]; identifier={self.identifier!r}
+with (root/'transport.log').open('a') as log: log.write(' '.join(args[:2])+'\\n')
+if args[0]=='start': sys.exit({start_exit})
+if args[0]=='inspect':
+    state={{'Running':True,'Pid':42,'Error':''}}
+    owner={'"foreign"' if foreign else repr(self.owner)}
+    if '--format' in args: value={{'id':identifier,'owner':owner,'image':'sha256:'+'b'*64,'state':state,'restart_count':0}}
+    else: value=[{{'Id':identifier,'Config':{{'Labels':{{'topsv3.origin451.test':owner}}}},'Mounts':[]}}]
+    print(json.dumps(value))
+elif args[0]=='ps' and (root/'running').exists(): print(identifier)
+elif args[0]=='rm': (root/'running').unlink()
+elif args[0]=='logs':
+    if {blocked_logs!r}: time.sleep(90)
+    print('Started synthetic Spring; '+'='.join(['password','CHANGE_ME']))
+''')
+                executable.chmod(0o700)
+                script = f'''set -euo pipefail
+evidence={folder!r}
+diagnostics={str(ROOT / 'scripts/deploy/diagnosticar-origem451.py')!r}
+owner={self.owner!r}; label=topsv3.origin451.test
+container_ids=({self.identifier}); network_id=; image_id=
+docker_read() {{{functions}
+trap cleanup EXIT
+docker_mutate 30 start {self.identifier}
+'''
+                result = subprocess.run(["bash", "-c", script], env={**os.environ, "PATH": folder + os.pathsep + os.environ["PATH"]}, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, start_exit, result.stderr)
+                self.assertEqual((work / "cleanup.result").read_text(), f"original_exit={start_exit}\ncleanup_exit={int(start_exit != 0)}\n")
+                if start_exit:
+                    self.assertIn("termination=UNPROVEN", (work / "mutator-termination-unproven").read_text())
+                else:
+                    self.assertFalse((work / "mutator-termination-unproven").exists())
+                transport = (work / "transport.log").read_text()
+                if foreign:
+                    self.assertTrue((work / "running").exists())
+                    self.assertNotIn("logs --timestamps", transport)
+                    self.assertNotIn("rm -fv", transport)
+                else:
+                    self.assertFalse((work / "running").exists())
+                    self.assertIn("logs --timestamps", transport, "missing container logs before removal")
+                    self.assertLess(transport.index("logs --timestamps"), transport.index("rm -fv"))
+                    self.assertFalse((work / "cleanup-owner-container-after").read_text())
+                    collection = json.loads(next(work.glob("*-collection.json")).read_text())
+                    if blocked_logs:
+                        self.assertIn({"source": "container_logs", "status": "timeout"}, collection["probes"])
+                    else:
+                        self.assertIn("Started synthetic Spring", next(work.glob("*-logs.txt")).read_text())
+                        self.assertNotIn(self.synthetic, next(work.glob("*-logs.txt")).read_text())
 
 
 if __name__ == "__main__":

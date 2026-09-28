@@ -8,6 +8,7 @@ repo="$(cd -- "${script_dir}/../.." && pwd)"
 origin=451a6cb90dd1e67c5c774a0618c984d6b73735f8
 archive_hash=57597678e86b1fe5d579a7bf82d971e81efc5e618222b7323434b5047003b3dc
 observer="${script_dir}/validar-transicao-previews-runtime.py"
+diagnostics="${script_dir}/diagnosticar-origem451.py"
 fail() { printf 'ORIGIN451_SPRING_TEST_FAIL: %s\n' "$*" >&2; exit 1; }
 [[ $# -eq 0 && "$(uname -s)" == Linux ]] || fail 'requires Linux; no external target arguments accepted'
 for tool in docker python3 mvn tar sha256sum timeout keytool; do command -v "$tool" >/dev/null || fail "missing tool: $tool"; done
@@ -26,7 +27,7 @@ docker_read() { timeout --signal=TERM --kill-after=2s 15s docker "$@"; }
 docker_mutate() {
   local seconds="$1" rc
   shift
-  if timeout --signal=TERM --kill-after=2s "${seconds}s" docker "$@"; then return 0; else rc=$?; fi
+  if python3 "$diagnostics" call "$evidence" "$seconds" "$@"; then return 0; else rc=$?; fi
   # A command error/timeout does not prove the daemon-side mutator terminated.
   # Persist even inside command substitutions; empty inventories cannot clear it.
   printf 'operation=%s exit=%s termination=UNPROVEN\n' "$1" "$rc" >>"${evidence}/mutator-termination-unproven"
@@ -69,6 +70,11 @@ cleanup() {
     if ! docker_read inspect "$identifier" >"${evidence}/cleanup-before-${identifier}.json" 2>>"${evidence}/cleanup.log"; then extra=1; continue; fi
     if ! owned_volumes "${evidence}/cleanup-before-${identifier}.json" "$identifier" >"${evidence}/volumes-${identifier}"; then extra=1; continue; fi
     cat "${evidence}/volumes-${identifier}" >>"${evidence}/cleanup-volume-names"
+    # Diagnostics have their own bound and cannot change the original exit,
+    # erase UNPROVEN or prevent removal of a proven-owned container.
+    timeout --signal=TERM --kill-after=2s 20s python3 "$diagnostics" collect "$evidence" "$identifier" "$owner" \
+      >"${evidence}/diagnostic-${identifier}-collector.out" 2>"${evidence}/diagnostic-${identifier}-collector.err"
+    printf 'collection_exit=%s\n' "$?" >"${evidence}/diagnostic-${identifier}-collector.result"
     docker_remove rm -fv "$identifier" >>"${evidence}/cleanup.log" 2>&1 || extra=1
   done <"${evidence}/cleanup-container-ids"
   if docker_read ps -aq --no-trunc >"${evidence}/cleanup-all-containers-after"; then
