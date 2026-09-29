@@ -351,6 +351,17 @@ export type AdminModerationActionResponse = {
   mensagem: string
 }
 
+export type AdminReviewState = {
+  id: string
+  anuncioId: string
+  status: string
+  finalizadoEm: string | null
+}
+
+export type AdminApprovalRequest = {
+  requestId: string
+}
+
 export type AdminStoryPublication = {
   storyId: string
   anuncioId: string

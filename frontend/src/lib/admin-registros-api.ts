@@ -302,6 +302,10 @@ export async function prepararRelatorioRegistros(
     || !('tipo' in payload) || payload.tipo !== (familia === 'stories' ? 'STORY' : 'ANUNCIO')
     || !('finalidade' in payload) || payload.finalidade !== finalidade
     || !('idsSelecionados' in payload) || !Array.isArray(payload.idsSelecionados)
+    || payload.idsSelecionados.length !== ids.length || new Set(payload.idsSelecionados).size !== ids.length
+    || !ids.every((id) => (payload.idsSelecionados as unknown[]).includes(id))
+    || (ids.length > 0 && (payload.registros.length !== ids.length
+      || !payload.registros.every((registro) => registro && typeof registro === 'object' && 'id' in registro && ids.includes(registro.id))))
     || !('geradoEm' in payload) || typeof payload.geradoEm !== 'string'
     || !('responsavelId' in payload) || typeof payload.responsavelId !== 'string'
     || !('fusoHorario' in payload) || payload.fusoHorario !== 'America/Sao_Paulo'

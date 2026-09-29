@@ -34,10 +34,12 @@ export function AdminAnuncioPremium({
   anuncioId,
   canManage,
   disabledReason,
+  isMutationBlocked,
 }: {
   anuncioId: string
   canManage: boolean
   disabledReason?: string
+  isMutationBlocked?: () => boolean
 }) {
   const [benefits, setBenefits] = useState<AdminPremiumBenefit[]>([])
   const [catalog, setCatalog] = useState<AdminPremiumCatalogItem[]>([])
@@ -50,6 +52,8 @@ export function AdminAnuncioPremium({
   const [error, setError] = useState<unknown>(null)
   const activationKey = useRef<string | null>(null)
   const cancellationKeys = useRef<Record<string, string>>({})
+  const managementRef = useRef({ canManage, isMutationBlocked })
+  managementRef.current = { canManage, isMutationBlocked }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -103,7 +107,8 @@ export function AdminAnuncioPremium({
   }
 
   async function activate() {
-    if (busy || selectedItems.length === 0) return
+    if (!managementRef.current.canManage || managementRef.current.isMutationBlocked?.()
+      || busy || selectedItems.length === 0) return
     setBusy(true)
     setError(null)
     const idempotencyKey = activationKey.current ?? operationKey()
@@ -127,7 +132,8 @@ export function AdminAnuncioPremium({
 
   async function cancel(item: AdminPremiumBenefit) {
     const reason = cancelReasons[item.id]?.trim() || ''
-    if (busy || reason.length < 5) return
+    if (!managementRef.current.canManage || managementRef.current.isMutationBlocked?.()
+      || busy || reason.length < 5) return
     setBusy(true)
     setError(null)
     const idempotencyKey = cancellationKeys.current[item.id] ?? operationKey()

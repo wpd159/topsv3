@@ -11,7 +11,7 @@ import {
   type PublicidadeRegistroDetalhe, type StoryRegistroDetalhe,
 } from '@/lib/admin-registros-api'
 import { RegistroContent, SessionNotice, useRegistroSession } from './record-content'
-import { queryState, safeReturn } from './record-utils'
+import { clearedSelectionReturn, errorStatus, queryState, safeReturn } from './record-utils'
 
 function saveFile(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
@@ -25,7 +25,7 @@ export function AdminRegistroDetail() {
   const { tipo, id } = useParams<{ tipo: string; id: string }>()
   const search = useSearchParams()
   const { finalidade } = queryState(new URLSearchParams(search.toString()))
-  const { state: session, retry, canExport } = useRegistroSession()
+  const { state: session, retry, canExport, expire } = useRegistroSession()
   const [detail, setDetail] = useState<PublicidadeRegistroDetalhe | StoryRegistroDetalhe | null>(null)
   const [error, setError] = useState<unknown>(null), [loading, setLoading] = useState(false)
   const [fileError, setFileError] = useState<unknown>(null), [busy, setBusy] = useState(false)
@@ -37,10 +37,10 @@ export function AdminRegistroDetail() {
     setLoading(true)
     const load = tipo === 'publicidade' ? detalharRegistroPublicidade : detalharRegistroStory
     void load(id, finalidade, controller.signal).then((value) => { if (!controller.signal.aborted) setDetail(value) })
-      .catch((cause) => { if (!controller.signal.aborted) setError(cause) })
+      .catch((cause) => { if (!controller.signal.aborted) { setError(cause); if (errorStatus(cause) === 401) expire() } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [session.status, tipo, id, finalidade, validType])
+  }, [session.status, tipo, id, finalidade, validType, expire])
   async function exportFile(media?: { id: string; mimeType: string }) {
     if (!canExport || !finalidade || !detail || busy) return
     setBusy(true); setFileError(null)
@@ -50,11 +50,11 @@ export function AdminRegistroDetail() {
       const extension = media ? ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm' }[media.mimeType] || 'bin') : 'json'
       const blob = media ? await download(detail.id, media.id, finalidade) : await exportJson(detail.id, finalidade)
       saveFile(blob, `registro-${tipo}-${media?.id || detail.id}.${extension}`)
-    } catch (cause) { setFileError(cause) }
+    } catch (cause) { setFileError(cause); if (errorStatus(cause) === 401) expire() }
     finally { setBusy(false) }
   }
   return <section className="space-y-4">
-    <Link href={safeReturn(search.get('retorno'))} className="text-pink-700 underline">Voltar à consulta com filtros</Link>
+    <Link href={session.status === 'EXPIRED' || session.status === 'DENIED' ? clearedSelectionReturn(search.get('retorno')) : safeReturn(search.get('retorno'))} className="text-pink-700 underline">Voltar à consulta com filtros</Link>
     <h1 className="text-2xl font-bold">Detalhe da captura de {tipo === 'stories' ? 'Story' : 'anúncio'}</h1>
     <SessionNotice state={session} retry={retry} />
     {!validType ? <p role="status">Tipo de registro inválido. Nenhuma consulta foi enviada.</p> : null}

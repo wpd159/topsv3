@@ -25,6 +25,8 @@ import type {
   AdminMediaItem,
   AdminMediaPreview,
   AdminModerationActionResponse,
+  AdminApprovalRequest,
+  AdminReviewState,
   AdminModerationHistoryItem,
   AdminPage,
   AdminPhotoBatchDecision,
@@ -447,9 +449,16 @@ export function submitAdminReview(id: string, motivo: string) {
   })
 }
 
-export function approveAdminAd(id: string) {
+export function getAdminReview(reviewId: string) {
+  return request<AdminReviewState>(`/moderacao/revisoes/${encodeURIComponent(reviewId)}`)
+}
+
+export function approveAdminAd(id: string, operation?: AdminApprovalRequest) {
   return request<AdminModerationActionResponse>(`/anuncios/${encodeURIComponent(id)}/aprovar`, {
     method: 'POST',
+    ...(operation ? {
+      headers: { 'X-Request-Id': operation.requestId },
+    } : {}),
   })
 }
 
@@ -457,11 +466,13 @@ export function decideAdminReview(
   reviewId: string,
   decisao: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE',
   motivo?: string,
+  operation?: AdminApprovalRequest,
 ) {
   return request<AdminModerationActionResponse>(
     `/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`,
     {
       method: 'POST',
+      ...(operation ? { headers: { 'X-Request-Id': operation.requestId } } : {}),
       body: JSON.stringify({ decisao, motivo: motivo?.trim() || undefined }),
     }
   )
