@@ -91,7 +91,7 @@ class AdminReadonlyContractTest {
         assertThat(dtoDetalhe)
                 .contains("String cpf")
                 .contains("String whatsapp")
-                .doesNotContain("dataNascimento")
+                .contains("LocalDate dataNascimento")
                 .doesNotContain("chaveObjeto")
                 .doesNotContain("bucket")
                 .doesNotContain("token");

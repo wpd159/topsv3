@@ -322,7 +322,11 @@ class MeusAnunciosFrontendContractTest {
         apareceAntes(criarAnuncio, "saveWizardCreationOperation(progressScope, operation)",
                 "await submitWizardAnuncio(state, operation.sessionId)");
         apareceAntes(criarAnuncio, "await enviarMinhasMidiasEmLote(", "setFotos([])");
-        assertThat(wizard).contains("return () => urls.forEach((url) => URL.revokeObjectURL(url))");
+        assertThat(wizard)
+                .contains("state.fotos.map((file) => ({ file, url: URL.createObjectURL(file) }))")
+                .contains("fotoPreviewEntries[index]?.file === file ? fotoPreviewEntries[index].url : undefined")
+                .contains("return () => entries.forEach(({ url }) => URL.revokeObjectURL(url))");
+        assertThat(fotos).doesNotContain("URL.createObjectURL", "URL.revokeObjectURL");
         assertThat(validador)
                 .contains("new WeakMap<File, Promise<PhotoUploadValidationResult>>()")
                 .contains("bitmap.close()")
