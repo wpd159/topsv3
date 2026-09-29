@@ -169,7 +169,7 @@ class AdminAnuncioMidiaFrontendContractTest {
         assertThat(moderacao)
                 .contains("<AdminAnuncioMidiaUploader")
                 .contains("anuncioId={ad.id}")
-                .contains("onReload={() => load(undefined, false)}");
+                .contains("onReload={async () => { await load(undefined, false) }}");
     }
 
     private static String recorte(String conteudo, String inicio, String fim) {
