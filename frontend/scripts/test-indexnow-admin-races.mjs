@@ -72,6 +72,7 @@ function scenario(overrides = {}) {
     ...compiledModule.exports,
     eligibility: { podeExcluir: true }, confirmation: 'EXCLUIR', reason: 'Motivo sintetico',
     lock: { current: false }, idempotencyKey: { current: 'evento-sintetico' },
+    decisionLock: { current: false }, pendingApprovalRef: { current: false },
     usuarioId: 'usuario-sintetico',
     setBusy: (value) => calls.push(`busy:${value}`),
     setError: (error) => { if (error) errors.push(error) },
