@@ -436,7 +436,8 @@ public class AdminAnuncioDetalhadoConsultaService {
                 usuario.getEmailNormalizado(),
                 formatarCpf(usuario.getCpfNormalizado()),
                 usuario.getTelefoneNormalizado(),
-                enumName(usuario.getStatus()));
+                enumName(usuario.getStatus()),
+                usuario.getDataNascimento());
     }
 
     private AdminRevisaoAbertaDto revisaoAberta(RevisaoAnuncioEntity revisao) {

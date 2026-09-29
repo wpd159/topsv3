@@ -2,6 +2,11 @@ package br.com.topsdojob.v3.web.admin.arquivo;
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Detalhe;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Item;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Relatorio;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Filtros;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Ordenacao;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Situacao;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.RelatorioRequest;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeService;
 import br.com.topsdojob.v3.application.admin.arquivo.FinalidadeAcessoArquivoPublicidade;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
@@ -11,6 +16,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
+import java.time.OffsetDateTime;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -20,6 +27,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,12 +47,34 @@ public class AdminArquivoPublicidadeController {
   public ResponseEntity<AdminPaginaDto<Item>> listar(
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
+      @RequestParam(required = false) String termo,
+      @RequestParam(required = false) UUID anuncioId,
+      @RequestParam(required = false) UUID anuncianteId,
+      @RequestParam(required = false) String beneficio,
+      @RequestParam(required = false) Situacao situacao,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime inicio,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime fim,
+      @RequestParam(defaultValue = "RECENTES") Ordenacao ordenacao,
       @RequestParam FinalidadeAcessoArquivoPublicidade finalidade,
       @AuthenticationPrincipal AdminUserPrincipal actor,
       HttpServletRequest request) {
     return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-        .body(service.listar(page, size, actor.usuarioId(), RequestIdContext.current(request),
-            finalidade));
+        .body(service.listar(page, size,
+            new Filtros(termo, anuncioId, anuncianteId, beneficio, situacao, inicio, fim, ordenacao),
+            actor.usuarioId(), RequestIdContext.current(request), finalidade));
+  }
+
+  @PostMapping("/relatorio")
+  @PreAuthorize("hasRole('ADMIN') and hasAuthority('ARQUIVO_PUBLICIDADE_LER') and hasAuthority('ARQUIVO_PUBLICIDADE_EXPORTAR')")
+  public ResponseEntity<Relatorio<Detalhe>> relatorio(
+      @RequestBody RelatorioRequest body,
+      @RequestParam FinalidadeAcessoArquivoPublicidade finalidade,
+      @AuthenticationPrincipal AdminUserPrincipal actor,
+      HttpServletRequest request) {
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+        .header(HttpHeaders.PRAGMA, "no-cache")
+        .header("X-Content-Type-Options", "nosniff")
+        .body(service.relatorio(body, actor.usuarioId(), RequestIdContext.current(request), finalidade));
   }
 
   @PostMapping("/{id}")

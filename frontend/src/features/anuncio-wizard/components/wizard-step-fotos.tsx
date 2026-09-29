@@ -34,6 +34,7 @@ import type { EditPendingMedia } from '../types'
 type WizardStepFotosProps = {
   slug?: string
   initialFiles: File[]
+  previewUrls?: (string | undefined)[]
   fotoNomes: string[]
   onChange: (payload: File[]) => void
   videosNovos: File[]
@@ -79,6 +80,7 @@ function mensagemStatus(midia: MinhaMidiaGestao) {
 export function WizardStepFotos({
   slug,
   initialFiles,
+  previewUrls,
   fotoNomes,
   onChange,
   videosNovos,
@@ -419,6 +421,7 @@ export function WizardStepFotos({
             buttonLabel="Selecionar fotos"
             accept={PHOTO_UPLOAD_ACCEPT}
             files={initialFiles}
+            previewUrls={previewUrls}
             multiple
             disabled={disabled}
             onSelect={(files) => onChange([...initialFiles, ...files])}

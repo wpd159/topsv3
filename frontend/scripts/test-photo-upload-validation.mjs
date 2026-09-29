@@ -443,6 +443,46 @@ selectThroughFilePicker({
 }, [documentFile], true)
 assert.equal(selectedDocument, documentFile)
 assert.equal(decoded, decodeBeforeDocument, 'FilePicker compartilhado de documentos não recebe validação nem mensagens de fotos.')
+const previewPickerRunner = hooks()
+const { FilePicker: PreviewFilePicker } = moduleFromSource('components/forms/file-picker.tsx', {
+  react: previewPickerRunner.react,
+  'react/jsx-runtime': jsx,
+  'lucide-react': iconMocks,
+  '@/components/ui/button': { Button: 'Button' },
+  '@/lib/utils': { cn: (...args) => args.filter(Boolean).join(' ') },
+})
+const sameNameA = fixture('mesmo-nome.jpg')
+const sameNameB = fixture('mesmo-nome.jpg')
+const previewRemoved = []
+previewPickerRunner.mount(PreviewFilePicker, {
+  ariaLabel: 'Fotos sintéticas', buttonLabel: 'Selecionar fotos', accept: 'image/*',
+  files: [sameNameA, sameNameB], previewUrls: ['blob:primeira', 'blob:segunda'],
+  onSelect() {}, onRemove: (index) => previewRemoved.push(index),
+})
+assert.deepEqual(nodes(previewPickerRunner.tree).filter((node) => node?.type === 'img').map((node) => node.props.src),
+  ['blob:primeira', 'blob:segunda'], 'Miniaturas acompanham a posição, mesmo com nomes iguais.')
+assert.match(find(previewPickerRunner.tree, (node) => node?.type === 'ul', 'lista de miniaturas').props.className, /grid-cols-2/)
+find(previewPickerRunner.tree, (node) => node?.type === 'button' && node.props['aria-label'] === 'Remover foto 2: mesmo-nome.jpg', 'remoção da segunda foto').props.onClick()
+assert.deepEqual(previewRemoved, [1])
+find(previewPickerRunner.tree, (node) => node?.type === 'img' && node.props.src === 'blob:primeira', 'prévia com falha').props.onError()
+previewPickerRunner.render()
+assert.match(text(previewPickerRunner.tree), /Prévia indisponível/)
+previewPickerRunner.unmount()
+const documentPickerRunner = hooks()
+const { FilePicker: DocumentFilePicker } = moduleFromSource('components/forms/file-picker.tsx', {
+  react: documentPickerRunner.react,
+  'react/jsx-runtime': jsx,
+  'lucide-react': iconMocks,
+  '@/components/ui/button': { Button: 'Button' },
+  '@/lib/utils': { cn: (...args) => args.filter(Boolean).join(' ') },
+})
+documentPickerRunner.mount(DocumentFilePicker, {
+  ariaLabel: 'Documento', buttonLabel: 'Selecionar documento', accept: 'application/pdf',
+  files: [documentFile], onSelect() {}, onRemove() {},
+})
+assert.equal(nodes(documentPickerRunner.tree).filter((node) => node?.type === 'img').length, 0,
+  'Seletores compartilhados sem opção de miniaturas conservam o comportamento anterior.')
+documentPickerRunner.unmount()
 console.log('PHOTO_FILE_PICKER_BOUNDARIES_RESULT=OK selectionAndDrop=true kycUnchanged=true')
 
 const wizardTypes = moduleFromSource('features/anuncio-wizard/types.ts')
@@ -535,6 +575,9 @@ globalThis.window = {
   },
 }
 const { default: AnuncioWizard } = moduleFromSource('features/anuncio-wizard/anuncio-wizard.tsx', wizardImports)
+const revokeWizardUrl = URL.revokeObjectURL
+const revokedWizardUrls = []
+URL.revokeObjectURL = (url) => { revokedWizardUrls.push(url); revokeWizardUrl(url) }
 wizardRunner.mount(AnuncioWizard, {})
 await wizardRunner.settle()
 const publish = () => button(wizardRunner.tree, 'Enviar para moderação')
@@ -550,6 +593,41 @@ wizardRunner.render()
 const parentPhotoProps = find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'WizardStepFotos integrado ao parent').props
 assert.deepEqual(parentPhotoProps.initialFiles, [good, bad])
 assert.equal(parentPhotoProps.photoValidation[1].valid, false)
+assert.equal(parentPhotoProps.previewUrls.length, 2)
+assert.ok(parentPhotoProps.previewUrls.every((url) => url?.startsWith('blob:')))
+const uploadBeforePreviewNavigation = wizardCalls.upload
+parentPhotoProps.onChange([sameNameA, sameNameB])
+wizardRunner.render()
+assert.deepEqual(find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'seleção em transição').props.previewUrls,
+  [undefined, undefined], 'URLs antigas nunca podem ser associadas a arquivos novos com o mesmo nome.')
+await wizardRunner.settle()
+const duplicatedPhotoProps = find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'nomes iguais').props
+assert.deepEqual(duplicatedPhotoProps.initialFiles, [sameNameA, sameNameB])
+assert.notEqual(duplicatedPhotoProps.previewUrls[0], duplicatedPhotoProps.previewUrls[1])
+const secondPhotoUrl = duplicatedPhotoProps.previewUrls[1]
+duplicatedPhotoProps.onChange([sameNameB])
+wizardRunner.render()
+assert.deepEqual(find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'remoção em transição').props.previewUrls,
+  [undefined], 'Remover a primeira foto não pode mostrar sua miniatura na segunda.')
+await wizardRunner.settle()
+const remainingPhotoProps = find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'foto restante').props
+assert.deepEqual(remainingPhotoProps.initialFiles, [sameNameB])
+assert.ok(remainingPhotoProps.previewUrls[0]?.startsWith('blob:'))
+assert.notEqual(remainingPhotoProps.previewUrls[0], secondPhotoUrl, 'Nova URL substitui a revogada pelo pai.')
+assert.ok(revokedWizardUrls.includes(secondPhotoUrl), 'O pai revoga a URL anterior quando a seleção muda.')
+wizardStore.currentIndex = 4
+wizardRunner.render()
+await wizardRunner.settle()
+wizardStore.currentIndex = 3
+wizardRunner.render()
+await wizardRunner.settle()
+const returnedPhotoProps = find(wizardRunner.tree, (node) => node.type === 'WizardStepFotos', 'retorno à etapa Fotos').props
+assert.deepEqual(returnedPhotoProps.initialFiles, [sameNameB])
+assert.equal(returnedPhotoProps.previewUrls[0], remainingPhotoProps.previewUrls[0])
+assert.equal(wizardCalls.upload, uploadBeforePreviewNavigation, 'Seleção, remoção e navegação não iniciam upload.')
+returnedPhotoProps.onChange([good, bad])
+wizardRunner.render()
+await wizardRunner.settle()
 parentPhotoProps.onChange([good])
 wizardStore.currentIndex = 6
 wizardRunner.render()
@@ -679,6 +757,7 @@ assert.equal(wizardNavigations.at(-1), '/meus-anuncios')
 assert.equal(wizardProgress.at(-1).status, 'AGUARDANDO_MODERACAO')
 console.log('PHOTO_WIZARD_DRAFT_UPLOAD_RESULT=OK unconfirmedDraftPreserved=true sameSlugRetry=true pendingReviewSuccess=true')
 wizardRunner.unmount()
+URL.revokeObjectURL = revokeWizardUrl
 console.log('PHOTO_WIZARD_PUBLICATION_RESULT=OK createAndUploadBlocked=true asyncSelection=OK')
 
 // Reopen an incomplete ad from the backend, save only text, then add a valid

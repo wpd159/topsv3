@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.admin.readonly.dto;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record AdminAnuncianteDetalheDto(
@@ -9,5 +10,6 @@ public record AdminAnuncianteDetalheDto(
         String email,
         String cpf,
         String whatsapp,
-        String status) {
+        String status,
+        LocalDate dataNascimento) {
 }

@@ -16,6 +16,8 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoStoryAccessAuditService;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoStoryService;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Filtros;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.RelatorioRequest;
 import br.com.topsdojob.v3.application.admin.arquivo.FinalidadeAcessoArquivoPublicidade;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
@@ -404,10 +406,37 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
           "req-cruzada-bytes", finalidade))
           .isInstanceOfSatisfying(ResponseStatusException.class,
               error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+      conferirConsultaERelatorioStory(jdbc, provider, properties, fixture, directPeriod, finalidade);
     } finally {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);
     }
+  }
+
+  private static void conferirConsultaERelatorioStory(JdbcTemplate jdbc,
+      ObjectProvider<ObjectStorage> provider, R2StorageProperties properties,
+      Fixture fixture, UUID directPeriod, FinalidadeAcessoArquivoPublicidade finalidade) {
+    when(provider.getIfAvailable()).thenThrow(new IllegalStateException("storage nao permitido na consulta"));
+    var audit = mock(AdminArquivoStoryAccessAuditService.class);
+    var admin = new AdminArquivoStoryService(jdbc, new ObjectMapper().findAndRegisterModules(),
+        provider, properties, audit);
+    var filtro = new Filtros(null, null, fixture.user(), null, null, null, null, null);
+    var pagina = admin.listar(0, 1, filtro, fixture.user(), "req-story-pagina", finalidade);
+    assertThat(pagina.totalElements()).isGreaterThan(1);
+    assertThat(pagina.itens()).hasSize(1).allSatisfy(item -> assertThat(item.tipo()).isEqualTo("STORY"));
+    var report = admin.relatorio(new RelatorioRequest(filtro,
+        List.of(fixture.firstPeriod(), directPeriod), null), fixture.user(), "req-story-relatorio", finalidade);
+    assertThat(report.tipo()).isEqualTo("STORY");
+    assertThat(report.registros()).hasSize(2).allSatisfy(item -> {
+      assertThat(item.versoes()).isNotEmpty();
+      assertThat(item.versoes()).allSatisfy(version -> assertThat(version.midias()).isNotEmpty());
+    });
+    assertThat(report.registros()).extracting("modoConteudo").containsExactlyInAnyOrder("ANUNCIO", "MIDIA_UPLOAD");
+    assertThat(report.registros().stream().filter(item -> item.id().equals(fixture.firstPeriod())).findFirst().orElseThrow()
+        .preservacoes()).hasSize(1);
+    verify(audit).registrarRelatorio(eq(fixture.user()), eq("req-story-relatorio"), eq(finalidade),
+        eq(2), any(String.class));
+    System.out.println("ARCHIVE_STORY_QUERY_PG pageSize=1 reportComplete=2 modes=ANUNCIO,MIDIA_UPLOAD hold=true storageCalls=0");
   }
 
   private static Fixture seedV055(JdbcTemplate jdbc) throws Exception {

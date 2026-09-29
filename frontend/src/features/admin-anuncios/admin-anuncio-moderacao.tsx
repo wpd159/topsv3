@@ -48,6 +48,7 @@ import {
 } from '@/lib/seo/indexnow-client'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
+import { ownerAge, ownerBirthLabel } from './owner-age'
 import { AdminAnuncioMidiaUploader } from './admin-anuncio-midia-uploader'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
 import {
@@ -1444,7 +1445,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             <div><span className="block text-xs text-zinc-500">Nome completo</span><strong>{ad.anunciante?.nomeCivil || ad.anunciante?.nome || 'Não informado'}</strong></div>
             <div><span className="block text-xs text-zinc-500">Conta</span><strong>{formatEnum(ad.anunciante?.status)}</strong></div>
             <div><span className="block text-xs text-zinc-500">E-mail</span><span className="break-all">{ad.anunciante?.email || 'Não informado'}</span></div>
-            <div><span className="block text-xs text-zinc-500">CPF</span><span>{ad.anunciante?.cpf || 'Não informado'}</span></div>
+            <div>
+              <span className="block text-xs text-zinc-500">CPF</span><span>{ad.anunciante?.cpf || 'Não informado'}</span>
+              <span className="mt-2 block text-xs text-zinc-500">Nascimento e idade (anos completos, Brasília)</span>
+              <span>{ownerBirthLabel(ad.anunciante?.dataNascimento)}{ownerAge(ad.anunciante?.dataNascimento) != null ? ` · ${ownerAge(ad.anunciante?.dataNascimento)} anos` : ' · Idade não disponível'}</span>
+            </div>
             <div className="sm:col-span-2"><span className="block text-xs text-zinc-500">WhatsApp</span>{whatsappDigits ? <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-pink-700 hover:underline">{maskPhoneBR(ad.anunciante?.whatsapp || '')}<ExternalLink className="h-3 w-3" /></a> : <span>Não informado</span>}</div>
           </div>
         </div>

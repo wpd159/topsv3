@@ -38,6 +38,7 @@ export type AdminAdvertiserDetail = {
   nomeCivil?: string | null
   email?: string | null
   cpf?: string | null
+  dataNascimento?: string | null
   whatsapp?: string | null
   status?: string | null
 }

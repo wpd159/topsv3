@@ -58,4 +58,20 @@ class AdminArquivoStoryAccessAuditServiceTest {
     assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"APURACAO_INCIDENTE\""));
     assertFalse(evento.getDepoisJson().contains(atorId.toString()));
   }
+
+  @Test
+  void relatorioStoryAuditaPreparoSemDeclararEntrega() {
+    var repository = mock(AuditoriaEventoRepository.class);
+    var service = new AdminArquivoStoryAccessAuditService(repository);
+    service.registrarRelatorio(UUID.randomUUID(), "req-relatorio-story",
+        FinalidadeAcessoArquivoPublicidade.ATENDIMENTO_FISCALIZACAO, 3, "b".repeat(64));
+    var captor = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(repository).save(captor.capture());
+    var evento = captor.getValue();
+    assertEquals("ARQUIVO_PUBLICIDADE_STORY_RELATORIO_PREPARADO", evento.getAcao());
+    assertEquals("ARQUIVO_PUBLICIDADE_STORY", evento.getRecursoTipo());
+    assertTrue(evento.getDepoisJson().contains("\"quantidade\":3"));
+    assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"ATENDIMENTO_FISCALIZACAO\""));
+    assertFalse(evento.getDepoisJson().contains("entregue"));
+  }
 }

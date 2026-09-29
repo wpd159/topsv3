@@ -698,7 +698,7 @@ const syntheticAd = {
   categoria: 'ACOMPANHANTE', preco: 99, whatsapp: null, atendimentoExclusivamenteVirtual: false,
   localizacao: { uf: 'SP', cidade: 'Cidade sintética', bairro: 'Bairro sintético' },
   locaisAtendimento: [], servicos: [], fotosAprovadasTotal: 1, fotosAguardandoDecisaoTotal: 0,
-  anunciante: { id: 'synthetic-owner', status: 'ATIVO' },
+  anunciante: { id: 'synthetic-owner', status: 'ATIVO', dataNascimento: '2000-09-29' },
   metricas: { visualizacoes: { total: 0, situacao: 'ZERO_LEGITIMO' }, cliquesWhatsapp: 0, beneficiosPremiumVigentes: [] },
 }
 const adminSession = { papeis: ['ADMIN'], permissoes: ['ANUNCIO_MODERAR'] }
@@ -758,6 +758,9 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
     './admin-anuncio-midia-uploader': { AdminAnuncioMidiaUploader: 'AdminAnuncioMidiaUploader' },
     './admin-anuncio-premium': { AdminAnuncioPremium: 'AdminAnuncioPremium' },
     './queue-context': runtimeModule('features/admin-anuncios/queue-context.ts'),
+    './owner-age': runtimeModule('features/admin-anuncios/owner-age.ts', {
+      '@/lib/date/birth-date': runtimeModule('lib/date/birth-date.ts'),
+    }),
   })
   const module = runtimeModule(`features/admin-anuncios/admin-anuncio-${mode === 'edit' ? 'edit-form' : 'moderacao'}.tsx`, imports)
   runner.mount(mode === 'edit' ? module.AdminAnuncioEditForm : module.AdminAnuncioModeracao)
@@ -780,6 +783,8 @@ for (const ad of [removedAd, syntheticAd]) {
   assert.equal(controls(tree, (node) => node.type === 'Link' && node.props.href === '/admin/anuncios/synthetic-ad/editar').length, ad.status === 'REMOVIDO' ? 0 : 1)
   if (ad.status === 'REMOVIDO') assert.match(visibleText(tree), /Anúncio removido/)
   assert.ok(visibleText(tree).includes(ad.titulo), 'O detalhe deve preservar os dados para consulta.')
+  assert.match(visibleText(tree), /Nascimento e idade \(anos completos, Brasília\).*29\/09\/2000.*\d+ anos/,
+    'Nascimento existente e idade devem aparecer no detalhe sem editar usuário ou alterar a regra documental.')
   assert.ok(visibleText(tree).includes('Histórico sintético preservado'), 'O histórico permanece consultável após remoção.')
   assert.deepEqual(detailCase.calls, ['GET'])
   assert.deepEqual(detailCase.effects, [])
