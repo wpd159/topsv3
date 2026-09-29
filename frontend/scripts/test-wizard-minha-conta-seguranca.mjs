@@ -117,9 +117,7 @@ assert.ok(filePicker.includes('type="file"'))
 assert.ok(filePicker.includes('type="button"'))
 assert.ok(filePicker.includes('event.dataTransfer.files'))
 assert.ok(filePicker.includes('aria-label={ariaLabel}'))
-assert.ok(filePicker.includes('{file.name} selecionado'))
 assert.ok(filePicker.includes('w-full min-w-0 max-w-full space-y-3 overflow-hidden'))
-assert.ok(filePicker.includes('flex-1 truncate'))
 assert.ok(kyc.includes('block min-w-0 max-w-full space-y-2'))
 assert.ok(kyc.includes('grid min-w-0 grid-cols-[minmax(0,1fr)]'))
 
@@ -180,6 +178,67 @@ function executeFunction(text, name, scope) {
     jsxFactory: 'element', jsxFragmentFactory: 'Fragment',
   } })
   return runInNewContext(outputText, scope, { timeout: 1000 })
+}
+
+// Check rendered behavior, not the spelling/order of conditional JSX or CSS classes.
+const selectedFiles = [0, 1].map(() => ({ name: 'arquivo-igual.ext', size: 42, lastModified: 1 }))
+function renderedNodes(node) {
+  return node && typeof node === 'object'
+    ? [node, ...node.children.flatMap(renderedNodes)] : []
+}
+for (const [kind, accept, previewUrls] of [
+  ['documento', 'application/pdf', undefined],
+  ['vídeo', 'video/mp4,video/quicktime', undefined],
+  ['foto', 'image/*', ['blob:foto-1', 'blob:foto-2']],
+]) {
+  for (const disabled of [false, true]) {
+    const selected = [], removed = [], input = { value: 'seleção anterior' }
+    const renderPicker = executeFunction(filePicker, 'FilePicker', {
+      useRef: () => ({ current: input }),
+      useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+      Button: 'Button', Upload: 'Upload', FileText: 'FileText', Trash2: 'Trash2',
+      cn: (...values) => values.filter(Boolean).join(' '),
+      element: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
+    })
+    const rendered = renderPicker({ ariaLabel: `Selecionar ${kind}`, buttonLabel: 'Selecionar',
+      accept, files: selectedFiles, previewUrls, multiple: true, disabled,
+      onSelect: (files) => selected.push(files), onRemove: (index) => removed.push(index) })
+    const nodes = renderedNodes(rendered)
+    const filenames = nodes.filter((node) => node.type === 'span' && node.props?.title === selectedFiles[0].name)
+    assert.equal(filenames.length, 2)
+    for (const filename of filenames) {
+      assert.equal(filename.children.join(''), selectedFiles[0].name + (previewUrls ? '' : ' selecionado'), kind)
+      const classes = new Set(filename.props.className.split(/\s+/))
+      assert.ok(classes.has('min-w-0') && classes.has('truncate'), `${kind}: nome sem overflow`)
+      assert.ok(classes.has(previewUrls ? 'w-full' : 'flex-1'), `${kind}: largura preservada`)
+    }
+    const rows = nodes.filter((node) => node.type === 'li')
+    assert.equal(rows.length, 2)
+    assert.equal(new Set(rows.map((node) => node.props.key)).size, 2, 'Nomes iguais mantêm índices distintos')
+    const images = nodes.filter((node) => node.type === 'img')
+    assert.deepEqual(images.map((node) => node.props.src), previewUrls || [], kind)
+    const removeButtons = nodes.filter((node) => node.type === 'button' && node.props.title === 'Remover arquivo')
+    assert.equal(removeButtons.length, 2)
+    removeButtons.forEach((button, index) => {
+      assert.equal(button.props.type, 'button')
+      assert.equal(button.props.disabled, disabled)
+      assert.equal(button.props['aria-label'], previewUrls
+        ? `Remover foto ${index + 1}: ${selectedFiles[index].name}` : `Remover ${selectedFiles[index].name}`)
+      if (!disabled) button.props.onClick()
+    })
+    assert.deepEqual(removed, disabled ? [] : [0, 1], 'Remoção conserva a posição do arquivo')
+    const fileInput = nodes.find((node) => node.type === 'input' && node.props.type === 'file')
+    assert.ok(fileInput)
+    assert.equal(fileInput.props.accept, accept)
+    assert.equal(fileInput.props.multiple, true)
+    assert.equal(fileInput.props.disabled, disabled)
+    assert.equal(nodes.find((node) => node.type === 'Button').props['aria-label'], `Selecionar ${kind}`)
+    fileInput.props.onChange({ currentTarget: { files: selectedFiles } })
+    nodes.find((node) => node.props?.onDrop).props.onDrop({ preventDefault() {}, dataTransfer: { files: selectedFiles } })
+    assert.equal(selected.length, disabled ? 0 : 2, 'Desabilitado impede seleção e drop')
+    for (const files of selected) assert.deepEqual(Array.from(files), selectedFiles)
+    assert.equal(input.value, disabled ? 'seleção anterior' : '', 'Reset apenas após seleção permitida')
+  }
 }
 
 const preview = frontend('src/features/anuncio-wizard/components/wizard-preview.tsx')
