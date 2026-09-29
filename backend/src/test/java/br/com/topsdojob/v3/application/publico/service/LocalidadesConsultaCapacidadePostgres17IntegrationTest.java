@@ -1010,6 +1010,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         }
 
         private static final class Run {
+            private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
             private final String scenario;
             private final long[] gcBefore = gcTotals();
             private final long started = System.nanoTime();
@@ -1017,6 +1018,8 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             private String operationId = "none";
             private int maxPage;
             private final Map<String, Long> times = new HashMap<>();
+            private final Map<String, Long> cpuTimes = new HashMap<>();
+            private final Map<String, Long> threadIds = new HashMap<>();
             private final Map<String, Integer> values = new HashMap<>();
 
             private Run(String scenario) { this.scenario = scenario; }
@@ -1025,6 +1028,11 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                 maxPage = Math.max(maxPage, page);
                 String key = page + "." + phase;
                 times.putIfAbsent(key, at);
+                long cpu = currentThreadCpuTime();
+                if (cpu >= 0) {
+                    cpuTimes.putIfAbsent(key, cpu);
+                    threadIds.putIfAbsent(key, Thread.currentThread().getId());
+                }
                 values.put(key, value);
             }
             private void done() {
@@ -1055,6 +1063,16 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                             .append(",materialize=").append(delta(page, "body_received", "future_done"))
                             .append(",postHttp=").append(delta(page, "future_done", "parse_start"))
                             .append(",parse=").append(delta(page, "parse_start", "parse_done"))
+                            .append(",factoryWall=").append(delta(page, "parse_start", "factory_ready"))
+                            .append(",factoryCpu=").append(cpuDelta(page, "parse_start", "factory_ready"))
+                            .append(",builderWall=").append(delta(page, "factory_ready", "builder_ready"))
+                            .append(",builderCpu=").append(cpuDelta(page, "factory_ready", "builder_ready"))
+                            .append(",domWall=").append(delta(page, "builder_ready", "dom_ready"))
+                            .append(",domCpu=").append(cpuDelta(page, "builder_ready", "dom_ready"))
+                            .append(",scanWall=").append(delta(page, "dom_ready", "fields_scanned"))
+                            .append(",scanCpu=").append(cpuDelta(page, "dom_ready", "fields_scanned"))
+                            .append(",validateWall=").append(delta(page, "fields_scanned", "fields_validated"))
+                            .append(",validateCpu=").append(cpuDelta(page, "fields_scanned", "fields_validated"))
                             .append(",match=").append(delta(page, "match_start", "match_done"))
                             .append(",next=").append(page < maxPage ? between(page, "match_done", page + 1, "send_start") : "-")
                             .append(",bytes=").append(value(page, "parse_start"))
@@ -1073,6 +1091,22 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             }
             private String delta(int page, String from, String to) {
                 return between(page, from, page, to);
+            }
+            private String cpuDelta(int page, String from, String to) {
+                String first = page + "." + from;
+                String last = page + "." + to;
+                Long start = cpuTimes.get(first);
+                Long end = cpuTimes.get(last);
+                if (start == null || end == null || !threadIds.get(first).equals(threadIds.get(last))) return "-";
+                return ms(end - start);
+            }
+            private static long currentThreadCpuTime() {
+                try {
+                    return THREADS.isCurrentThreadCpuTimeSupported() && THREADS.isThreadCpuTimeEnabled()
+                            ? THREADS.getCurrentThreadCpuTime() : -1L;
+                } catch (SecurityException | UnsupportedOperationException unavailable) {
+                    return -1L;
+                }
             }
             private String between(int fromPage, String from, int toPage, String to) {
                 Long start = times.get(fromPage + "." + from);

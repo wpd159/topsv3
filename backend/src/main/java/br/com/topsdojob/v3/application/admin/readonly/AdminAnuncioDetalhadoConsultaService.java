@@ -239,6 +239,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 fotoElegivelAnuncioPolicy.consultarTotais(anuncio.getId());
         return new AdminAnuncioDetalheDto(
                 anuncio.getId(),
+                anuncio.getVersao(),
                 anuncio.getSlug(),
                 AdminTextoSanitizer.resumo(anuncio.getTitulo(), 120),
                 descricaoResumo,

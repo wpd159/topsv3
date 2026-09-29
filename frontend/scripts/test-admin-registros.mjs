@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import http from 'node:http'
 import path from 'node:path'
 import vm from 'node:vm'
 import { createRequire } from 'node:module'
@@ -287,7 +288,7 @@ assert.equal(calls.length, 0)
 function loadTs(relative, imports) {
   const exported = { exports: {} }
   const js = ts.transpileModule(fs.readFileSync(path.join(frontendRoot, 'src', relative), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText
   vm.runInNewContext(js, { module: exported, exports: exported.exports, URL, URLSearchParams, Intl, Date,
     require: (name) => { assert.ok(name in imports, name); return imports[name] } })
@@ -334,6 +335,68 @@ assert.equal(expiredReturn.searchParams.get('escopo'), 'selecionados'); assert.e
 assert.equal(utils.selectionAllowed(utils.selectionState(expiredReturn.searchParams), { status: 'READY', session: { usuarioId: selectingUser } }), false)
 const tooMany = { ...selected, ids: Array.from({ length: 101 }, (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`) }
 assert.equal(utils.selectionAllowed(tooMany, { status: 'READY', session: { usuarioId: selectingUser } }), false)
+
+// The report must carry a hundred selected IDs once, not again inside a nested return URL.
+const oneHundred = { ...selected, ids: tooMany.ids.slice(0, 100) }
+const reportUrl = new URL('/admin/registros/relatorio?' + utils.listQuery('publicidade', 2, finalidade, filters, oneHundred), 'https://synthetic.invalid')
+assert.equal(reportUrl.searchParams.getAll('id').length, 100)
+assert.equal(reportUrl.searchParams.has('retorno'), false)
+assert.ok(reportUrl.pathname.length + reportUrl.search.length < 8192)
+const previousUrl = reportUrl.pathname + reportUrl.search + '&retorno=' + encodeURIComponent('/admin/registros?' + utils.listQuery('publicidade', 2, finalidade, filters, oneHundred))
+assert.ok(previousUrl.length > 8192, 'A duplicação anterior ultrapassava o orçamento sintético de 8 KiB.')
+const constrainedHttp = http.createServer({ maxHeaderSize: 8192 }, (request, response) => {
+  const requested = new URL(request.url, 'http://synthetic.invalid')
+  response.writeHead(requested.pathname === reportUrl.pathname ? 200 : 404, { 'Content-Type': 'application/json' })
+  response.end(JSON.stringify({ ids: requested.searchParams.getAll('id').length, page: requested.searchParams.get('page') }))
+})
+await new Promise((resolve) => constrainedHttp.listen(0, '127.0.0.1', resolve))
+try {
+  const response = await fetch(`http://127.0.0.1:${constrainedHttp.address().port}${reportUrl.pathname}${reportUrl.search}`)
+  assert.equal(response.status, 200, 'HTTP sintético com cabeçalho máximo conhecido aceita cem IDs sem duplicação.')
+  assert.deepEqual(await response.json(), { ids: 100, page: '2' })
+} finally { await new Promise((resolve, reject) => constrainedHttp.close((error) => error ? reject(error) : resolve())) }
+assert.equal(utils.reportReturn(reportUrl.searchParams), '/admin/registros?' + utils.listQuery('publicidade', 2, finalidade, filters, oneHundred))
+const detailReturn = '/admin/registros?' + utils.listQuery('publicidade', 2, finalidade, filters, oneHundred)
+const detailUrl = new URL(`/admin/registros/publicidade/${selectedIds[0]}?finalidade=${finalidade}&retorno=${encodeURIComponent(detailReturn)}`, 'https://synthetic.invalid')
+assert.equal(detailUrl.searchParams.getAll('id').length, 0, 'Detalhe recebe os IDs somente no retorno, não duplicados no nível principal.')
+assert.equal(detailUrl.searchParams.get('retorno'), detailReturn)
+assert.ok(detailUrl.pathname.length + detailUrl.search.length < 8192)
+assert.equal(utils.safeReturn(detailUrl.searchParams.get('retorno')), detailReturn)
+const legacyReport = new URLSearchParams(utils.listQuery('publicidade', 0, finalidade, filters, oneHundred))
+legacyReport.set('retorno', detailReturn)
+assert.equal(utils.reportReturn(legacyReport), detailReturn, 'Link legado coerente preserva página original.')
+legacyReport.set('retorno', '/admin/registros?' + utils.listQuery('publicidade', 2, finalidade, filters, { escopo: 'todos', ids: [], usuarioId: null, invalida: false }))
+assert.equal(utils.reportReturn(legacyReport), '/admin/registros?' + utils.listQuery('publicidade', 0, finalidade, filters, oneHundred), 'Retorno legado divergente não amplia selecionados para todos.')
+legacyReport.set('retorno', '/admin/registros?' + utils.listQuery('publicidade', 2, 'APURACAO_INCIDENTE', filters, oneHundred))
+assert.equal(utils.reportReturn(legacyReport), '/admin/registros?' + utils.listQuery('publicidade', 0, finalidade, filters, oneHundred), 'Retorno legado não troca finalidade.')
+legacyReport.set('retorno', '/admin/registros?' + utils.listQuery('publicidade', 2, finalidade, { ...filters, termo: 'outra busca' }, oneHundred))
+assert.equal(utils.reportReturn(legacyReport), '/admin/registros?' + utils.listQuery('publicidade', 0, finalidade, filters, oneHundred), 'Retorno legado não troca filtros.')
+const clearedReportReturn = new URL(utils.reportReturn(reportUrl.searchParams, true), 'https://synthetic.invalid')
+assert.equal(clearedReportReturn.searchParams.getAll('id').length, 0)
+assert.equal(utils.selectionAllowed(utils.selectionState(clearedReportReturn.searchParams), { status: 'READY', session: { usuarioId: selectingUser } }), false)
+
+const React = require('react'), { renderToStaticMarkup } = require('react-dom/server')
+const content = loadTs('features/admin-registros/record-content.tsx', {
+  'react': React, 'react/jsx-runtime': require('react/jsx-runtime'),
+  'next/link': { default: () => null }, '@/components/ui/button': { Button: () => null },
+  '@/lib/admin-auth-api': {}, '@/lib/admin-registros-api': api, './record-utils': utils,
+})
+const historical = { id: selectedIds[0], anuncioId: selectedIds[0], contratanteUsuarioId: selectingUser,
+  ativacaoBeneficioId: null, grupoAtivacaoId: null, movimentoCreditoId: null, pagamentoId: null,
+  natureza: 'ADMINISTRATIVA', relacaoMaterial: 'DESCONHECIDA', cobertura: 'PREVENTIVA',
+  inicioEm: null, fimEm: null, retencaoAte: null, fimTipo: 'SEM_TERMINO_REGISTRADO', encerramentoMotivo: null,
+  preservacoes: [], versoes: [{ id: selectedIds[1], numero: 1, capturadoEm: null, vigenteDesde: null, vigenteAte: null,
+    motivo: 'CAPTURA', conteudoSha256: 'a'.repeat(64), midias: [],
+    conteudo: { titulo: 'SIM', descricao: 'NAO\nPREVENTIVA', slug: 'PREVENTIVA',
+      localizacao: { cidade: 'SIM', endereco_resumido: 'NAO\n  endereço <privado>' }, estado: 'NAO_ABRANGIDA' },
+    contratante: { nomeCivil: 'SIM' }, comercial: { classificacao: 'NAO_ABRANGIDA' },
+    segmentacao: { estado: 'NAO_AFERIDA_NA_CAPTURA' }, alcance: { estado: 'NAO_MENSURADO' } }] }
+const rendered = renderToStaticMarkup(React.createElement(content.RegistroContent, { detail: historical, printable: true, privateSnapshots: true }))
+for (const literal of ['SIM', 'NAO\nPREVENTIVA', 'PREVENTIVA', 'NAO\n  endereço &lt;privado&gt;']) assert.ok(rendered.includes(literal), literal)
+assert.equal(rendered.includes('Sim (valor registrado)'), false, 'Título e nome iguais ao código SIM não podem ser traduzidos.')
+assert.match(rendered, /Não abrangida \(classificação registrada\)/, 'Campo controlado permanece legível.')
+assert.match(rendered, /NAO_ABRANGIDA/, 'Código controlado permanece disponível como informação secundária.')
+assert.equal(historical.versoes[0].conteudo.titulo, 'SIM', 'JSON histórico continua intocado.')
 
 assert.equal(utils.calendarBoundary('2026-09-29'), '2026-09-29T03:00:00.000Z')
 assert.equal(utils.calendarBoundary('2026-09-29', true), '2026-09-30T03:00:00.000Z')

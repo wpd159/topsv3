@@ -126,6 +126,14 @@ export async function getAdminSession() {
 
 export async function logoutAdmin() {
   await request<{ autenticado: boolean; status: string }>('/logout', { method: 'POST' })
+  if (typeof window !== 'undefined') {
+    try {
+      for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+        const key = window.sessionStorage.key(index)
+        if (key?.startsWith('tops-admin-approval-v1:')) window.sessionStorage.removeItem(key)
+      }
+    } catch { /* Logout concluído; falha local de armazenamento não reabre sessão. */ }
+  }
 }
 
 export function changeAdminPassword(

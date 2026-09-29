@@ -79,6 +79,23 @@ export function clearedSelectionReturn(value: string | null) {
   return '/admin/registros?' + listQuery(familia, page, finalidade, filtros, emptySelection())
 }
 
+export function reportReturn(query: URLSearchParams, clearSelection = false) {
+  // Older report links may carry a return URL; new links keep the same context once.
+  const legacy = query.get('retorno')
+  const { familia, page, finalidade, filtros } = queryState(query)
+  if (legacy) {
+    const safe = safeReturn(legacy), legacyQuery = new URL(safe, 'https://local.invalid').searchParams
+    const previous = queryState(legacyQuery)
+    if (safe !== '/admin/registros' && previous.familia === familia && previous.finalidade === finalidade
+      && JSON.stringify(previous.filtros) === JSON.stringify(filtros)
+      && JSON.stringify(selectionState(legacyQuery)) === JSON.stringify(selectionState(query))) {
+      return clearSelection ? clearedSelectionReturn(legacy) : safe
+    }
+  }
+  return '/admin/registros?' + listQuery(familia, page, finalidade, filtros,
+    clearSelection ? emptySelection() : selectionState(query))
+}
+
 export function snapshotText(value: unknown, field: string) {
   if (!value || typeof value !== 'object') return null
   const text = (value as Record<string, unknown>)[field]

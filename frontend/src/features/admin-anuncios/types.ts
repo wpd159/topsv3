@@ -117,6 +117,7 @@ export type AdminAdMetrics = {
 }
 
 export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' | 'beneficiosPremiumVigentes' | 'visualizacoes' | 'cliquesWhatsapp' | 'storyAcao'> & {
+  versao: number
   descricaoResumo?: string | null
   descricao?: string | null
   categoria?: string | null
@@ -347,6 +348,8 @@ export type AdminModerationActionResponse = {
   emailRealEnviado: false
   hardDeleteExecutado: false
   requestId: string
+  operacaoIdCliente?: string | null
+  versaoAnuncioAntes?: number | null
   decididoEm: string
   mensagem: string
 }
@@ -359,7 +362,9 @@ export type AdminReviewState = {
 }
 
 export type AdminApprovalRequest = {
-  requestId: string
+  operacaoId: string
+  versaoAnuncioAntes: number
+  revisaoId?: string | null
 }
 
 export type AdminStoryPublication = {

@@ -8,6 +8,7 @@ import ts from 'typescript'
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const sourceRoot = path.resolve(scriptDirectory, '../src')
 const adminRouteRoot = path.resolve(sourceRoot, 'app/(painel-admin)/admin')
+const preprodProxy = readFileSync(path.resolve(scriptDirectory, '../../deploy/preprod/nginx-preprod-local.conf'), 'utf8')
 
 function source(relativePath) {
   return readFileSync(path.resolve(sourceRoot, relativePath), 'utf8')
@@ -501,6 +502,7 @@ assert.ok(detail.includes("const canDecideAdReview = canModerateAd && !removed &
 assert.ok(detail.includes("const legacyApprovalWithoutPublication = ad.status === 'APROVADO'") && detail.includes('legacyApprovalWithoutPublication || ('), 'A operacao canonica deve permanecer acessivel para regularizar pares legados APROVADO/APROVADO.')
 assert.ok(detail.includes("kind: 'APPROVE_AD'") && detail.includes("kind: 'REPROVE_AD'"), 'Aprovacao e reprovacao devem permanecer como intencoes distintas.')
 assert.ok(detail.includes('await approveAdminAd(ad.id, approvalAttempt)') && api.includes('export function approveAdminAd'), 'Toda aprovacao deve usar a operacao unica por anuncio, correlacionada sem repetir POST.')
+assert.match(preprodProxy, /proxy_set_header X-Request-Id \$request_id;/, 'O proxy versionado substitui o identificador HTTP; a operacao deve ser independente dele.')
 assert.ok(!detail.includes('AUTOMATIC_REVIEW_REASON') && !detail.includes("decideAdminReview(reviewId, 'APROVAR'"), 'A aprovacao nao pode persistir uma etapa intermediaria no frontend.')
 assert.ok(detail.includes('AUTOMATIC_REPROVAL_REVIEW_REASON') && detail.includes('const refreshedAd = await getAdminAd(ad.id)'), 'A reprovacao deve continuar vinculada a uma revisao canonica.')
 assert.ok(detail.includes("let reviewId = reviewOpen ? ad.revisaoAberta?.id : null"), 'Revisao ja aberta deve ser reutilizada pela reprovacao.')
@@ -695,7 +697,7 @@ const controls = (tree, predicate) => renderedNodes(tree).filter((node) => typeo
 const editableForms = (tree) => controls(tree, (node) => node.type === 'form')
 const removedMessage = 'Este anúncio foi removido e não pode ser editado.'
 const syntheticAd = {
-  id: 'synthetic-ad', slug: 'anuncio-sintetico', titulo: 'Anúncio sintético para edição',
+  id: 'synthetic-ad', versao: 7, slug: 'anuncio-sintetico', titulo: 'Anúncio sintético para edição',
   status: 'PUBLICADO', statusModeracao: 'APROVADO', descricao: 'Descrição sintética preservada para edição.',
   categoria: 'ACOMPANHANTE', preco: 99, whatsapp: null, atendimentoExclusivamenteVirtual: false,
   localizacao: { uf: 'SP', cidade: 'Cidade sintética', bairro: 'Bairro sintético' },
@@ -703,7 +705,7 @@ const syntheticAd = {
   anunciante: { id: 'synthetic-owner', status: 'ATIVO', dataNascimento: '2000-09-29' },
   metricas: { visualizacoes: { total: 0, situacao: 'ZERO_LEGITIMO' }, cliquesWhatsapp: 0, beneficiosPremiumVigentes: [] },
 }
-const adminSession = { papeis: ['ADMIN'], permissoes: ['ANUNCIO_MODERAR'] }
+const adminSession = { usuarioId: 'synthetic-admin', papeis: ['ADMIN'], permissoes: ['ANUNCIO_MODERAR'] }
 const removedAd = { ...syntheticAd, status: 'REMOVIDO' }
 
 async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticAd], update, approve, reviewRead, revalidate, session = adminSession } = {}) {
@@ -913,7 +915,8 @@ function approvedResponse(operation, changes = {}) {
     id: '20000000-0000-4000-8000-000000000001', recursoTipo: 'REVISAO_ANUNCIO',
     recursoId: pendingReview.id, decisao: 'APROVAR', status: 'APROVADA',
     visibilidadeMidia: null, auditoriaRegistrada: true, emailRealEnviado: false,
-    hardDeleteExecutado: false, requestId: operation.requestId,
+    hardDeleteExecutado: false, requestId: 'http-proxy-request-id',
+    operacaoIdCliente: operation.operacaoId, versaoAnuncioAntes: operation.versaoAnuncioAntes,
     decididoEm: '2026-01-01T00:01:00Z', mensagem: 'Revisão aprovada.', ...changes,
   }
 }
@@ -949,7 +952,8 @@ const approvalDialog = await startApproval(ambiguousApproval)
 assert.match(visibleText(ambiguousApproval.runner.tree), /Resultado da aprovação ainda não confirmado/,
   'Resposta perdida deve preservar a operação exata e oferecer somente reconciliação por leitura.')
 assert.equal(controls(ambiguousApproval.runner.tree, (node) => node.type === 'Button' && visibleText(node) === 'Conferir aprovação por leitura').length, 1)
-assert.match(attemptedOperation.requestId, /^[a-f0-9-]{36}$/)
+assert.match(attemptedOperation.operacaoId, /^[a-f0-9-]{36}$/)
+assert.equal(attemptedOperation.versaoAnuncioAntes, pendingAd.versao)
 assert.equal(attemptedOperation.revisaoId, pendingReview.id)
 assertApprovalUncertain(ambiguousApproval)
 approvalDialog.props.onConfirm('') // A callback retained from the old render must not issue another POST.
@@ -1014,6 +1018,14 @@ await confirmed.runner.settle()
 assert.equal(confirmed.calls.filter((call) => call === 'APPROVE').length, 1)
 confirmed.finish()
 
+const preservedHttpId = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd, syntheticAd],
+  approve: async (operation) => approvedResponse(operation, { requestId: operation.operacaoId }),
+  reviewRead: async () => pendingReview })
+await startApproval(preservedHttpId)
+assert.match(visibleText(preservedHttpId.runner.tree), /Anúncio aprovado e publicado com sucesso/,
+  'Identificador HTTP preservado também confirma a mesma operação auditada.')
+preservedHttpId.finish()
+
 const cacheFailure = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd],
   approve: async (operation) => approvedResponse(operation), reviewRead: async () => pendingReview,
   revalidate: async () => { throw offline },
@@ -1025,6 +1037,27 @@ assert.doesNotMatch(visibleText(cacheFailure.runner.tree), /Resultado da aprova�
 assert.equal(controls(cacheFailure.runner.tree, (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio').length, 0)
 assert.equal(cacheFailure.calls.filter((call) => call === 'APPROVE').length, 1)
 cacheFailure.finish()
+
+let finishCacheAfterNavigation
+const pendingCache = new Promise((resolve) => { finishCacheAfterNavigation = resolve })
+const navigatingAd = { ...pendingAd, id: 'another-synthetic-ad',
+  revisaoAberta: { ...pendingAd.revisaoAberta, id: 'another-synthetic-review' } }
+const confirmedWhileNavigating = await mountAdministrativeComponent({ mode: 'detail',
+  reads: [pendingAd, navigatingAd, syntheticAd],
+  approve: async (operation) => approvedResponse(operation), reviewRead: async () => pendingReview,
+  revalidate: async () => pendingCache,
+})
+await startApproval(confirmedWhileNavigating)
+confirmedWhileNavigating.runner.rerender({ anuncioId: navigatingAd.id })
+await confirmedWhileNavigating.runner.settle()
+finishCacheAfterNavigation()
+await confirmedWhileNavigating.runner.settle()
+assert.deepEqual(confirmedWhileNavigating.effects.map(([kind]) => kind), ['CACHE', 'INDEXNOW'],
+  'Confirmação de A não pode perder a notificação após navegar para B durante a atualização do cache.')
+assert.equal(confirmedWhileNavigating.effects[1][1].changeFingerprint.length, 36)
+assert.doesNotMatch(visibleText(confirmedWhileNavigating.runner.tree), /Anúncio aprovado e publicado com sucesso/,
+  'O resultado da aprovação de A não pode ser exibido em B.')
+confirmedWhileNavigating.finish()
 
 const inAnalysis = await mountAdministrativeComponent({ mode: 'detail',
   reads: [{ ...pendingAd, revisaoAberta: { ...pendingAd.revisaoAberta, status: 'EM_ANALISE' } }, syntheticAd],
@@ -1051,6 +1084,38 @@ for (const responseKind of ['ANUNCIO', 'REVISAO_ANUNCIO']) {
 
 const nextAd = { ...pendingAd, id: 'another-synthetic-ad',
   revisaoAberta: { ...pendingAd.revisaoAberta, id: 'another-synthetic-review' } }
+const staleIntent = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd, nextAd],
+  approve: async () => { throw new Error('A confirmação antiga não pode enviar POST para outra posição da fila.') },
+  reviewRead: async () => pendingReview,
+})
+const oldApproveButton = controls(staleIntent.runner.tree,
+  (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio')[0]
+oldApproveButton.props.onClick()
+await staleIntent.runner.settle()
+const oldDialog = controls(staleIntent.runner.tree,
+  (node) => typeof node.type === 'function' && node.type.name === 'DecisionDialog')[0]
+staleIntent.runner.rerender({ anuncioId: nextAd.id })
+oldDialog.props.onConfirm('') // Callback retido da revisão anterior, inclusive antes de efeitos assíncronos.
+await staleIntent.runner.settle()
+assert.equal(staleIntent.calls.filter((call) => call === 'APPROVE').length, 0,
+  'Troca de posição na fila invalida o diálogo anterior sem enviar aprovação.')
+assert.equal(staleIntent.calls.filter((call) => call === 'REVIEW_GET').length, 0)
+assert.equal(controls(staleIntent.runner.tree,
+  (node) => typeof node.type === 'function' && node.type.name === 'DecisionDialog')[0].props.intent, null)
+staleIntent.finish()
+
+const noPriorReview = await mountAdministrativeComponent({ mode: 'detail',
+  reads: [{ ...pendingAd, revisaoAberta: null }, syntheticAd],
+  approve: async (operation) => approvedResponse(operation, {
+    recursoId: '30000000-0000-4000-8000-000000000001',
+  }),
+})
+await startApproval(noPriorReview)
+assert.equal(noPriorReview.calls.filter((call) => call === 'REVIEW_GET').length, 0,
+  'Sem revisão aberta, o backend pode criá-la no ato; não consultar revisão inexistente.')
+assert.match(visibleText(noPriorReview.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+noPriorReview.finish()
+
 const navigationAfterApproval = await mountAdministrativeComponent({ mode: 'detail',
   reads: [pendingAd, syntheticAd, nextAd, { ...nextAd, status: 'PUBLICADO', statusModeracao: 'APROVADO', revisaoAberta: null }],
   reviewRead: async (id) => ({ ...pendingReview, id, anuncioId: id === pendingReview.id ? syntheticAd.id : nextAd.id }),
@@ -1068,7 +1133,8 @@ navigationAfterApproval.finish()
 
 for (const invalidResponse of [
   () => ({}),
-  (operation) => approvedResponse(operation, { requestId: 'another-request' }),
+  (operation) => approvedResponse(operation, { operacaoIdCliente: 'another-operation' }),
+  (operation) => approvedResponse(operation, { versaoAnuncioAntes: 99 }),
   (operation) => approvedResponse(operation, { recursoId: 'another-review' }),
   (operation) => approvedResponse(operation, { decisao: 'REPROVAR' }),
   (operation) => approvedResponse(operation, { status: 'ABERTA' }),
@@ -1087,6 +1153,66 @@ for (const invalidResponse of [
   invalidSuccess.finish()
 }
 
+const originalWindow = globalThis.window
+const storedApprovals = new Map()
+globalThis.window = { sessionStorage: {
+  get length() { return storedApprovals.size },
+  key: (index) => [...storedApprovals.keys()][index] ?? null,
+  getItem: (key) => storedApprovals.get(key) ?? null,
+  setItem: (key, value) => storedApprovals.set(key, value),
+  removeItem: (key) => storedApprovals.delete(key),
+} }
+try {
+  const lostBeforeReload = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd],
+    approve: async () => { throw offline }, reviewRead: async () => pendingReview })
+  await startApproval(lostBeforeReload)
+  assertApprovalUncertain(lostBeforeReload)
+  assert.equal(storedApprovals.size, 1, 'Resposta perdida deve guardar somente a referência mínima da operação na aba.')
+  const stored = JSON.parse([...storedApprovals.values()][0])
+  assert.deepEqual(Object.keys(stored).sort(), ['anuncioId', 'operacaoId', 'revisaoId', 'versaoAnuncioAntes'])
+  lostBeforeReload.finish()
+
+  const anotherAd = { ...pendingAd, id: 'another-synthetic-ad',
+    revisaoAberta: { ...pendingAd.revisaoAberta, id: 'another-synthetic-review' } }
+  const afterReload = await mountAdministrativeComponent({ mode: 'detail',
+    reads: [pendingAd, anotherAd, pendingAd], reviewRead: async () => pendingReview })
+  assertApprovalUncertain(afterReload)
+  assert.deepEqual(afterReload.calls.filter((call) => call === 'APPROVE'), [])
+  afterReload.runner.rerender({ anuncioId: anotherAd.id })
+  await afterReload.runner.settle()
+  assert.doesNotMatch(visibleText(afterReload.runner.tree), /Resultado da aprovação ainda não confirmado/,
+    'Outra posição da fila não herda bloqueio da aprovação incerta.')
+  afterReload.runner.rerender({ anuncioId: pendingAd.id })
+  await afterReload.runner.settle()
+  assertApprovalUncertain(afterReload)
+  afterReload.finish()
+
+  storedApprovals.set('unrelated-session-key', 'preserve')
+  const beforeLogoutFetch = globalThis.fetch, beforeLogoutDocument = globalThis.document
+  try {
+    globalThis.document = { cookie: '' }
+    globalThis.fetch = async (url, init) => {
+      if (!init.method) {
+        assert.match(String(url), /\/auth\/me$/)
+        return { ok: true, json: async () => ({}) }
+      }
+      assert.equal(init.method, 'POST')
+      return { ok: true, json: async () => ({ autenticado: false, status: 'LOGOUT' }) }
+    }
+    const auth = runtimeModule('lib/admin-auth-api.ts', { '@/lib/api-contract': contractRuntime })
+    await auth.logoutAdmin()
+    assert.deepEqual([...storedApprovals.entries()], [['unrelated-session-key', 'preserve']],
+      'Logout confirmado limpa apenas referências de aprovação da sessão administrativa.')
+  } finally {
+    globalThis.fetch = beforeLogoutFetch
+    if (beforeLogoutDocument === undefined) delete globalThis.document
+    else globalThis.document = beforeLogoutDocument
+  }
+} finally {
+  if (originalWindow === undefined) delete globalThis.window
+  else globalThis.window = originalWindow
+}
+
 const adapter = runtimeModule('features/admin-anuncios/api.ts', {
   '@/lib/api-contract': contractRuntime, '@/lib/text/encoding': { corrigirEstruturaTexto: (value) => value },
   '@/lib/photo-upload-validation': {}, './queue-context': runtimeModule('features/admin-anuncios/queue-context.ts'),
@@ -1100,20 +1226,30 @@ try {
     return new Response(JSON.stringify(pendingReview), { headers: { 'Content-Type': 'application/json' } })
   }
   await adapter.getAdminReview(pendingReview.id)
-  await adapter.approveAdminAd(syntheticAd.id, { requestId: 'synthetic-approval-request' })
+  await adapter.approveAdminAd(syntheticAd.id, { operacaoId: 'synthetic-approval-operation', versaoAnuncioAntes: 7, revisaoId: pendingReview.id })
   assert.ok(transportCalls[0].url.endsWith(`/moderacao/revisoes/${pendingReview.id}`))
   assert.equal(transportCalls[0].init.body, undefined)
   assert.equal(transportCalls[0].init.credentials, 'include')
   assert.equal(transportCalls[1].init.method, 'POST')
-  assert.equal(transportCalls[1].init.headers.get('X-Request-Id'), 'synthetic-approval-request')
+  assert.equal(transportCalls[1].init.headers.get('X-Request-Id'), null)
   assert.equal(transportCalls[1].init.headers.get('X-XSRF-TOKEN'), 'CHANGE_ME')
-  assert.equal(transportCalls[1].init.body, undefined, 'Não enviar contrato expected* que o backend recusado não implementou.')
+  assert.deepEqual(JSON.parse(transportCalls[1].init.body), {
+    operacaoIdCliente: 'synthetic-approval-operation', versaoAnuncioEsperada: 7,
+    revisaoIdEsperada: pendingReview.id,
+  })
+  await adapter.decideAdminReview(pendingReview.id, 'APROVAR', undefined,
+    { operacaoId: 'synthetic-approval-operation', versaoAnuncioAntes: 7 })
+  assert.deepEqual(JSON.parse(transportCalls[2].init.body), {
+    decisao: 'APROVAR', operacaoIdCliente: 'synthetic-approval-operation',
+    versaoAnuncioEsperada: 7,
+  })
+  assert.equal(transportCalls[2].init.headers.get('X-Request-Id'), null)
 } finally {
   globalThis.fetch = originalFetch
   if (originalDocument === undefined) delete globalThis.document
   else globalThis.document = originalDocument
 }
-console.log('ADMIN_APPROVAL_OBSERVATION_RESULT=OK cases=22 transport=synthetic revisionRead=exact operationConfirmation=unavailable automaticPostRetry=none responseShape=validated')
+console.log('ADMIN_APPROVAL_OBSERVATION_RESULT=OK cases=26 transport=synthetic revisionRead=exact operationConfirmation=unavailable automaticPostRetry=none responseShape=validated')
 
 // Execute the existing Premium child, not its stub, to cover callbacks retained
 // before the parent becomes uncertain or permission is revoked.

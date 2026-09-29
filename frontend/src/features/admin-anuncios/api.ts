@@ -456,9 +456,11 @@ export function getAdminReview(reviewId: string) {
 export function approveAdminAd(id: string, operation?: AdminApprovalRequest) {
   return request<AdminModerationActionResponse>(`/anuncios/${encodeURIComponent(id)}/aprovar`, {
     method: 'POST',
-    ...(operation ? {
-      headers: { 'X-Request-Id': operation.requestId },
-    } : {}),
+    ...(operation ? { body: JSON.stringify({
+      operacaoIdCliente: operation.operacaoId,
+      versaoAnuncioEsperada: operation.versaoAnuncioAntes,
+      revisaoIdEsperada: operation.revisaoId ?? null,
+    }) } : {}),
   })
 }
 
@@ -472,8 +474,13 @@ export function decideAdminReview(
     `/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`,
     {
       method: 'POST',
-      ...(operation ? { headers: { 'X-Request-Id': operation.requestId } } : {}),
-      body: JSON.stringify({ decisao, motivo: motivo?.trim() || undefined }),
+      body: JSON.stringify({
+        decisao, motivo: motivo?.trim() || undefined,
+        ...(operation ? {
+          operacaoIdCliente: operation.operacaoId,
+          versaoAnuncioEsperada: operation.versaoAnuncioAntes,
+        } : {}),
+      }),
     }
   )
 }

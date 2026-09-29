@@ -95,15 +95,26 @@ const CAPTURE_FIELDS: Record<string, string> = {
   vinculoPagamento: 'Vínculo de pagamento registrado', destinatariosUnicos: 'Destinatários únicos',
 }
 
-function CaptureValue({ value }: { value: unknown }) {
+// Translate only paths whose archive contract stores controlled values. Names, titles,
+// descriptions, addresses and future free-text fields must remain literal.
+const CONTROLLED_CAPTURE_PATHS = new Set([
+  'conteudo.estado', 'conteudo.proveniencia', 'conteudo.modoConteudo',
+  'conteudo.midias.tipo', 'conteudo.midias.finalidade', 'conteudo.midias.visibilidade',
+  'contratante.terceiroBeneficiario',
+  'comercial.classificacao', 'comercial.relacaoMaterial', 'comercial.cobertura',
+  'comercial.beneficioEscopo', 'comercial.origem', 'comercial.vinculoPagamento',
+  'segmentacao.estado', 'alcance.estado', 'alcance.destinatariosUnicos',
+])
+
+function CaptureValue({ value, path = '' }: { value: unknown; path?: string }) {
   if (value == null) return <span>Não registrado na captura</span>
-  if (Array.isArray(value)) return value.length ? <ol className="space-y-2">{value.map((item, index) => <li key={index} className="rounded border p-2"><CaptureValue value={item} /></li>)}</ol> : <span>Lista vazia na captura</span>
+  if (Array.isArray(value)) return value.length ? <ol className="space-y-2">{value.map((item, index) => <li key={index} className="rounded border p-2"><CaptureValue value={item} path={path} /></li>)}</ol> : <span>Lista vazia na captura</span>
   if (typeof value === 'object') {
     const entries = Object.entries(value), known = entries.filter(([name]) => name in CAPTURE_FIELDS)
     const unknown = Object.fromEntries(entries.filter(([name]) => !(name in CAPTURE_FIELDS)))
     return <>
       <dl className="grid gap-3">{known.map(([name, item]) => <div key={name}><dt className="text-xs text-gray-600">{CAPTURE_FIELDS[name]}</dt>
-        <dd className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{name === 'beneficioCodigo' ? <Benefit code={typeof item === 'string' ? item : null} /> : <CaptureValue value={item} />}</dd></div>)}</dl>
+        <dd className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{name === 'beneficioCodigo' ? <Benefit code={typeof item === 'string' ? item : null} /> : <CaptureValue value={item} path={path ? `${path}.${name}` : name} />}</dd></div>)}</dl>
       {!entries.length ? <p>Nenhum campo registrado nesta captura.</p> : null}
       {Object.keys(unknown).length ? <section className="technical-fields mt-3"><h6 className="font-medium">Campos adicionais da captura (seção técnica)</h6>
         <pre className="mt-1 whitespace-pre-wrap rounded bg-gray-50 p-2 text-xs [overflow-wrap:anywhere]">{JSON.stringify(unknown, null, 2)}</pre>
@@ -111,7 +122,11 @@ function CaptureValue({ value }: { value: unknown }) {
     </>
   }
   if (typeof value === 'boolean') return <span>{value ? 'Sim (valor registrado)' : 'Não (valor registrado)'}</span>
-  return <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{typeof value === 'string' ? captureLabel(value) : String(value)}</span>
+  if (typeof value === 'string') {
+    const presented = CONTROLLED_CAPTURE_PATHS.has(path) ? captureLabel(value) : value
+    return <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{presented}{presented !== value ? <span className="ml-1 text-xs text-gray-600">(código: {value})</span> : null}</span>
+  }
+  return <span>{String(value)}</span>
 }
 
 export function RegistroContent({ detail, permissions = [], printable = false, privateSnapshots = false, timeZone = 'America/Sao_Paulo' }: {
@@ -158,7 +173,7 @@ export function RegistroContent({ detail, permissions = [], printable = false, p
         <TechnicalFields value={version} known={['id', 'numero', 'capturadoEm', 'vigenteDesde', 'vigenteAte', 'motivo', 'conteudo', 'contratante', 'comercial', 'segmentacao', 'alcance', 'conteudoSha256', 'midias']} />
         {(['conteudo', 'contratante', 'comercial', 'segmentacao', 'alcance'] as const).filter((field) => privateSnapshots || (field !== 'contratante' && field !== 'comercial')).map((field) => <section key={field} className="mt-3">
           <h5 className="font-medium">{({ conteudo: 'Conteúdo e apresentação', contratante: 'Contratante na captura', comercial: 'Dados comerciais na captura', segmentacao: 'Segmentação registrada', alcance: 'Alcance registrado' })[field]}</h5>
-          <div className="mt-2"><CaptureValue value={version[field]} /></div>
+          <div className="mt-2"><CaptureValue value={version[field]} path={field} /></div>
         </section>)}
         {!privateSnapshots ? <p className="mt-2 text-xs text-gray-600">Capturas de contratante e dados comerciais completos exigem permissão de exportação.</p> : null}
         <h5 className="mt-3 font-medium">Metadados de mídias ({version.midias.length})</h5>

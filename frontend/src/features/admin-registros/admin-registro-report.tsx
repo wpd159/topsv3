@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button'
 import { ContractState } from '@/components/feedback/contract-state'
 import { FINALIDADES_ACESSO_ARQUIVO, listarRegistrosPublicidade, listarRegistrosStory, prepararRelatorioRegistros, type RegistroRelatorio } from '@/lib/admin-registros-api'
 import { FilterSummary, RegistroContent, SessionNotice, TechnicalFields, useRegistroSession } from './record-content'
-import { clearedSelectionReturn, dateTime, emptySelection, errorStatus, listQuery, queryState, safeReturn, selectionAllowed, selectionState } from './record-utils'
+import { dateTime, emptySelection, errorStatus, listQuery, queryState, reportReturn, selectionAllowed, selectionState } from './record-utils'
 
 export function AdminRegistroReport() {
   const search = useSearchParams(), router = useRouter(), rawQuery = search.toString()
-  const { finalidade, filtros, familia } = useMemo(() => queryState(new URLSearchParams(rawQuery)), [rawQuery])
+  const { finalidade, filtros, familia, page } = useMemo(() => queryState(new URLSearchParams(rawQuery)), [rawQuery])
   const selection = useMemo(() => selectionState(new URLSearchParams(rawQuery)), [rawQuery]), ids = selection.ids
   const { state: session, retry, canExport, expire } = useRegistroSession()
   const [total, setTotal] = useState<number | null>(null), [loading, setLoading] = useState(false)
@@ -22,11 +22,9 @@ export function AdminRegistroReport() {
   const validSelection = selectionAllowed(selection, session)
   useEffect(() => {
     if ((session.status === 'EXPIRED' || session.status === 'DENIED') && (selection.ids.length || selection.usuarioId)) {
-      const query = new URLSearchParams(listQuery(familia, 0, finalidade, filtros, emptySelection()))
-      query.set('retorno', clearedSelectionReturn(search.get('retorno')))
-      router.replace('/admin/registros/relatorio?' + query.toString())
+      router.replace('/admin/registros/relatorio?' + listQuery(familia, page, finalidade, filtros, emptySelection()))
     }
-  }, [session.status, selection, familia, finalidade, filtros, router, search])
+  }, [session.status, selection, familia, page, finalidade, filtros, router])
   useEffect(() => {
     generation.current += 1; preparing.current?.abort()
     setTotal(null); setReport(null); setError(null)
@@ -59,7 +57,7 @@ export function AdminRegistroReport() {
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
   }
   return <section className="space-y-4">
-    <div className="no-print"><Link href={session.status === 'EXPIRED' || session.status === 'DENIED' ? clearedSelectionReturn(search.get('retorno')) : safeReturn(search.get('retorno'))} className="text-pink-700 underline">Voltar à consulta com filtros</Link></div>
+    <div className="no-print"><Link href={reportReturn(new URLSearchParams(rawQuery), session.status === 'EXPIRED' || session.status === 'DENIED')} className="text-pink-700 underline">Voltar à consulta com filtros</Link></div>
     <h1 className="text-2xl font-bold">Relatório privado do arquivo publicitário</h1>
     <SessionNotice state={session} retry={retry} />
     {session.status === 'READY' && !canExport ? <p role="status">Sessão confirmada, mas sem permissão de exportação. O relatório não foi solicitado.</p> : null}

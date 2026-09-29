@@ -59,8 +59,7 @@ export function AdminRegistrosList() {
     return () => controller.abort()
   }, [session.status, page, finalidade, filtros, familia, attempt, expire])
   const returnTo = '/admin/registros?' + listQuery(familia, page, finalidade, filtros, selection)
-  const reportQuery = new URLSearchParams(listQuery(familia, 0, finalidade, filtros, selection))
-  reportQuery.set('retorno', returnTo)
+  const reportQuery = listQuery(familia, page, finalidade, filtros, selection)
   const count = selection.escopo === 'selecionados' ? selected.length : result?.totalElements || 0
   function navigate(nextFamily: RegistroFamilia, nextPage: number, nextPurpose = finalidade, nextFilters = filtros) {
     const changed = nextFamily !== familia || nextPurpose !== finalidade || filtrosRegistroQuery(nextFilters) !== filtrosRegistroQuery(filtros)
@@ -134,7 +133,7 @@ export function AdminRegistrosList() {
           </div></nav>
           {canExport ? <div className="space-y-2 rounded border bg-gray-50 p-3 text-sm"><p>Escopo do relatório: {selection.escopo === 'selecionados' ? `${selected.length} registros selecionados (incluindo outras páginas deste filtro)` : `todos os ${result.totalElements} registros do filtro`}. Limite: 100; não há truncamento.</p>
             <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => changeSelection(emptySelection())}>Limpar seleção</Button><Button type="button" variant="outline" onClick={() => changeSelection({ escopo: 'todos', ids: [], usuarioId: null, invalida: false })}>Usar todos os resultados filtrados</Button></div>
-            {!validSelection ? <p role="status">Seleção vazia, inválida ou incompatível com a sessão. Selecione os registros novamente ou escolha explicitamente todos os resultados; nenhum relatório será solicitado.</p> : count > 100 ? <p role="status">Refine os filtros ou selecione até 100 registros. O escopo completo não cabe no limite.</p> : <Link className="inline-block font-medium text-pink-700 underline" href={'/admin/registros/relatorio?' + reportQuery.toString()}>Conferir escopo e preparar relatório imprimível</Link>}
+            {!validSelection ? <p role="status">Seleção vazia, inválida ou incompatível com a sessão. Selecione os registros novamente ou escolha explicitamente todos os resultados; nenhum relatório será solicitado.</p> : count > 100 ? <p role="status">Refine os filtros ou selecione até 100 registros. O escopo completo não cabe no limite.</p> : <Link className="inline-block font-medium text-pink-700 underline" href={'/admin/registros/relatorio?' + reportQuery}>Conferir escopo e preparar relatório imprimível</Link>}
           </div> : null}
         </> : null}
       </section>
