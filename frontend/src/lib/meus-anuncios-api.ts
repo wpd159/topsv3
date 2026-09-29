@@ -611,7 +611,7 @@ export async function enviarMinhaMidia(
     xhr.setRequestHeader('Idempotency-Key', mediaUploadIdempotencyKey(arquivo))
     if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
+      if (event.lengthComputable) onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
     }
     xhr.onerror = () => reject(uploadErrorFromXhr(
       xhr,
@@ -687,7 +687,7 @@ export async function enviarMinhasMidiasEmLote(
     xhr.setRequestHeader('Idempotency-Key', idempotencyKey)
     if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
+      if (event.lengthComputable) onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
     }
     xhr.onerror = () => reject(uploadErrorFromXhr(
       xhr,

@@ -14,6 +14,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProces
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
@@ -32,6 +33,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
@@ -163,6 +166,103 @@ class AnuncioMidiaUploadCoreServiceTest {
     }
 
     @Test
+    void ownerAceitaVideoValidadoSemDimensoesERepeteSemDuplicar() throws Exception {
+        MockMultipartFile multipart = videoBasico();
+        MidiaUploadValidator realValidator = new MidiaUploadValidator(new MidiaUploadProperties());
+        assertThat(realValidator.validar(multipart)).satisfies(item -> {
+            assertThat(item.video()).isTrue();
+            assertThat(item.largura()).isNull();
+            assertThat(item.altura()).isNull();
+        });
+        AnuncioMidiaUploadCoreService realService = serviceComValidador(realValidator);
+        var capacidade = new AnuncioMidiaUploadCoreService.CapacidadeProprietario(4, 1, true);
+
+        var primeiro = realService.enviarProprietario(anuncio, List.of(multipart), "video-sem-dimensoes", capacidade);
+        var repetido = realService.enviarProprietario(anuncio, List.of(multipart), "video-sem-dimensoes", capacidade);
+
+        assertThat(primeiro.idempotente()).isFalse();
+        assertThat(repetido.idempotente()).isTrue();
+        assertThat(repetido.itemUnico().midiaId()).isEqualTo(primeiro.itemUnico().midiaId());
+        assertThat(primeiro.itemUnico().tipo()).isEqualTo(TipoAnuncioMidia.VIDEO);
+        assertThat(arquivos.values()).singleElement().satisfies(item -> {
+            assertThat(item.getLargura()).isNull();
+            assertThat(item.getAltura()).isNull();
+            assertThat(item.getDuracaoMs()).isNull();
+            assertThat(item.getMimeType()).isEqualTo("video/mp4");
+            assertThat(item.getStatusArquivo()).isEqualTo(StatusArquivoMidia.PENDENTE);
+        });
+        assertThat(vinculos).hasSize(1);
+        assertThat(objetos).hasSize(1);
+        verify(storage, times(1)).putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), eq(multipart.getBytes()), eq("video/mp4"));
+        verify(fotoProcessor, never()).processar(any());
+    }
+
+    @Test
+    void ownerVideoSemDimensoesPreservaRecusasDeBeneficioLimiteFormatoEAdmin() {
+        AnuncioMidiaUploadCoreService realService =
+                serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()));
+        MockMultipartFile video = videoBasico();
+
+        assertThatThrownBy(() -> realService.enviarProprietario(anuncio, List.of(video), "sem-beneficio",
+                new AnuncioMidiaUploadCoreService.CapacidadeProprietario(4, 0, false)))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getReason()).contains("beneficio Video");
+                });
+        assertThatThrownBy(() -> realService.enviarProprietario(anuncio, List.of(video), "limite-video",
+                new AnuncioMidiaUploadCoreService.CapacidadeProprietario(4, 0, true)))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getReason()).contains("limite de video");
+                });
+        MockMultipartFile invalido = new MockMultipartFile(
+                "arquivos", "video.mp4", "video/mp4", new byte[] {1, 2, 3});
+        assertThatThrownBy(() -> realService.enviarProprietario(anuncio, List.of(invalido), "formato-invalido",
+                new AnuncioMidiaUploadCoreService.CapacidadeProprietario(4, 1, true)))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
+        assertThatThrownBy(() -> realService.enviarAdministrativo(anuncio, video, "admin-video"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
+
+        assertThat(arquivos).isEmpty();
+        assertThat(vinculos).isEmpty();
+        assertThat(objetos).isEmpty();
+        verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+    }
+
+    @Test
+    void rollbackDeVideoSemDimensoesCompensaObjetoPrivadoCriado() {
+        AnuncioMidiaUploadCoreService realService =
+                serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()));
+        org.mockito.Mockito.doThrow(new IllegalStateException("falha sintetica no vinculo"))
+                .when(midiaRepository).save(any());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            objetos.remove(invocation.getArgument(1));
+            return null;
+        }).when(storage).delete(eq(StorageArea.PRIVATE_MEDIA), any());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> realService.enviarProprietario(
+                    anuncio, List.of(videoBasico()), "rollback-video",
+                    new AnuncioMidiaUploadCoreService.CapacidadeProprietario(4, 1, true)))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("falha sintetica no vinculo");
+            assertThat(objetos).hasSize(1);
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+            synchronizations.forEach(item ->
+                    item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertThat(objetos).isEmpty();
+        verify(storage, times(1)).delete(eq(StorageArea.PRIVATE_MEDIA), any());
+    }
+
+    @Test
     void retryComMesmosBytesRetornaMesmaMidiaSemReprocessar() {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(false, "a".repeat(64)));
@@ -278,6 +378,37 @@ class AnuncioMidiaUploadCoreServiceTest {
                 new byte[] {1, 2, 3}, video, video ? "video/mp4" : "image/png",
                 video ? "mp4" : "png", video ? "video.mp4" : "foto.png",
                 video ? 720 : 2, video ? 1280 : 3, video ? 15_000L : null, sha);
+    }
+
+    private AnuncioMidiaUploadCoreService serviceComValidador(MidiaUploadValidator realValidator) {
+        return new AnuncioMidiaUploadCoreService(
+                midiaRepository, arquivoRepository, realValidator, fotoProcessor,
+                storageProperties, storageProvider);
+    }
+
+    private MockMultipartFile videoBasico() {
+        byte[] ftyp = box("ftyp", concat("isom".getBytes(StandardCharsets.US_ASCII), new byte[4]));
+        byte[] hdlr = box("hdlr", concat(new byte[8], "vide".getBytes(StandardCharsets.US_ASCII)));
+        byte[] moov = box("moov", box("trak", box("mdia", hdlr)));
+        byte[] mdat = box("mdat", new byte[] {1, 2, 3, 4});
+        return new MockMultipartFile("arquivos", "video.mp4", "video/mp4", concat(ftyp, moov, mdat));
+    }
+
+    private byte[] box(String type, byte[] payload) {
+        return concat(ByteBuffer.allocate(4).putInt(payload.length + 8).array(),
+                type.getBytes(StandardCharsets.US_ASCII), payload);
+    }
+
+    private byte[] concat(byte[]... parts) {
+        int size = 0;
+        for (byte[] part : parts) size += part.length;
+        byte[] result = new byte[size];
+        int offset = 0;
+        for (byte[] part : parts) {
+            System.arraycopy(part, 0, result, offset, part.length);
+            offset += part.length;
+        }
+        return result;
     }
 
     private FotoProcessada processada() {

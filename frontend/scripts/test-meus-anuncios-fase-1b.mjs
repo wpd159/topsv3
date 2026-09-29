@@ -343,7 +343,8 @@ class ContractXMLHttpRequest {
     )
     this.body = body
     xhrRequests.push(this)
-    queueMicrotask(() => this.onload())
+    response.onSent?.(this)
+    if (!response.hold) queueMicrotask(() => this.onload())
   }
 }
 
@@ -491,6 +492,40 @@ pendingXhrResponses.push({ status: 200, body: canonicalMedia })
 const canonicalResult = await adapterRuntime.enviarMinhasMidiasEmLote('anuncio', photoBatch)
 assert.deepEqual(canonicalResult, canonicalMedia)
 assert.equal(xhrRequests.at(-1).headers.get('idempotency-key'), invalidSuccessKey, 'Resposta ambígua mantém chave para retry seguro.')
+
+for (const [label, send] of [
+  ['single-video', (onProgress) => adapterRuntime.enviarMinhaMidia('anuncio', videoWithPhotoExtension, onProgress)],
+  ['batch-video', (onProgress) => adapterRuntime.enviarMinhasMidiasEmLote('anuncio', [photoByMime, videoWithPhotoExtension], onProgress)],
+]) {
+  for (const response of [
+    { status: 200, body: canonicalMedia, confirmed: true },
+    { status: 200, body: null, confirmed: false },
+    { status: 503, body: { message: 'Falha sintética após transmissão.' }, confirmed: false },
+  ]) {
+    let notifySent
+    const sent = new Promise((resolve) => { notifySent = resolve })
+    pendingXhrResponses.push({
+      status: response.status,
+      body: response.body,
+      hold: true,
+      onSent: notifySent,
+    })
+    const progress = []
+    let settled = false
+    const operation = send((value) => progress.push(value))
+    void operation.then(() => { settled = true }, () => { settled = true })
+    const xhr = await sent
+    xhr.upload.onprogress({ lengthComputable: true, loaded: 1, total: 2 })
+    xhr.upload.onprogress({ lengthComputable: true, loaded: 2, total: 2 })
+    assert.deepEqual(progress, [50, 99], `${label}: bytes completos não confirmam o processamento.`)
+    assert.equal(settled, false, `${label}: resposta ainda pendente.`)
+    xhr.onload()
+    if (response.confirmed) await operation
+    else await assert.rejects(operation)
+    assert.deepEqual(progress, response.confirmed ? [50, 99, 100] : [50, 99],
+      `${label}: 100% somente após resposta canônica; erro não conclui o progresso.`)
+  }
+}
 
 const lifecycleRequests = []
 const closedMedia = {

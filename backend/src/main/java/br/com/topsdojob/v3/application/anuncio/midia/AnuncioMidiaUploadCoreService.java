@@ -165,8 +165,15 @@ public class AnuncioMidiaUploadCoreService {
             byte[] bytesFinais = foto == null ? validada.bytes() : foto.bytes();
             String mimeFinal = foto == null ? validada.mimeType() : foto.mimeType();
             String extensaoFinal = foto == null ? validada.extensao() : foto.extensao();
-            Integer larguraFinal = foto == null ? validada.largura() : foto.largura();
-            Integer alturaFinal = foto == null ? validada.altura() : foto.altura();
+            Integer larguraFinal;
+            Integer alturaFinal;
+            if (foto == null) {
+                larguraFinal = validada.largura();
+                alturaFinal = validada.altura();
+            } else {
+                larguraFinal = foto.largura();
+                alturaFinal = foto.altura();
+            }
             String shaFinal = foto == null ? validada.sha256() : foto.sha256();
             String storageKey = storageProperties.getPrivateMediaPrefix()
                     + "anuncios/" + anuncio.getId() + "/" + item.arquivoId() + "/"
