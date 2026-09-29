@@ -4,26 +4,45 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AdminFrontendStorageTest {
 
     @Test
-    void frontendAdminNaoUsaLocalStorageOuSessionStorage() throws Exception {
+    void frontendAdminNaoUsaLocalStorageESomentePersisteReferenciaDeAprovacaoNoSessionStorage() throws Exception {
         Path frontendAdmin = Path.of("..", "frontend", "src");
-        String text = Files.walk(frontendAdmin)
-                .filter(Files::isRegularFile)
-                .filter(path -> path.toString().contains("admin") || path.toString().contains("api"))
-                .map(path -> {
-                    try {
-                        return Files.readString(path);
-                    } catch (Exception exception) {
-                        throw new IllegalStateException(exception);
-                    }
-                })
-                .reduce("", (left, right) -> left + "\n" + right);
+        assertThat(Files.isRegularFile(frontendAdmin.resolve("features/admin-anuncios/admin-anuncio-moderacao.tsx")))
+                .isTrue();
+        assertThat(Files.isRegularFile(frontendAdmin.resolve("lib/admin-auth-api.ts"))).isTrue();
 
-        assertThat(text).doesNotContain("localStorage").doesNotContain("sessionStorage");
+        try (var paths = Files.walk(frontendAdmin)) {
+            for (Path path : paths.filter(Files::isRegularFile)
+                    .filter(file -> file.toString().contains("admin") || file.toString().contains("api"))
+                    .toList()) {
+                String relativePath = frontendAdmin.relativize(path).toString().replace('\\', '/');
+                String source = Files.readString(path);
+                assertThat(source).as(relativePath).doesNotContain("localStorage");
+
+                List<String> sessionStorageUses = source.lines()
+                        .map(String::trim)
+                        .filter(line -> line.contains("sessionStorage"))
+                        .toList();
+                switch (relativePath) {
+                    case "features/admin-anuncios/admin-anuncio-moderacao.tsx" ->
+                            assertThat(sessionStorageUses).as(relativePath).containsExactly(
+                                    "window.sessionStorage.setItem(approvalStorageKey(actorId, operation.anuncioId), JSON.stringify(operation))",
+                                    "try { window.sessionStorage.removeItem(approvalStorageKey(actorId, anuncioId)) } catch { /* Não altera o resultado confirmado. */ }",
+                                    "const raw = window.sessionStorage.getItem(approvalStorageKey(actorId, anuncioId))");
+                    case "lib/admin-auth-api.ts" ->
+                            assertThat(sessionStorageUses).as(relativePath).containsExactly(
+                                    "for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {",
+                                    "const key = window.sessionStorage.key(index)",
+                                    "if (key?.startsWith('tops-admin-approval-v1:')) window.sessionStorage.removeItem(key)");
+                    default -> assertThat(sessionStorageUses).as(relativePath).isEmpty();
+                }
+            }
+        }
     }
 
     @Test
