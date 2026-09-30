@@ -9,6 +9,7 @@ import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageException;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,7 @@ class ArquivoPublicidadeObservabilidadeTest {
   private final EntityManager entityManager = mock(EntityManager.class);
   private ArquivoPublicidadeRegistroService service;
   private ch.qos.logback.classic.Logger logger;
+  private Level originalLevel;
   private ListAppender<ILoggingEvent> logs;
 
   @BeforeEach
@@ -41,6 +43,8 @@ class ArquivoPublicidadeObservabilidadeTest {
         storage, new R2StorageProperties(), mock(ArquivoPublicidadeStoryRegistroService.class),
         mock(PremiumPublicoMapper.class), mock(ArquivoPublicidadeTransicaoTemporalService.class));
     logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(ArquivoPublicidadeRegistroService.class);
+    originalLevel = logger.getLevel();
+    logger.setLevel(Level.INFO);
     logs = new ListAppender<>();
     logs.start();
     logger.addAppender(logs);
@@ -50,6 +54,7 @@ class ArquivoPublicidadeObservabilidadeTest {
   void limpar() {
     logger.detachAppender(logs);
     logs.stop();
+    logger.setLevel(originalLevel);
     MDC.remove("aprovacaoOperacaoId");
   }
 

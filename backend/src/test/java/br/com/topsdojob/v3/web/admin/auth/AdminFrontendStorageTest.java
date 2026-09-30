@@ -29,11 +29,15 @@ class AdminFrontendStorageTest {
                         .filter(line -> line.contains("sessionStorage"))
                         .toList();
                 switch (relativePath) {
-                    case "features/admin-anuncios/admin-anuncio-moderacao.tsx" ->
-                            assertThat(sessionStorageUses).as(relativePath).containsExactly(
-                                    "window.sessionStorage.setItem(approvalStorageKey(actorId, operation.anuncioId), JSON.stringify(operation))",
-                                    "try { window.sessionStorage.removeItem(approvalStorageKey(actorId, anuncioId)) } catch { /* Não altera o resultado confirmado. */ }",
-                                    "const raw = window.sessionStorage.getItem(approvalStorageKey(actorId, anuncioId))");
+                    case "features/admin-anuncios/admin-anuncio-moderacao.tsx" -> {
+                        assertThat(sessionStorageUses).as(relativePath).containsExactly(
+                                "window.sessionStorage.setItem(approvalStorageKey(actorId, operation.anuncioId), JSON.stringify(operation))",
+                                "const stored = window.sessionStorage.getItem(key)",
+                                "window.sessionStorage.removeItem(key)",
+                                "const raw = window.sessionStorage.getItem(approvalStorageKey(actorId, anuncioId))");
+                        assertThat(source).as(relativePath)
+                                .contains("if (stored && sameApproval(JSON.parse(stored) as PendingApproval, operation)) {");
+                    }
                     case "lib/admin-auth-api.ts" ->
                             assertThat(sessionStorageUses).as(relativePath).containsExactly(
                                     "for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {",
