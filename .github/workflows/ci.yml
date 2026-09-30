@@ -186,6 +186,7 @@ jobs:
           node scripts/test-meus-anuncios-fase-1b.mjs
           node scripts/test-admin-anuncios-fotos-lote.mjs
           node scripts/test-admin-anuncios-moderacao-v3.mjs
+          node scripts/test-admin-anuncios-video-upload.mjs
           node scripts/test-admin-registros.mjs --browser
           node scripts/test-admin-stories-management-filters.mjs
           node scripts/test-restricted-media-age-seo.mjs
