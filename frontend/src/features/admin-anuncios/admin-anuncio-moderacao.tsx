@@ -789,6 +789,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const approvalReadLock = useRef(false)
   const approvalReadOwnerRef = useRef<typeof routeContextRef.current | null>(null)
   const activityEpochRef = useRef(0)
+  const adminMediaAllowedRef = useRef(false)
   const [legalIntent, setLegalIntent] = useState<LegalIntent | null>(null)
   const [legalActionError, setLegalActionError] = useState<unknown>(null)
   const [legalBusy, setLegalBusy] = useState(false)
@@ -1619,6 +1620,17 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const approvalBlocked = busy || Boolean(pendingApproval)
   const canUploadAdminMedia = isAdmin && canModerateAd && canModerateMedia && !removed && !approvalBlocked
     && ad.id === anuncioId && routeIsActive()
+  adminMediaAllowedRef.current = canUploadAdminMedia && !loading && !legalBusy && !removalBusy
+  const uploadRoute = routeContextRef.current
+  const uploadEpoch = activityEpochRef.current
+  const uploadActor = actorIdRef.current
+  const adminVideoContextIsCurrent = () => routeContextRef.current === uploadRoute
+    && activityEpochRef.current === uploadEpoch
+    && actorIdRef.current === uploadActor
+    && activeAdIdRef.current === anuncioId
+    && currentAdRef.current?.id === anuncioId
+    && routeIsActive() && !decisionLock.current && !pendingApprovalRef.current
+    && adminMediaAllowedRef.current
   const headerBusy = loading || approvalBlocked || legalBusy || removalBusy
   const headerActionClass = 'h-8 whitespace-nowrap px-2.5 text-xs'
 
@@ -1940,6 +1952,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
               <AdminAnuncioVideoUploader
                 key={`video:${ad.id}`}
                 anuncioId={ad.id}
+                actorId={uploadActor}
+                isCurrent={adminVideoContextIsCurrent}
                 disabled={loading}
                 onReload={async () => { await load(undefined, false) }}
               />

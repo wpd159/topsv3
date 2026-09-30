@@ -11,12 +11,16 @@ import { adminVideoUploadIssue, uploadAdminAdVideo } from './api'
 
 type AdminAnuncioVideoUploaderProps = {
   anuncioId: string
+  actorId: string | null
+  isCurrent: () => boolean
   disabled?: boolean
   onReload: () => Promise<void>
 }
 
 export function AdminAnuncioVideoUploader({
   anuncioId,
+  actorId,
+  isCurrent,
   disabled = false,
   onReload,
 }: AdminAnuncioVideoUploaderProps) {
@@ -61,14 +65,17 @@ export function AdminAnuncioVideoUploader({
   async function submit() {
     if (uploadLock.current || busy || disabled || !arquivo || !idempotencyKey || issue
       || !retryAllowed) return
-    if (!currentDetailIsActive()) return
+    if (!currentDetailIsActive() || !isCurrent() || !actorId) return
     uploadLock.current = true
     setBusy(true)
     setError(null)
     setSuccess(null)
     setProgress(0)
     try {
-      const response = await uploadAdminAdVideo(anuncioId, arquivo, idempotencyKey, setProgress)
+      const response = await uploadAdminAdVideo(anuncioId, arquivo, idempotencyKey, {
+        actorId,
+        isCurrent: () => currentDetailIsActive() && isCurrent(),
+      }, setProgress)
       if (!currentDetailIsActive()) {
         throw new ApiContractError(
           'O anúncio exibido mudou durante o envio. Volte ao anúncio original e confira a lista antes de repetir a operação.',

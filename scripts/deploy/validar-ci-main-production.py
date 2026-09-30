@@ -19,7 +19,9 @@ FLAGS = (
     "PREVIEW_BACKFILL_POSTGRES17_ENABLED", "PREVIEW_JOB_USER_INTEGRATION_ENABLED",
     "PUBLIC_SEARCH_POSTGRES17_ENABLED", "ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED",
     "ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED", "WIZARD_PROGRESS_POSTGRES17_ENABLED",
+    "APROVACAO_RECONCILIACAO_POSTGRES17_ENABLED",
 )
+RECONCILIATION_SUITE = "application.admin.moderacao.AdminAprovacaoReconciliacaoPostgres17IntegrationTest"
 JOBS = {
     "Backend e frontend": (
         "Checkout", "Set up Java 17", "Prepare synthetic PostgreSQL and cold JVM test images",
@@ -71,6 +73,7 @@ ESSENTIAL_SUITES = (
     "application.operacional.midia.backfill.RestrictedMediaPreviewBackfillPostgres17IntegrationTest",
     "application.operacional.midia.backfill.RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest",
     "application.anuncio.FotoElegivelAnuncioConcorrenciaPostgres17IntegrationTest",
+    RECONCILIATION_SUITE,
 )
 
 
@@ -174,6 +177,8 @@ def validate_backend(files):
         require(name in suites, "suite essencial ausente: " + suffix)
         suite = suites[name]
         require(int(suite.attrib["tests"]) > 0 and int(suite.attrib["skipped"]) == 0 and not suite.findall(".//skipped"), "suite essencial omitida: " + suffix)
+    reconciliation = suites["br.com.topsdojob.v3." + RECONCILIATION_SUITE]
+    require(int(reconciliation.attrib["tests"]) == 9, "reconciliacao deve executar nove testes")
 
 
 def validate_operation(files):

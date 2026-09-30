@@ -24,7 +24,15 @@ function runtimeModule(name, imports = {}) {
 }
 
 const contract = runtimeModule('lib/api-contract.ts')
-const api = runtimeModule('features/admin-anuncios/api.ts', {
+let currentSession = {
+  autenticado: true, usuarioId: 'admin-1', papeis: ['ADMIN'],
+  permissoes: ['ANUNCIO_MODERAR', 'MIDIA_REVISAR'],
+}
+let currentAd = { id: 'ad-1', status: 'PUBLICADO', anunciante: { status: 'ATIVO' } }
+let contextCurrent = true
+const context = { actorId: 'admin-1', isCurrent: () => contextCurrent
+  && (typeof window === 'undefined' || window.location.pathname === '/admin/anuncios/ad-1') }
+const rawApi = runtimeModule('features/admin-anuncios/api.ts', {
   '@/lib/api-contract': contract,
   '@/lib/text/encoding': { corrigirEstruturaTexto: (body) => body },
   '@/lib/photo-upload-validation': {
@@ -33,6 +41,10 @@ const api = runtimeModule('features/admin-anuncios/api.ts', {
   },
   './queue-context': { adminAdQueueFilters: () => ({}) },
 })
+const api = {
+  ...rawApi,
+  uploadAdminAdVideo: (id, file, key, onProgress) => rawApi.uploadAdminAdVideo(id, file, key, context, onProgress),
+}
 
 const detail = source('features/admin-anuncios/admin-anuncio-moderacao.tsx')
 const photoUploader = source('features/admin-anuncios/admin-anuncio-midia-uploader.tsx')
@@ -59,6 +71,7 @@ assert.equal(api.adminVideoUploadIssue({ name: 'grande.mov', size: 100 * 1024 * 
   'O tamanho deve ser decidido pelo servidor, pois a configuracao pode variar.')
 
 const requests = []
+let invalidateDuringXhrSetup = false
 class SyntheticXhr {
   constructor() {
     this.upload = {}
@@ -68,7 +81,10 @@ class SyntheticXhr {
     requests.push(this)
   }
   open(method, url) { this.method = method; this.url = url }
-  setRequestHeader(name, value) { this.headers[name] = value }
+  setRequestHeader(name, value) {
+    this.headers[name] = value
+    if (invalidateDuringXhrSetup && name === 'Idempotency-Key') contextCurrent = false
+  }
   getResponseHeader(name) { return name === 'X-Request-Id' ? 'header-request' : null }
   send(body) { this.body = body }
   progress(loaded, total) { this.upload.onprogress({ lengthComputable: true, loaded, total }) }
@@ -80,6 +96,12 @@ class SyntheticXhr {
 }
 globalThis.XMLHttpRequest = SyntheticXhr
 globalThis.document = { cookie: ['XSRF-TOKEN', 'CHANGE_ME'].join('=') }
+globalThis.fetch = async (url) => {
+  const pathname = new URL(url, 'https://fixture.invalid').pathname
+  assert.ok(['/api/admin/auth/me', '/api/admin/anuncios/ad-1'].includes(pathname))
+  return new Response(JSON.stringify(pathname.endsWith('/auth/me') ? currentSession : currentAd),
+    { status: 200, headers: { 'Content-Type': 'application/json' } })
+}
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 const progress = []
@@ -155,6 +177,52 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+const preflightRequests = requests.length
+currentSession = { ...currentSession, usuarioId: 'admin-2' }
+await assert.rejects(api.uploadAdminAdVideo('ad-1', video, 'session-changed'),
+  (error) => error.kind === 'SESSION_REQUIRED')
+currentSession = { ...currentSession, usuarioId: 'admin-1', permissoes: ['ANUNCIO_MODERAR'] }
+await assert.rejects(api.uploadAdminAdVideo('ad-1', video, 'permission-revoked'),
+  (error) => error.kind === 'ACCESS_DENIED')
+currentSession = { ...currentSession, permissoes: ['ANUNCIO_MODERAR', 'MIDIA_REVISAR'] }
+currentAd = { ...currentAd, status: 'BLOQUEADO' }
+await assert.rejects(api.uploadAdminAdVideo('ad-1', video, 'ad-blocked'),
+  (error) => error.kind === 'CONFLICT')
+currentAd = { ...currentAd, status: 'PUBLICADO' }
+assert.equal(requests.length, preflightRequests, 'Sessao, permissoes e bloqueio invalidos nao iniciam POST.')
+
+const csrfPending = deferred()
+globalThis.window = { location: { pathname: '/admin/anuncios/ad-1' } }
+globalThis.document.cookie = ''
+globalThis.fetch = async (url) => {
+  const pathname = new URL(url, 'https://fixture.invalid').pathname
+  if (pathname === '/api/admin/auth/me') return csrfPending.promise
+  assert.equal(pathname, '/api/admin/anuncios/ad-1')
+  return new Response(JSON.stringify(currentAd), { status: 200 })
+}
+const waitingForCsrf = api.uploadAdminAdVideo('ad-1', video, 'csrf-route-change')
+await flush()
+globalThis.window.location.pathname = '/admin/anuncios/ad-2'
+globalThis.document.cookie = 'XSRF-TOKEN=CHANGE_ME'
+csrfPending.resolve(new Response('{}', { status: 200 }))
+await assert.rejects(waitingForCsrf, (error) => error.kind === 'CONFLICT'
+  && /contexto do anúncio mudou/.test(error.message))
+assert.equal(requests.length, preflightRequests, 'Navegacao A->B durante CSRF nao inicia POST.')
+globalThis.window.location.pathname = '/admin/anuncios/ad-1'
+globalThis.document.cookie = 'XSRF-TOKEN=CHANGE_ME'
+globalThis.fetch = async (url) => {
+  const pathname = new URL(url, 'https://fixture.invalid').pathname
+  assert.ok(['/api/admin/auth/me', '/api/admin/anuncios/ad-1'].includes(pathname))
+  return new Response(JSON.stringify(pathname.endsWith('/auth/me') ? currentSession : currentAd), { status: 200 })
+}
+invalidateDuringXhrSetup = true
+await assert.rejects(api.uploadAdminAdVideo('ad-1', video, 'changed-at-send'),
+  (error) => error.kind === 'CONFLICT')
+assert.equal(requests.length, preflightRequests + 1)
+assert.equal(requests.at(-1).body, undefined, 'Guard final impede send mesmo se o contexto mudar ao montar XHR.')
+invalidateDuringXhrSetup = false
+contextCurrent = true
+
 function componentRunner(component, props) {
   const slots = []
   let index = 0, dirty = false, tree
@@ -186,9 +254,9 @@ const uploads = []
 const reloads = []
 const uploadApi = {
   adminVideoUploadIssue: api.adminVideoUploadIssue,
-  uploadAdminAdVideo(adId, file, key, onProgress) {
+  uploadAdminAdVideo(adId, file, key, uploadContext, onProgress) {
     const pending = deferred()
-    uploads.push({ adId, file, key, onProgress, ...pending })
+    uploads.push({ adId, file, key, onProgress, uploadContext, ...pending })
     return pending.promise
   },
 }
@@ -206,7 +274,9 @@ const componentModule = runtimeModule('features/admin-anuncios/admin-anuncio-vid
   '@/lib/api-contract': contract,
   './api': uploadApi,
 })
-const runner = componentRunner(componentModule.AdminAnuncioVideoUploader, { anuncioId: 'ad-1', onReload })
+const runner = componentRunner(componentModule.AdminAnuncioVideoUploader, {
+  anuncioId: 'ad-1', actorId: 'admin-1', isCurrent: () => contextCurrent, onReload,
+})
 runner.render()
 
 function nodes(tree) {
@@ -226,6 +296,8 @@ button().props.onClick()
 button().props.onClick()
 await runner.settle()
 assert.equal(uploads.length, 1, 'Duplo clique nao pode duplicar POST.')
+assert.equal(uploads[0].uploadContext.actorId, 'admin-1')
+assert.equal(uploads[0].uploadContext.isCurrent(), true)
 assert.equal(picker().props.files[0], video)
 uploads[0].onProgress(99)
 await runner.settle()
@@ -334,4 +406,4 @@ await runner.settle()
 assert.deepEqual(picker().props.files, [])
 assert.match(text(), /Vídeo enviado e lista atualizada/)
 
-console.log('ADMIN_VIDEO_UPLOAD_RESULT=OK transport=multipart,csrf,idempotency,99,serverLimit canonical=creation,replay,mismatch,error ui=retry,sameFileKey,reloadBeforeSuccess,hiddenRoute,routeChange,terminalReplay photo=preserved')
+console.log('ADMIN_VIDEO_UPLOAD_RESULT=OK transport=multipart,csrf,idempotency,99,serverLimit,csrfRouteGuard,freshSession,freshAd,beforeSendGuard canonical=creation,replay,mismatch,error ui=retry,sameFileKey,reloadBeforeSuccess,hiddenRoute,routeChange,terminalReplay photo=preserved')

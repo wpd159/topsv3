@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.persistence.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Permissao;
 import br.com.topsdojob.v3.persistence.repository.admin.AdminStaffJdbcRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -73,6 +74,52 @@ class AdminStaffPostgres17IntegrationTest {
           .satisfies(event -> assertThat(event.requestId()).isEqualTo("req-staff-seed"));
       assertThat(repository.bloquearAdministradoresAtivos()).containsExactly(
           UUID.fromString("10000000-0000-4000-8000-000000000001"));
+
+      // A migration prepara o papel tecnico, mas nao autoriza nenhuma conta.
+      assertThat(jdbc.queryForObject(
+          "SELECT count(*) FROM papel_usuario WHERE papel = 'ARQUIVO_EXPORTADOR'", Long.class))
+          .isZero();
+      assertThat(jdbc.queryForList("""
+          SELECT p.codigo FROM papel_permissao pp
+          JOIN permissao p ON p.id = pp.permissao_id
+          WHERE pp.papel = 'ARQUIVO_EXPORTADOR'
+          """, String.class)).containsExactly("ARQUIVO_PUBLICIDADE_EXPORTAR");
+
+      UUID administrador = UUID.fromString("10000000-0000-4000-8000-000000000001");
+      UUID segundoAdministrador = UUID.fromString("10000000-0000-4000-8000-000000000004");
+      jdbc.update("""
+          INSERT INTO usuario (id, nome, email_normalizado, status, tipo_conta,
+            email_verificado_em, criado_em, atualizado_em, versao)
+          VALUES (?, 'Segundo Admin QA', 'segundo.admin@example.invalid', 'ATIVO', 'STAFF',
+            '2026-07-04T10:00:00Z', '2026-07-04T10:00:00Z', '2026-07-04T10:00:00Z', 0)
+          """, segundoAdministrador);
+      jdbc.update("""
+          INSERT INTO papel_usuario (usuario_id, papel, criado_em)
+          VALUES (?, 'ADMIN', '2026-07-04T10:00:00Z')
+          """, segundoAdministrador);
+      assertThat(repository.permissoes(administrador))
+          .extracting(Permissao::codigo)
+          .doesNotContain("ARQUIVO_PUBLICIDADE_EXPORTAR");
+      assertThat(repository.permissoes(segundoAdministrador))
+          .extracting(Permissao::codigo)
+          .doesNotContain("ARQUIVO_PUBLICIDADE_EXPORTAR");
+
+      jdbc.update("""
+          INSERT INTO papel_usuario (usuario_id, papel, criado_em)
+          VALUES (?, 'ARQUIVO_EXPORTADOR', '2026-07-04T10:00:00Z')
+          """, administrador);
+      assertThat(repository.permissoes(administrador))
+          .extracting(Permissao::codigo)
+          .contains("ARQUIVO_PUBLICIDADE_LER", "ARQUIVO_PUBLICIDADE_EXPORTAR");
+      assertThat(repository.permissoes(segundoAdministrador))
+          .extracting(Permissao::codigo)
+          .doesNotContain("ARQUIVO_PUBLICIDADE_EXPORTAR");
+
+      jdbc.update("DELETE FROM papel_usuario WHERE usuario_id = ? AND papel = 'ARQUIVO_EXPORTADOR'",
+          administrador);
+      assertThat(repository.permissoes(administrador))
+          .extracting(Permissao::codigo)
+          .doesNotContain("ARQUIVO_PUBLICIDADE_EXPORTAR");
     } finally {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);

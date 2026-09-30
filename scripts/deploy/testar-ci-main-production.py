@@ -41,10 +41,14 @@ def zipped(files):
     return buffer.getvalue()
 
 
-def suite_xml(suffix, *, skipped=0, failures=0, errors=0, child=""):
-    return (f'<testsuite name="br.com.topsdojob.v3.{suffix}" tests="1" '
+def suite_xml(suffix, *, tests=1, skipped=0, failures=0, errors=0, child=""):
+    cases = "".join(
+        f'<testcase name="syntheticCase{index}">{child if index == 0 else ""}</testcase>'
+        for index in range(tests)
+    )
+    return (f'<testsuite name="br.com.topsdojob.v3.{suffix}" tests="{tests}" '
             f'failures="{failures}" errors="{errors}" skipped="{skipped}">'
-            f'<testcase name="syntheticCase">{child}</testcase></testsuite>')
+            f'{cases}</testsuite>')
 
 
 class SyntheticAPI:
@@ -91,7 +95,8 @@ class SyntheticAPI:
         for artifact in self.artifacts:
             self.replace_files(artifact["name"], {"evidence.txt": "synthetic evidence"})
         self.replace_files("backend-reconciliation-evidence", {
-            f"surefire-reports/TEST-{suffix}.xml": suite_xml(suffix)
+            f"surefire-reports/TEST-{suffix}.xml": suite_xml(
+                suffix, tests=9 if suffix == GATE.RECONCILIATION_SUITE else 1)
             for suffix in GATE.ESSENTIAL_SUITES
         })
         operation = {name + ".log": marker + "\n" for name, marker in GATE.GATES.items()}
@@ -334,6 +339,17 @@ class MainCIReuseTests(unittest.TestCase):
                 files[next(iter(files))] = suite_xml(GATE.ESSENTIAL_SUITES[0], **variant)
                 api.replace_files("backend-reconciliation-evidence", files)
                 self.rejected("suite essencial omitida|falha", api=api)
+
+    def test_requires_nine_executed_reconciliation_cases(self):
+        suffix = GATE.RECONCILIATION_SUITE
+        name = f"surefire-reports/TEST-{suffix}.xml"
+        for count in (8, 10):
+            with self.subTest(count=count):
+                api = SyntheticAPI()
+                files = api.files["backend-reconciliation-evidence"]
+                files[name] = suite_xml(suffix, tests=count)
+                api.replace_files("backend-reconciliation-evidence", files)
+                self.rejected("reconciliacao deve executar nove testes", api=api)
 
     def test_rejects_incomplete_xml_case_count(self):
         files = self.api.files["backend-reconciliation-evidence"]

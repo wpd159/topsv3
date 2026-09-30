@@ -13,7 +13,7 @@ public final class PersistenceEnums {
   }
 
   public enum PapelUsuario {
-    ADMIN, MODERADOR, COMERCIAL, USUARIO
+    ADMIN, MODERADOR, COMERCIAL, USUARIO, ARQUIVO_EXPORTADOR
   }
 
   public enum StatusAnuncio {

@@ -421,6 +421,7 @@ export async function uploadAdminAdVideo(
   id: string,
   arquivo: File,
   idempotencyKey: string,
+  context: { actorId: string; isCurrent: () => boolean },
   onProgress?: (percentual: number) => void,
 ): Promise<AdminAdVideoUploadResponse> {
   const issue = adminVideoUploadIssue(arquivo)
@@ -428,7 +429,30 @@ export async function uploadAdminAdVideo(
   if (!/^[A-Za-z0-9._:-]{1,160}$/.test(idempotencyKey)) {
     throw new ApiContractError('Chave da operação de vídeo inválida.', 'INVALID_REQUEST', null, false)
   }
+  const contextChanged = () => new ApiContractError(
+    'O contexto do anúncio mudou antes do envio. Volte ao anúncio original e confira a lista antes de repetir a operação.',
+    'CONFLICT', 409, true,
+  )
+  if (!context.actorId || !context.isCurrent()) throw contextChanged()
   const secureHeaders = await csrfHeaders('multipart')
+  if (!context.isCurrent()) throw contextChanged()
+  const [session, ad] = await Promise.all([
+    request<{ autenticado: boolean; usuarioId: string; papeis: string[]; permissoes: string[] }>('/auth/me'),
+    getAdminAd(id),
+  ])
+  if (!context.isCurrent()) throw contextChanged()
+  if (!session?.autenticado || session.usuarioId !== context.actorId) {
+    throw new ApiContractError('A sessão administrativa mudou antes do envio do vídeo.', 'SESSION_REQUIRED', 401, false)
+  }
+  if (!session.papeis?.includes('ADMIN') || !session.permissoes?.includes('ANUNCIO_MODERAR')
+    || !session.permissoes?.includes('MIDIA_REVISAR')) {
+    throw new ApiContractError('A sessão não possui permissão para enviar vídeo.', 'ACCESS_DENIED', 403, false)
+  }
+  if (ad?.id !== id || ad.status === 'REMOVIDO' || ad.status === 'BLOQUEADO'
+    || ad.anunciante?.status !== 'ATIVO' || ad.bloqueioJuridico?.anuncioBloqueado
+    || ad.bloqueioJuridico?.usuarioBloqueado || ad.revisaoAberta?.status === 'EM_ANALISE') {
+    throw new ApiContractError('O estado atual do anúncio não permite enviar vídeo.', 'CONFLICT', 409, true)
+  }
   return new Promise<AdminAdVideoUploadResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', adminApiUrl(`/anuncios/${encodeURIComponent(id)}/midias`))
@@ -472,6 +496,7 @@ export async function uploadAdminAdVideo(
     const form = new FormData()
     form.append('arquivo', arquivo)
     try {
+      if (!context.isCurrent()) throw contextChanged()
       xhr.send(form)
     } catch (error) {
       reject(normalizeApiError(error))
