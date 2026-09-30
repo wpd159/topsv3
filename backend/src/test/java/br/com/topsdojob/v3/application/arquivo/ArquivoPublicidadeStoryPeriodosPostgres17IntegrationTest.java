@@ -287,16 +287,18 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
               + "(SELECT id FROM arquivo_publicidade_story_versao WHERE veiculacao_id=? AND numero=2)",
           Long.class, secondPeriod)).isZero();
 
+      flyway(container, network, credential, "-target=59", "migrate");
+      UUID exportador = ArquivoExportadorFixture.inserir(jdbc);
       AdminArquivoStoryService admin = new AdminArquivoStoryService(jdbc,
           new ObjectMapper().findAndRegisterModules(), provider, properties,
           mock(AdminArquivoStoryAccessAuditService.class));
       var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-      var detalhe = admin.detalhar(secondPeriod, fixture.user(), "req-auditoria", finalidade, true);
+      var detalhe = admin.detalhar(secondPeriod, exportador, "req-auditoria", finalidade, true);
       assertThat(detalhe.versoes()).hasSize(2);
       assertThat(detalhe.versoes().get(1).midias()).extracting("id").contains(referenceId);
-      assertThat(admin.midia(secondPeriod, referenceId, fixture.user(), "req-bytes", finalidade).bytes())
+      assertThat(admin.midia(secondPeriod, referenceId, exportador, "req-bytes", finalidade).bytes())
           .isEqualTo(fixture.bytes());
-      assertThat(admin.detalhar(fixture.firstPeriod(), fixture.user(), "req-legado", finalidade, true)
+      assertThat(admin.detalhar(fixture.firstPeriod(), exportador, "req-legado", finalidade, true)
           .versoes()).hasSize(1);
       UUID firstArchivedMedia = jdbc.queryForObject(
           "SELECT id FROM arquivo_publicidade_story_midia WHERE versao_id=?",
@@ -307,7 +309,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
       assertThat(jdbc.queryForObject(
           "SELECT count(*) FROM arquivo_publicidade_story_hold WHERE veiculacao_id=?", Long.class,
           fixture.firstPeriod())).isEqualTo(1L);
-      assertThat(admin.midia(fixture.firstPeriod(), firstArchivedMedia, fixture.user(),
+      assertThat(admin.midia(fixture.firstPeriod(), firstArchivedMedia, exportador,
           "req-bytes-legado", finalidade).bytes()).isEqualTo(fixture.bytes());
 
       doReturn(selected.get()).when(publicMapper)
@@ -340,7 +342,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
           Long.class, thirdVersion)).isZero();
       verify(storage).get(StorageArea.PRIVATE_MEDIA,
           key(secondFirstVersion, fixture.firstLink(), fixture.firstMedia()));
-      var textExport = admin.detalhar(secondPeriod, fixture.user(), "req-export-texto", finalidade, true);
+      var textExport = admin.detalhar(secondPeriod, exportador, "req-export-texto", finalidade, true);
       assertThat(textExport.versoes()).hasSize(3);
       assertThat(textExport.versoes().get(0).conteudo().path("titulo").asText())
           .isEqualTo("Story de teste");
@@ -350,7 +352,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
           .isEqualTo("Story com texto atualizado");
       assertThat(textExport.versoes().get(2).midias()).extracting("id").containsExactly(textReference);
       clearInvocations(storage);
-      assertThat(admin.midia(secondPeriod, textReference, fixture.user(), "req-texto-bytes", finalidade)
+      assertThat(admin.midia(secondPeriod, textReference, exportador, "req-texto-bytes", finalidade)
           .bytes()).isEqualTo(fixture.bytes());
       verify(storage).get(StorageArea.PRIVATE_MEDIA,
           key(secondFirstVersion, fixture.firstLink(), fixture.firstMedia()));
@@ -379,7 +381,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
           JOIN arquivo_publicidade_story_versao v ON v.id=m.versao_id
           WHERE v.veiculacao_id=? AND m.anuncio_midia_id IS NULL
           """, UUID.class, directPeriod);
-      assertThat(admin.midia(directPeriod, directArchivedMedia, fixture.user(),
+      assertThat(admin.midia(directPeriod, directArchivedMedia, exportador,
           "req-direto-bytes", finalidade).bytes()).isEqualTo(fixture.bytes());
       jdbc.update("UPDATE anuncio SET status='PAUSADO', atualizado_em=now() WHERE id=?", fixture.ad());
       tx.executeWithoutResult(ignored -> writer.registrarEstado(directStory,
@@ -400,13 +402,14 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
             (id,versao_id,origem_midia_id,arquivo_midia_id,variante,ordem)
           VALUES (?,?,?,?,'ORIGINAL',99)
           """, foreignReference, secondVersion, directArchivedMedia, directFile);
-      assertThat(admin.detalhar(secondPeriod, fixture.user(), "req-cruzada", finalidade, true)
+      assertThat(admin.detalhar(secondPeriod, exportador, "req-cruzada", finalidade, true)
           .versoes().get(1).midias()).extracting("id").doesNotContain(foreignReference);
-      assertThatThrownBy(() -> admin.midia(secondPeriod, foreignReference, fixture.user(),
+      assertThatThrownBy(() -> admin.midia(secondPeriod, foreignReference, exportador,
           "req-cruzada-bytes", finalidade))
           .isInstanceOfSatisfying(ResponseStatusException.class,
               error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
-      conferirConsultaERelatorioStory(jdbc, provider, properties, fixture, directPeriod, finalidade);
+      conferirConsultaERelatorioStory(jdbc, provider, properties, fixture, directPeriod, finalidade,
+          exportador);
     } finally {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);
@@ -415,7 +418,8 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
 
   private static void conferirConsultaERelatorioStory(JdbcTemplate jdbc,
       ObjectProvider<ObjectStorage> provider, R2StorageProperties properties,
-      Fixture fixture, UUID directPeriod, FinalidadeAcessoArquivoPublicidade finalidade) {
+      Fixture fixture, UUID directPeriod, FinalidadeAcessoArquivoPublicidade finalidade,
+      UUID exportador) {
     when(provider.getIfAvailable()).thenThrow(new IllegalStateException("storage nao permitido na consulta"));
     var audit = mock(AdminArquivoStoryAccessAuditService.class);
     var admin = new AdminArquivoStoryService(jdbc, new ObjectMapper().findAndRegisterModules(),
@@ -425,7 +429,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
     assertThat(pagina.totalElements()).isGreaterThan(1);
     assertThat(pagina.itens()).hasSize(1).allSatisfy(item -> assertThat(item.tipo()).isEqualTo("STORY"));
     var report = admin.relatorio(new RelatorioRequest(filtro,
-        List.of(fixture.firstPeriod(), directPeriod), null), fixture.user(), "req-story-relatorio", finalidade);
+        List.of(fixture.firstPeriod(), directPeriod), null), exportador, "req-story-relatorio", finalidade);
     assertThat(report.tipo()).isEqualTo("STORY");
     assertThat(report.registros()).hasSize(2).allSatisfy(item -> {
       assertThat(item.versoes()).isNotEmpty();
@@ -434,7 +438,7 @@ class ArquivoPublicidadeStoryPeriodosPostgres17IntegrationTest {
     assertThat(report.registros()).extracting("modoConteudo").containsExactlyInAnyOrder("ANUNCIO", "MIDIA_UPLOAD");
     assertThat(report.registros().stream().filter(item -> item.id().equals(fixture.firstPeriod())).findFirst().orElseThrow()
         .preservacoes()).hasSize(1);
-    verify(audit).registrarRelatorio(eq(fixture.user()), eq("req-story-relatorio"), eq(finalidade),
+    verify(audit).registrarRelatorio(eq(exportador), eq("req-story-relatorio"), eq(finalidade),
         eq(2), any(String.class));
     System.out.println("ARCHIVE_STORY_QUERY_PG pageSize=1 reportComplete=2 modes=ANUNCIO,MIDIA_UPLOAD hold=true storageCalls=0");
   }

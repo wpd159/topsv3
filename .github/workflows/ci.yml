@@ -67,6 +67,7 @@ jobs:
           STORIES_PUBLICACAO_ARQUIVO_POSTGRES17_ENABLED: "true"
           ARQUIVO_PUBLICIDADE_TRANSICOES_POSTGRES17_ENABLED: "true"
           APROVACAO_RECONCILIACAO_POSTGRES17_ENABLED: "true"
+          ARQUIVO_EXPORTADOR_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Preserve backend and cold JVM evidence

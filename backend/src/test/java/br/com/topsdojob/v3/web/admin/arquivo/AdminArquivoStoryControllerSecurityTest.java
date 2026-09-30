@@ -127,7 +127,8 @@ class AdminArquivoStoryControllerSecurityTest {
   void relatorioStoriesRecusaFaltaDePermissaoFinalidadeECsrf() throws Exception {
     var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA.name();
     for (var auth : List.of(token(PapelUsuario.ADMIN, true, false),
-        token(PapelUsuario.ADMIN, false, true), token(PapelUsuario.MODERADOR, true, true))) {
+        token(PapelUsuario.ADMIN, false, true), token(PapelUsuario.MODERADOR, true, true),
+        token(PapelUsuario.ARQUIVO_EXPORTADOR, true, true))) {
       mockMvc.perform(post("/api/admin/registros/stories/relatorio")
               .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
               .content("{}").with(csrf()).with(authentication(auth)))

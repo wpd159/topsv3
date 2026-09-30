@@ -203,17 +203,20 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
       verify(storage, never()).putIfAbsent(any(), any(), any(), any());
 
       doReturn(storage).when(provider).getIfAvailable();
+      flyway(container, network, credential, "-target=59", "migrate");
+      UUID exportador = ArquivoExportadorFixture.inserir(jdbc);
       AdminArquivoPublicidadeService admin = new AdminArquivoPublicidadeService(jdbc,
           new ObjectMapper().findAndRegisterModules(), provider, properties,
           mock(AdminArquivoPublicidadeAccessAuditService.class));
       var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-      var detail = admin.detalhar(period, fixture.user(), "req-auditoria", finalidade, true);
+      var detail = admin.detalhar(period, exportador, "req-auditoria", finalidade, true);
       assertThat(detail.versoes()).hasSize(2);
       assertThat(detail.versoes().get(1).midias()).extracting("id").contains(reference);
-      assertThat(admin.midia(period, reference, fixture.user(), "req-bytes", finalidade).bytes())
+      assertThat(admin.midia(period, reference, exportador, "req-bytes", finalidade).bytes())
           .isEqualTo(fixture.bytes());
 
-      conferirReusoTextualERollback(jdbc, tx, writer, premium, storage, privateObjects, admin);
+      conferirReusoTextualERollback(jdbc, tx, writer, premium, storage, privateObjects, admin,
+          exportador);
 
       PromotionFixture promotion = seedPromotion(jdbc);
       Fixture promotedAd = promotion.base();
@@ -282,7 +285,8 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
           Long.class, promotedSecondVersion)).isZero();
       verify(storage, never()).get(any(), any());
       verify(storage, never()).putIfAbsent(any(), any(), any(), any());
-      conferirBuscaPaginadaERelatorioCompleto(jdbc, tx, provider, properties, period, fixture);
+      conferirBuscaPaginadaERelatorioCompleto(jdbc, tx, provider, properties, period, fixture,
+          exportador);
     } finally {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);
@@ -291,7 +295,7 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
 
   private static void conferirBuscaPaginadaERelatorioCompleto(JdbcTemplate jdbc,
       TransactionTemplate tx, ObjectProvider<ObjectStorage> provider, R2StorageProperties properties,
-      UUID period, Fixture fixture) {
+      UUID period, Fixture fixture, UUID exportador) {
     var audit = mock(AdminArquivoPublicidadeAccessAuditService.class);
     var admin = new AdminArquivoPublicidadeService(jdbc, new ObjectMapper().findAndRegisterModules(),
         provider, properties, audit);
@@ -303,13 +307,13 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
     read.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
     var real = read.execute(ignored -> admin.relatorio(
-        new RelatorioRequest(null, List.of(period), null), fixture.user(), "req-relatorio-real", finalidade));
+        new RelatorioRequest(null, List.of(period), null), exportador, "req-relatorio-real", finalidade));
     assertThat(real.quantidade()).isEqualTo(1);
     assertThat(real.registros().get(0).versoes()).hasSize(2);
     assertThat(real.registros().get(0).versoes().get(0).midias()).hasSize(2);
     assertThat(real.registros().get(0).versoes().get(0).midias())
         .allSatisfy(media -> assertThat(media.sha256()).hasSize(64));
-    verify(audit).registrarRelatorio(eq(fixture.user()), eq("req-relatorio-real"), eq(finalidade),
+    verify(audit).registrarRelatorio(eq(exportador), eq("req-relatorio-real"), eq(finalidade),
         eq(1), any(String.class));
 
     OffsetDateTime start = OffsetDateTime.parse("2020-01-01T00:00:00Z");
@@ -366,18 +370,18 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
     assertThat(read.execute(ignored -> admin.listar(0, 20, privado, fixture.user(), "req-redacao", finalidade))
         .totalElements()).isZero();
     assertThatThrownBy(() -> read.execute(ignored -> admin.relatorio(
-        new RelatorioRequest(filtro, null, null), fixture.user(), "req-101", finalidade)))
+        new RelatorioRequest(filtro, null, null), exportador, "req-101", finalidade)))
         .isInstanceOfSatisfying(ResponseStatusException.class,
             error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE));
     var allSelected = read.execute(ignored -> admin.relatorio(
-        new RelatorioRequest(filtro, seeded.subList(0, 100), "UTC"), fixture.user(), "req-100", finalidade));
+        new RelatorioRequest(filtro, seeded.subList(0, 100), "UTC"), exportador, "req-100", finalidade));
     assertThat(allSelected.quantidade()).isEqualTo(100);
     assertThat(allSelected.registros()).hasSize(100)
         .allSatisfy(detail -> assertThat(detail.versoes()).hasSize(2));
     assertThat(allSelected.registros()).extracting("id")
         .containsExactlyInAnyOrderElementsOf(seeded.subList(0, 100));
     assertThatThrownBy(() -> read.execute(ignored -> admin.relatorio(
-        new RelatorioRequest(filtro, List.of(period), null), fixture.user(), "req-fora", finalidade)))
+        new RelatorioRequest(filtro, List.of(period), null), exportador, "req-fora", finalidade)))
         .isInstanceOfSatisfying(ResponseStatusException.class,
             error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     System.out.println("ARCHIVE_QUERY_PG pages=6 total=101 unique=101 historicalSearch=true civilNameSearch=false report100Complete=true report101Refused=true storageCalls=0");
@@ -386,7 +390,7 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
   private static void conferirReusoTextualERollback(JdbcTemplate jdbc, TransactionTemplate tx,
       ArquivoPublicidadeRegistroService writer, PremiumPublicoMapper premium,
       ObjectStorage storage, Map<String, StoredObject> privateObjects,
-      AdminArquivoPublicidadeService admin) throws Exception {
+      AdminArquivoPublicidadeService admin, UUID exportador) throws Exception {
     Fixture fixture = seed(jdbc);
     when(premium.idsAtivacoesComEfeitoPublico(fixture.ad()))
         .thenReturn(Set.of(fixture.activation()));
@@ -428,11 +432,11 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
         "SELECT count(*) FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
         Long.class, textVersion)).isEqualTo(2L);
     var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-    var detail = admin.detalhar(period, fixture.user(), "req-reuso-exportacao", finalidade, true);
+    var detail = admin.detalhar(period, exportador, "req-reuso-exportacao", finalidade, true);
     assertThat(detail.versoes()).hasSize(2);
     assertThat(detail.versoes().get(1).midias()).hasSize(2);
     for (var media : detail.versoes().get(1).midias()) {
-      assertThat(admin.midia(period, media.id(), fixture.user(), "req-reuso-bytes", finalidade)
+      assertThat(admin.midia(period, media.id(), exportador, "req-reuso-bytes", finalidade)
           .bytes()).isEqualTo(fixture.bytes());
     }
 
@@ -479,7 +483,7 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
     UUID reusedReference = jdbc.queryForObject(
         "SELECT id FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
         UUID.class, mixedVersion);
-    assertThat(admin.midia(period, reusedReference, fixture.user(), "req-reuso-cadeia", finalidade)
+    assertThat(admin.midia(period, reusedReference, exportador, "req-reuso-cadeia", finalidade)
         .bytes()).isEqualTo(fixture.bytes());
     tx.executeWithoutResult(ignored -> {
       jdbc.update("UPDATE anuncio SET status='PAUSADO' WHERE id=?", fixture.ad());

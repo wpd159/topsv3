@@ -20,6 +20,7 @@ FLAGS = (
     "PUBLIC_SEARCH_POSTGRES17_ENABLED", "ANUNCIOS_RELACIONADOS_POSTGRES17_ENABLED",
     "ANUNCIANTE_CONCURRENCY_POSTGRES17_ENABLED", "WIZARD_PROGRESS_POSTGRES17_ENABLED",
     "APROVACAO_RECONCILIACAO_POSTGRES17_ENABLED",
+    "ARQUIVO_EXPORTADOR_POSTGRES17_ENABLED",
 )
 RECONCILIATION_SUITE = "application.admin.moderacao.AdminAprovacaoReconciliacaoPostgres17IntegrationTest"
 JOBS = {
@@ -74,6 +75,7 @@ ESSENTIAL_SUITES = (
     "application.operacional.midia.backfill.RestrictedMediaPreviewBackfillApplyPostgres17IntegrationTest",
     "application.anuncio.FotoElegivelAnuncioConcorrenciaPostgres17IntegrationTest",
     RECONCILIATION_SUITE,
+    "application.admin.staff.AdminArquivoExportadorPostgres17IntegrationTest",
 )
 
 

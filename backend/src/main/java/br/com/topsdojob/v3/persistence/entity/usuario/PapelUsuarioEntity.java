@@ -85,6 +85,18 @@ public class PapelUsuarioEntity {
     return entity;
   }
 
+  public static PapelUsuarioEntity criarExportador(
+      UUID usuarioId,
+      UUID criadoPor,
+      OffsetDateTime criadoEm) {
+    PapelUsuarioEntity entity = new PapelUsuarioEntity();
+    entity.usuarioId = usuarioId;
+    entity.papel = PapelUsuario.ARQUIVO_EXPORTADOR;
+    entity.criadoPor = criadoPor;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
   public static class PapelUsuarioId implements Serializable {
     private UUID usuarioId;
     private PapelUsuario papel;

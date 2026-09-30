@@ -102,12 +102,16 @@ public class AdminArquivoStoryService {
   @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
   public Detalhe detalhar(UUID id, UUID atorId, String requestId,
       FinalidadeAcessoArquivoPublicidade finalidade, boolean exportacao) {
+    if (exportacao) {
+      AdminArquivoExportadorAccessGuard.exigirAcessoAtual(jdbc, atorId);
+    }
     return detalharInterno(id, atorId, requestId, finalidade, exportacao, true);
   }
 
   @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
   public Relatorio<Detalhe> relatorio(RelatorioRequest request, UUID atorId,
       String requestId, FinalidadeAcessoArquivoPublicidade finalidade) {
+    AdminArquivoExportadorAccessGuard.exigirAcessoAtual(jdbc, atorId);
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para relatorio privado");
     OffsetDateTime geradoEm = OffsetDateTime.now(ZoneOffset.UTC);
     var sql = AdminArquivoPublicidadeConsulta.consulta(
@@ -195,6 +199,7 @@ public class AdminArquivoStoryService {
 
   public Arquivo midia(UUID veiculacaoId, UUID midiaId, UUID atorId, String requestId,
       FinalidadeAcessoArquivoPublicidade finalidade) {
+    AdminArquivoExportadorAccessGuard.exigirAcessoAtual(jdbc, atorId);
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para midia privada");
     List<MidiaPrivada> encontradas = jdbc.query("""
         with efetiva as (

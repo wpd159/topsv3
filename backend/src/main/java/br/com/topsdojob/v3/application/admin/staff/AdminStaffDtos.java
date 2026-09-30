@@ -57,4 +57,7 @@ public final class AdminStaffDtos {
 
   public record AtualizarRequest(String nome, String papel, Boolean ativo, Integer versao) {
   }
+
+  public record ExportadorRequest(Boolean conceder, Integer versao) {
+  }
 }

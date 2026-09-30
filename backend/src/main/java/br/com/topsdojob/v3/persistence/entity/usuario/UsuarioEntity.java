@@ -374,4 +374,12 @@ public class UsuarioEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public void marcarAlteracaoPapeisStaff(OffsetDateTime agora) {
+    if (tipoConta != TipoContaUsuario.STAFF) {
+      throw new IllegalStateException("usuario nao e staff");
+    }
+    this.atualizadoEm = atualizadoEm == null || agora.isAfter(atualizadoEm)
+        ? agora : atualizadoEm.plusNanos(1_000);
+  }
+
 }

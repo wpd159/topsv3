@@ -7,8 +7,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Detalhe;
@@ -33,12 +36,41 @@ import org.springframework.web.server.ResponseStatusException;
 
 class AdminArquivoPublicidadeServiceTest {
   @Test
+  @SuppressWarnings("unchecked")
+  void sessaoComAutoridadeAntigaNaoExportaAposRevogacao() {
+    UUID ator = UUID.randomUUID();
+    UUID id = UUID.randomUUID();
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(false);
+    ObjectProvider<ObjectStorage> storage = mock(ObjectProvider.class);
+    var audit = mock(AdminArquivoPublicidadeAccessAuditService.class);
+    var service = new AdminArquivoPublicidadeService(
+        jdbc, new ObjectMapper(), storage, new R2StorageProperties(), audit);
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
+
+    assertEquals(HttpStatus.FORBIDDEN,
+        assertThrows(ResponseStatusException.class,
+            () -> service.detalhar(id, ator, "req-stale-detail", finalidade, true)).getStatusCode());
+    assertEquals(HttpStatus.FORBIDDEN,
+        assertThrows(ResponseStatusException.class,
+            () -> service.relatorio(new AdminArquivoPublicidadeConsulta.RelatorioRequest(
+                null, List.of(), null), ator, "req-stale-report", finalidade)).getStatusCode());
+    assertEquals(HttpStatus.FORBIDDEN,
+        assertThrows(ResponseStatusException.class,
+            () -> service.midia(id, UUID.randomUUID(), ator, "req-stale-media", finalidade)).getStatusCode());
+    verify(jdbc, times(3)).queryForObject(anyString(), eq(Boolean.class), eq(ator));
+    verifyNoMoreInteractions(jdbc);
+    verifyNoInteractions(storage, audit);
+  }
+
+  @Test
   @SuppressWarnings({"unchecked", "rawtypes"})
   void detalheOperacionalOcultaContratanteMasExportacaoPreservaEAudita() {
     UUID id = UUID.randomUUID();
     UUID ator = UUID.randomUUID();
     ObjectMapper mapper = new ObjectMapper();
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(true);
     AdminArquivoPublicidadeAccessAuditService audit = mock(AdminArquivoPublicidadeAccessAuditService.class);
     Detalhe base = new Detalhe(id, UUID.randomUUID(), UUID.randomUUID(),
         null, null, null, null, "ORIGEM_INDETERMINADA", "DESCONHECIDA", "PREVENTIVA",
@@ -97,6 +129,7 @@ class AdminArquivoPublicidadeServiceTest {
     String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     String chave = "hml/qa/arquivo-publicidade/" + versao + "/" + anuncioMidia + "/original";
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(true);
     ResultSet rs = mock(ResultSet.class);
     when(rs.getObject("origem_versao_id", UUID.class)).thenReturn(versao);
     when(rs.getObject("anuncio_midia_id", UUID.class)).thenReturn(anuncioMidia);
@@ -153,6 +186,7 @@ class AdminArquivoPublicidadeServiceTest {
     String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     String chave = "hml/qa/arquivo-publicidade/" + versaoOriginal + "/" + vinculo + "/original";
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(true);
     ResultSet rs = mock(ResultSet.class);
     when(rs.getObject("origem_versao_id", UUID.class)).thenReturn(versaoOriginal);
     when(rs.getObject("anuncio_midia_id", UUID.class)).thenReturn(vinculo);

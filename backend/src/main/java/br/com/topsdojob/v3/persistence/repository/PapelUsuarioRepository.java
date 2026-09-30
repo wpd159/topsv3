@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository;
 
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,4 +10,6 @@ public interface PapelUsuarioRepository extends JpaRepository<PapelUsuarioEntity
   List<PapelUsuarioEntity> findByUsuarioId(UUID usuarioId);
 
   void deleteByUsuarioId(UUID usuarioId);
+
+  void deleteByUsuarioIdAndPapel(UUID usuarioId, PapelUsuario papel);
 }
