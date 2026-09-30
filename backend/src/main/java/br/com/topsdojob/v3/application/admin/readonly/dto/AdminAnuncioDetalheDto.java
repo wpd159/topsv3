@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record AdminAnuncioDetalheDto(
         UUID id,
+        Integer versao,
         String slug,
         String titulo,
         String descricaoResumo,

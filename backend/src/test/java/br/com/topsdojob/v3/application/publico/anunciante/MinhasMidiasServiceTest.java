@@ -98,7 +98,8 @@ class MinhasMidiasServiceTest {
     private final R2StorageProperties storageProperties = storageProperties();
     private final FotoElegivelAnuncioPolicy fotoElegivelPolicy = mock(FotoElegivelAnuncioPolicy.class);
     private final AnuncioMidiaUploadCoreService uploadCoreService = new AnuncioMidiaUploadCoreService(
-            midiaRepository, arquivoRepository, validator, fotoProcessor, storageProperties, storageProvider);
+            midiaRepository, arquivoRepository, validator, limiteService,
+            fotoProcessor, storageProperties, storageProvider);
     private final AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
     private final EstadoRepository estadoRepository = mock(EstadoRepository.class);
     private final CidadeRepository cidadeRepository = mock(CidadeRepository.class);

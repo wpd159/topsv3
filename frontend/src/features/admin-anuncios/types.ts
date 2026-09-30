@@ -38,6 +38,7 @@ export type AdminAdvertiserDetail = {
   nomeCivil?: string | null
   email?: string | null
   cpf?: string | null
+  dataNascimento?: string | null
   whatsapp?: string | null
   status?: string | null
 }
@@ -116,6 +117,7 @@ export type AdminAdMetrics = {
 }
 
 export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' | 'beneficiosPremiumVigentes' | 'visualizacoes' | 'cliquesWhatsapp' | 'storyAcao'> & {
+  versao: number
   descricaoResumo?: string | null
   descricao?: string | null
   categoria?: string | null
@@ -319,6 +321,10 @@ export type AdminAdMediaUploadResponse = {
   requestId: string
 }
 
+export type AdminAdVideoUploadResponse = Omit<AdminAdMediaUploadResponse, 'tipo'> & {
+  tipo: 'VIDEO'
+}
+
 export type AdminModerationHistoryItem = {
   id: string
   alvoTipo: string
@@ -346,8 +352,31 @@ export type AdminModerationActionResponse = {
   emailRealEnviado: false
   hardDeleteExecutado: false
   requestId: string
+  operacaoIdCliente?: string | null
+  versaoAnuncioAntes?: number | null
   decididoEm: string
   mensagem: string
+}
+
+export type AdminReviewState = {
+  id: string
+  anuncioId: string
+  status: string
+  finalizadoEm: string | null
+}
+
+export type AdminApprovalRequest = {
+  operacaoId: string
+  versaoAnuncioAntes: number
+  revisaoId?: string | null
+}
+
+export type AdminApprovalStatus = {
+  estado: 'CONFIRMADA' | 'PUBLICACAO_REGULARIZADA' | 'INCONCLUSIVA'
+  operacaoIdCliente: string
+  anuncioId: string
+  revisaoIdConfirmada?: string | null
+  versaoAnuncioAntes?: number | null
 }
 
 export type AdminStoryPublication = {

@@ -228,7 +228,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const terminalAnuncioRef = useRef<MeuAnuncioCicloVida | null>(null)
   const flowGenerationRef = useRef(0)
   const mountedRef = useRef(true)
-  const [fotoPreviewUrls, setFotoPreviewUrls] = useState<string[]>([])
+  const [fotoPreviewEntries, setFotoPreviewEntries] = useState<{ file: File; url: string }[]>([])
   const [kycStatus, setKycStatus] = useState<WizardKycStatus | null>(null)
   const [kycLoading, setKycLoading] = useState(true)
   const [kycError, setKycError] = useState<string | null>(null)
@@ -469,8 +469,14 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const persistedPreviewPhotos = editMedia?.midias.filter((midia) => midia.tipo === 'FOTO' && midia.previewUrl) ?? []
   const currentMediaUrls = persistedPreviewPhotos.map((midia) => midia.previewUrl)
     ?.filter((url): url is string => Boolean(url)) ?? []
-  const previewMedia = fotoPreviewUrls.length ? fotoPreviewUrls : currentMediaUrls
-  const previewExpiraEm = fotoPreviewUrls.length ? null : persistedPreviewPhotos[0]?.previewExpiraEm
+  const fotoPreviewUrls = state.fotos.map((file, index) =>
+    fotoPreviewEntries[index]?.file === file ? fotoPreviewEntries[index].url : undefined
+  )
+  const hasLocalPhotoPreviews = fotoPreviewUrls.some(Boolean)
+  const previewMedia = hasLocalPhotoPreviews
+    ? fotoPreviewUrls.filter((url): url is string => Boolean(url))
+    : currentMediaUrls
+  const previewExpiraEm = hasLocalPhotoPreviews ? null : persistedPreviewPhotos[0]?.previewExpiraEm
   const syncProgress = useCallback(
     (
       ultimoStep: WizardProgressStep,
@@ -494,9 +500,9 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   )
 
   useEffect(() => {
-    const urls = state.fotos.map((file) => URL.createObjectURL(file))
-    setFotoPreviewUrls(urls)
-    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+    const entries = state.fotos.map((file) => ({ file, url: URL.createObjectURL(file) }))
+    setFotoPreviewEntries(entries)
+    return () => entries.forEach(({ url }) => URL.revokeObjectURL(url))
   }, [state.fotos])
 
   useEffect(() => {
@@ -1138,6 +1144,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           key={progressScope}
           slug={isEdit ? slug : undefined}
           initialFiles={state.fotos}
+          previewUrls={isEdit ? undefined : fotoPreviewUrls}
           fotoNomes={state.fotoNomes}
           onChange={handlePhotoChange}
           photoValidation={photoValidationMatches ? photoValidation.results.map((result, index) => serverRejectedPhotos.includes(state.fotos[index])
@@ -1353,7 +1360,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
               previewDescription={previewDescription}
               previewMedia={previewMedia}
               previewExpiraEm={previewExpiraEm}
-              onPreviewRefresh={fotoPreviewUrls.length ? undefined : refreshMediaPreview}
+              onPreviewRefresh={hasLocalPhotoPreviews ? undefined : refreshMediaPreview}
               previewReference={previewReference}
               idade={idade}
               hasVirtual={hasVirtual}
@@ -1435,7 +1442,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           previewDescription={previewDescription}
           previewMedia={previewMedia}
           previewExpiraEm={previewExpiraEm}
-          onPreviewRefresh={fotoPreviewUrls.length ? undefined : refreshMediaPreview}
+          onPreviewRefresh={hasLocalPhotoPreviews ? undefined : refreshMediaPreview}
           previewReference={previewReference}
           idade={idade}
           hasVirtual={hasVirtual}

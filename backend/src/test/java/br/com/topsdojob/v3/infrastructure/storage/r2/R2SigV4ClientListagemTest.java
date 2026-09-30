@@ -44,6 +44,25 @@ class R2SigV4ClientListagemTest {
   private static final String NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/";
 
   @Test
+  void diagnosticoSeparaFasesDoParsingSemAlterarAProvaDaPagina() throws Exception {
+    String key = PREFIX + "present.jpg";
+    HttpServer server = server(exchange -> respond(exchange, 200, page(List.of(key), false, null, null)));
+    var phases = new java.util.concurrent.CopyOnWriteArrayList<String>();
+    try {
+      R2VerificacaoAgrupadaPreviews verifier = new R2VerificacaoAgrupadaPreviews(
+          properties(server, true), HttpClient.newHttpClient(), new R2VerificacaoAgrupadaPreviews.ListDiagnostic() {
+            @Override public boolean enabled() { return true; }
+            @Override public void mark(String operationId, int page, String phase, long nanoTime, int value) {
+              if (page == 1) phases.add(phase);
+            }
+          });
+      assertThat(verifier.verificar(Set.of(key))).containsExactly(key);
+      assertThat(phases).containsSubsequence("parse_start", "factory_ready", "builder_ready",
+          "dom_ready", "fields_scanned", "fields_validated", "parse_done");
+    } finally { server.stop(0); }
+  }
+
+  @Test
   void inventarioPreservaPaginaInteiraMetadadosECursorComMesmoSignerNaRaiz() throws Exception {
     String prefix = "hml/midias-aprovadas/ação +*/";
     String cursor = "opaque+/=%?&*";

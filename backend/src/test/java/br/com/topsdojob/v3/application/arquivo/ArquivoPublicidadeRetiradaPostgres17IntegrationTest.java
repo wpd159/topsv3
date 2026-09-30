@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -15,6 +16,10 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeAccessAuditService;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeService;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Filtros;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Ordenacao;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.RelatorioRequest;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Situacao;
 import br.com.topsdojob.v3.application.admin.arquivo.FinalidadeAcessoArquivoPublicidade;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
@@ -38,6 +43,7 @@ import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,6 +57,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Disposable PostgreSQL 17 proof of a transactional withdrawal and one shared verified copy. */
 @EnabledIfEnvironmentVariable(named = "ARQUIVO_PUBLICIDADE_POSTGRES17_ENABLED", matches = "true")
@@ -194,17 +203,20 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
       verify(storage, never()).putIfAbsent(any(), any(), any(), any());
 
       doReturn(storage).when(provider).getIfAvailable();
+      flyway(container, network, credential, "-target=59", "migrate");
+      UUID exportador = ArquivoExportadorFixture.inserir(jdbc);
       AdminArquivoPublicidadeService admin = new AdminArquivoPublicidadeService(jdbc,
           new ObjectMapper().findAndRegisterModules(), provider, properties,
           mock(AdminArquivoPublicidadeAccessAuditService.class));
       var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-      var detail = admin.detalhar(period, fixture.user(), "req-auditoria", finalidade, true);
+      var detail = admin.detalhar(period, exportador, "req-auditoria", finalidade, true);
       assertThat(detail.versoes()).hasSize(2);
       assertThat(detail.versoes().get(1).midias()).extracting("id").contains(reference);
-      assertThat(admin.midia(period, reference, fixture.user(), "req-bytes", finalidade).bytes())
+      assertThat(admin.midia(period, reference, exportador, "req-bytes", finalidade).bytes())
           .isEqualTo(fixture.bytes());
 
-      conferirReusoTextualERollback(jdbc, tx, writer, premium, storage, privateObjects, admin);
+      conferirReusoTextualERollback(jdbc, tx, writer, premium, storage, privateObjects, admin,
+          exportador);
 
       PromotionFixture promotion = seedPromotion(jdbc);
       Fixture promotedAd = promotion.base();
@@ -273,16 +285,112 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
           Long.class, promotedSecondVersion)).isZero();
       verify(storage, never()).get(any(), any());
       verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+      conferirBuscaPaginadaERelatorioCompleto(jdbc, tx, provider, properties, period, fixture,
+          exportador);
     } finally {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);
     }
   }
 
+  private static void conferirBuscaPaginadaERelatorioCompleto(JdbcTemplate jdbc,
+      TransactionTemplate tx, ObjectProvider<ObjectStorage> provider, R2StorageProperties properties,
+      UUID period, Fixture fixture, UUID exportador) {
+    var audit = mock(AdminArquivoPublicidadeAccessAuditService.class);
+    var admin = new AdminArquivoPublicidadeService(jdbc, new ObjectMapper().findAndRegisterModules(),
+        provider, properties, audit);
+    // Consultas e relatorio nao podem sequer resolver o cliente de storage.
+    doThrow(new IllegalStateException("storage nao permitido na consulta"))
+        .when(provider).getIfAvailable();
+    var read = new TransactionTemplate(tx.getTransactionManager());
+    read.setReadOnly(true);
+    read.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
+    var real = read.execute(ignored -> admin.relatorio(
+        new RelatorioRequest(null, List.of(period), null), exportador, "req-relatorio-real", finalidade));
+    assertThat(real.quantidade()).isEqualTo(1);
+    assertThat(real.registros().get(0).versoes()).hasSize(2);
+    assertThat(real.registros().get(0).versoes().get(0).midias()).hasSize(2);
+    assertThat(real.registros().get(0).versoes().get(0).midias())
+        .allSatisfy(media -> assertThat(media.sha256()).hasSize(64));
+    verify(audit).registrarRelatorio(eq(exportador), eq("req-relatorio-real"), eq(finalidade),
+        eq(1), any(String.class));
+
+    OffsetDateTime start = OffsetDateTime.parse("2020-01-01T00:00:00Z");
+    OffsetDateTime end = start.plusDays(1);
+    List<UUID> seeded = new ArrayList<>();
+    for (int index = 0; index < 101; index++) {
+      UUID id = UUID.randomUUID();
+      seeded.add(id);
+      jdbc.update("""
+          INSERT INTO arquivo_publicidade_veiculacao(id,anuncio_id,contratante_usuario_id,
+            classificacao,relacao_material,cobertura,inicio_em,fim_em,retencao_ate,
+            encerramento_motivo,criado_em,atualizado_em)
+          VALUES (?,?,?,'REMUNERADA','SIM','ABRANGIDA',?,?,?,'LIMITE_AUTOMATICO_BENEFICIO',?,?)
+          """, id, fixture.ad(), fixture.user(), start, end, end.plusYears(1), start, start);
+      for (int numero = 1; numero <= 2; numero++) {
+        String conteudo = numero == 1
+            ? "{\"titulo\":\"Capa raríssima pesquisa-qa\",\"slug\":\"antigo-pesquisa-qa\",\"nomePublico\":\"Nome publico QA\"}"
+            : "{\"titulo\":\"Titulo atual\",\"slug\":\"atual-qa\",\"nomePublico\":\"Nome publico QA\"}";
+        jdbc.update("""
+            INSERT INTO arquivo_publicidade_versao(id,veiculacao_id,numero,vigente_desde,
+              vigente_ate,capturado_em,motivo,conteudo_json,contratante_json,comercial_json,
+              segmentacao_json,alcance_json,conteudo_sha256)
+            VALUES (?,?,?, ?,?,?,'CONSULTA_SINTETICA',?::jsonb,
+              '{"nome":"Nome civil nao pesquisavel","cpf":"00000000000"}',
+              '{"beneficioCodigo":"ANUNCIO_TOPO"}','{}','{}',?)
+            """, UUID.randomUUID(), id, numero, start, end, start, conteudo, "0".repeat(64));
+      }
+    }
+    var filtro = new Filtros("rarissima pesquisa-qa", fixture.ad(), fixture.user(),
+        "ANUNCIO_TOPO", Situacao.ENCERRADA, start, end, Ordenacao.RECENTES);
+    List<UUID> paginated = new ArrayList<>();
+    for (int page = 0; page < 6; page++) {
+      int pagina = page;
+      var result = read.execute(ignored -> admin.listar(pagina, 20, filtro, fixture.user(),
+          "req-pagina-" + pagina, finalidade));
+      assertThat(result.totalElements()).isEqualTo(101);
+      assertThat(result.totalPages()).isEqualTo(6);
+      assertThat(result.itens()).allSatisfy(item -> {
+        assertThat(item.titulo()).isEqualTo("Titulo atual");
+        assertThat(item.anuncianteNome()).isEqualTo("Nome publico QA");
+        assertThat(item.beneficioCodigo()).isEqualTo("ANUNCIO_TOPO");
+        assertThat(item.totalVersoes()).isEqualTo(2);
+        assertThat(item.fimTipo()).isEqualTo("LIMITE_PREVISTO");
+      });
+      paginated.addAll(result.itens().stream().map(item -> item.id()).toList());
+    }
+    assertThat(paginated).hasSize(101).doesNotHaveDuplicates().containsExactlyInAnyOrderElementsOf(seeded);
+    assertThat(read.execute(ignored -> admin.listar(0, 20, filtro, fixture.user(), "req-mesma", finalidade))
+        .itens()).extracting("id").containsExactlyElementsOf(paginated.subList(0, 20));
+    var exclusive = new Filtros("pesquisa-qa", null, null, null, null, end, end.plusDays(1), null);
+    assertThat(read.execute(ignored -> admin.listar(0, 20, exclusive, fixture.user(), "req-limite", finalidade))
+        .totalElements()).isZero();
+    var privado = new Filtros("Nome civil nao pesquisavel", null, null, null, null, null, null, null);
+    assertThat(read.execute(ignored -> admin.listar(0, 20, privado, fixture.user(), "req-redacao", finalidade))
+        .totalElements()).isZero();
+    assertThatThrownBy(() -> read.execute(ignored -> admin.relatorio(
+        new RelatorioRequest(filtro, null, null), exportador, "req-101", finalidade)))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE));
+    var allSelected = read.execute(ignored -> admin.relatorio(
+        new RelatorioRequest(filtro, seeded.subList(0, 100), "UTC"), exportador, "req-100", finalidade));
+    assertThat(allSelected.quantidade()).isEqualTo(100);
+    assertThat(allSelected.registros()).hasSize(100)
+        .allSatisfy(detail -> assertThat(detail.versoes()).hasSize(2));
+    assertThat(allSelected.registros()).extracting("id")
+        .containsExactlyInAnyOrderElementsOf(seeded.subList(0, 100));
+    assertThatThrownBy(() -> read.execute(ignored -> admin.relatorio(
+        new RelatorioRequest(filtro, List.of(period), null), exportador, "req-fora", finalidade)))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    System.out.println("ARCHIVE_QUERY_PG pages=6 total=101 unique=101 historicalSearch=true civilNameSearch=false report100Complete=true report101Refused=true storageCalls=0");
+  }
+
   private static void conferirReusoTextualERollback(JdbcTemplate jdbc, TransactionTemplate tx,
       ArquivoPublicidadeRegistroService writer, PremiumPublicoMapper premium,
       ObjectStorage storage, Map<String, StoredObject> privateObjects,
-      AdminArquivoPublicidadeService admin) throws Exception {
+      AdminArquivoPublicidadeService admin, UUID exportador) throws Exception {
     Fixture fixture = seed(jdbc);
     when(premium.idsAtivacoesComEfeitoPublico(fixture.ad()))
         .thenReturn(Set.of(fixture.activation()));
@@ -324,11 +432,11 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
         "SELECT count(*) FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
         Long.class, textVersion)).isEqualTo(2L);
     var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-    var detail = admin.detalhar(period, fixture.user(), "req-reuso-exportacao", finalidade, true);
+    var detail = admin.detalhar(period, exportador, "req-reuso-exportacao", finalidade, true);
     assertThat(detail.versoes()).hasSize(2);
     assertThat(detail.versoes().get(1).midias()).hasSize(2);
     for (var media : detail.versoes().get(1).midias()) {
-      assertThat(admin.midia(period, media.id(), fixture.user(), "req-reuso-bytes", finalidade)
+      assertThat(admin.midia(period, media.id(), exportador, "req-reuso-bytes", finalidade)
           .bytes()).isEqualTo(fixture.bytes());
     }
 
@@ -375,7 +483,7 @@ class ArquivoPublicidadeRetiradaPostgres17IntegrationTest {
     UUID reusedReference = jdbc.queryForObject(
         "SELECT id FROM arquivo_publicidade_midia_referencia WHERE versao_id=?",
         UUID.class, mixedVersion);
-    assertThat(admin.midia(period, reusedReference, fixture.user(), "req-reuso-cadeia", finalidade)
+    assertThat(admin.midia(period, reusedReference, exportador, "req-reuso-cadeia", finalidade)
         .bytes()).isEqualTo(fixture.bytes());
     tx.executeWithoutResult(ignored -> {
       jdbc.update("UPDATE anuncio SET status='PAUSADO' WHERE id=?", fixture.ad());

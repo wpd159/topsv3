@@ -28,7 +28,7 @@ class AdminAnuncioMidiaFrontendContractTest {
     @Test
     void adapterEnviaUmaParteArquivoComIdempotenciaECsrfSemContentTypeManual() throws Exception {
         String api = Files.readString(FRONTEND.resolve(Path.of("features", "admin-anuncios", "api.ts")));
-        String upload = recorte(api, "export async function uploadAdminAdMedia", "export async function listAdminAdHistory");
+        String upload = recorte(api, "export async function uploadAdminAdMedia", "\n}\n");
         String validacao = recorte(upload, "const validation = await validatePhotoUpload(arquivo)", "const form = new FormData()");
 
         assertOrdem(upload,
@@ -169,7 +169,7 @@ class AdminAnuncioMidiaFrontendContractTest {
         assertThat(moderacao)
                 .contains("<AdminAnuncioMidiaUploader")
                 .contains("anuncioId={ad.id}")
-                .contains("onReload={() => load(undefined, false)}");
+                .contains("onReload={async () => { await load(undefined, false) }}");
     }
 
     private static String recorte(String conteudo, String inicio, String fim) {

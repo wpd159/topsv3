@@ -7,7 +7,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Versao;
@@ -33,12 +36,41 @@ import org.springframework.web.server.ResponseStatusException;
 
 class AdminArquivoStoryServiceTest {
   @Test
+  @SuppressWarnings("unchecked")
+  void sessaoComAutoridadeAntigaNaoExportaStoryAposRevogacao() {
+    UUID ator = UUID.randomUUID();
+    UUID id = UUID.randomUUID();
+    JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(false);
+    ObjectProvider<ObjectStorage> storage = mock(ObjectProvider.class);
+    var audit = mock(AdminArquivoStoryAccessAuditService.class);
+    var service = new AdminArquivoStoryService(
+        jdbc, new ObjectMapper(), storage, new R2StorageProperties(), audit);
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
+
+    assertEquals(HttpStatus.FORBIDDEN,
+        assertThrows(ResponseStatusException.class,
+            () -> service.detalhar(id, ator, "req-stale-detail", finalidade, true)).getStatusCode());
+    assertEquals(HttpStatus.FORBIDDEN,
+        assertThrows(ResponseStatusException.class,
+            () -> service.relatorio(new AdminArquivoPublicidadeConsulta.RelatorioRequest(
+                null, List.of(), null), ator, "req-stale-report", finalidade)).getStatusCode());
+    assertEquals(HttpStatus.FORBIDDEN,
+        assertThrows(ResponseStatusException.class,
+            () -> service.midia(id, UUID.randomUUID(), ator, "req-stale-media", finalidade)).getStatusCode());
+    verify(jdbc, times(3)).queryForObject(anyString(), eq(Boolean.class), eq(ator));
+    verifyNoMoreInteractions(jdbc);
+    verifyNoInteractions(storage, audit);
+  }
+
+  @Test
   @SuppressWarnings({"unchecked", "rawtypes"})
   void detalheOcultaContratanteEExportacaoPreservaComFinalidadeAuditada() {
     UUID id = UUID.randomUUID();
     UUID ator = UUID.randomUUID();
     ObjectMapper mapper = new ObjectMapper();
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(true);
     AdminArquivoStoryAccessAuditService audit = mock(AdminArquivoStoryAccessAuditService.class);
     var finalidade = FinalidadeAcessoArquivoPublicidade.ATENDIMENTO_FISCALIZACAO;
     Detalhe base = new Detalhe(id, UUID.randomUUID(), null, UUID.randomUUID(),
@@ -98,6 +130,7 @@ class AdminArquivoStoryServiceTest {
     String chave = "hml/qa/arquivo-publicidade/stories/" + versao
         + "/direta/" + arquivoMidia + "/original";
     JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(ator))).thenReturn(true);
     ResultSet rs = mock(ResultSet.class);
     when(rs.getObject("versao_id", UUID.class)).thenReturn(versao);
     when(rs.getObject("arquivo_midia_id", UUID.class)).thenReturn(arquivoMidia);

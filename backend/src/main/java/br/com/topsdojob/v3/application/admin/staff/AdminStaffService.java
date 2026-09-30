@@ -189,7 +189,9 @@ public class AdminStaffService {
           "os dados mudaram; atualize a pagina e tente novamente");
     }
 
-    PapelUsuario papelAnterior = papelAtual(id);
+    List<PapelUsuarioEntity> papeisAtuais = papeis.findByUsuarioId(id);
+    PapelUsuario papelAnterior = papelAtual(papeisAtuais);
+    boolean exportadorAnterior = possuiExportador(papeisAtuais);
     PapelUsuario papelNovo = papel(request.papel());
     boolean ativoAnterior = "ATIVO".equals(staff.getStatus().name());
     boolean ativoNovo = request.ativo() == null ? ativoAnterior : request.ativo();
@@ -197,7 +199,9 @@ public class AdminStaffService {
     boolean papelMudou = papelAnterior != papelNovo;
     boolean statusMudou = ativoAnterior != ativoNovo;
     boolean nomeMudou = !Objects.equals(staff.getNome(), nomeNovo);
-    if (!papelMudou && !statusMudou && !nomeMudou) {
+    boolean revogarExportador = exportadorAnterior
+        && (papelNovo != PapelUsuario.ADMIN || !ativoNovo || !ativoAnterior);
+    if (!papelMudou && !statusMudou && !nomeMudou && !revogarExportador) {
       return detalhar(id);
     }
 
@@ -211,12 +215,18 @@ public class AdminStaffService {
     }
 
     OffsetDateTime agora = agora();
+    Integer versaoAnterior = staff.getVersao();
     String antes = estadoJson(papelAnterior, ativoAnterior);
     staff.atualizarStaff(nomeNovo, ativoNovo, agora);
     usuarios.saveAndFlush(staff);
     if (papelMudou) {
       papeis.deleteByUsuarioId(id);
       papeis.save(PapelUsuarioEntity.criarStaff(id, papelNovo, ator.usuarioId(), agora));
+    } else if (revogarExportador) {
+      papeis.deleteByUsuarioIdAndPapel(id, PapelUsuario.ARQUIVO_EXPORTADOR);
+    }
+    if (papelMudou || revogarExportador) {
+      papeis.flush();
     }
     auditorias.save(AuditoriaEventoEntity.registrar(
         UUID.randomUUID(),
@@ -228,7 +238,10 @@ public class AdminStaffService {
         estadoJson(papelNovo, ativoNovo),
         requestId,
         agora));
-    if (papelMudou || statusMudou) {
+    if (revogarExportador) {
+      auditarRevogacaoAutomatica(id, ator, requestId, versaoAnterior, staff.getVersao(), agora);
+    }
+    if (papelMudou || statusMudou || revogarExportador) {
       invalidarSessoesAposCommit(id);
     }
     return detalhar(id);
@@ -250,12 +263,14 @@ public class AdminStaffService {
     UsuarioEntity staff = usuarios.findByIdForUpdate(id)
         .filter(usuario -> usuario.getTipoConta() == TipoContaUsuario.STAFF)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "staff nao encontrado"));
-    PapelUsuario papel = papelAtual(id);
+    List<PapelUsuarioEntity> papeisAtuais = papeis.findByUsuarioId(id);
+    PapelUsuario papel = papelAtual(papeisAtuais);
+    boolean revogarExportador = possuiExportador(papeisAtuais);
     boolean ativo = "ATIVO".equals(staff.getStatus().name());
-    if (!ativo) {
+    if (!ativo && !revogarExportador) {
       return detalhar(id);
     }
-    if (papel == PapelUsuario.ADMIN
+    if (ativo && papel == PapelUsuario.ADMIN
         && consulta.bloquearAdministradoresAtivos().size() <= 1) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
@@ -263,19 +278,29 @@ public class AdminStaffService {
     }
 
     OffsetDateTime agora = agora();
+    Integer versaoAnterior = staff.getVersao();
     String antes = estadoJson(papel, true);
     staff.atualizarStaff(staff.getNome(), false, agora);
     usuarios.saveAndFlush(staff);
-    auditorias.save(AuditoriaEventoEntity.registrar(
-        UUID.randomUUID(),
-        ator.usuarioId(),
-        "STAFF_REMOVER",
-        RECURSO,
-        id,
-        antes,
-        estadoJson(papel, false),
-        requestId,
-        agora));
+    if (revogarExportador) {
+      papeis.deleteByUsuarioIdAndPapel(id, PapelUsuario.ARQUIVO_EXPORTADOR);
+      papeis.flush();
+    }
+    if (ativo) {
+      auditorias.save(AuditoriaEventoEntity.registrar(
+          UUID.randomUUID(),
+          ator.usuarioId(),
+          "STAFF_REMOVER",
+          RECURSO,
+          id,
+          antes,
+          estadoJson(papel, false),
+          requestId,
+          agora));
+    }
+    if (revogarExportador) {
+      auditarRevogacaoAutomatica(id, ator, requestId, versaoAnterior, staff.getVersao(), agora);
+    }
     invalidarSessoesAposCommit(id);
     return detalhar(id);
   }
@@ -293,14 +318,43 @@ public class AdminStaffService {
     });
   }
 
-  private PapelUsuario papelAtual(UUID usuarioId) {
-    return papeis.findByUsuarioId(usuarioId).stream()
+  private PapelUsuario papelAtual(List<PapelUsuarioEntity> papeisAtuais) {
+    return papeisAtuais.stream()
         .map(PapelUsuarioEntity::getPapel)
         .filter(papel -> papel == PapelUsuario.ADMIN || papel == PapelUsuario.MODERADOR)
         .findFirst()
         .orElseThrow(() -> new ResponseStatusException(
             HttpStatus.CONFLICT,
             "staff sem papel administrativo gerenciavel"));
+  }
+
+  private boolean possuiExportador(List<PapelUsuarioEntity> papeisAtuais) {
+    return papeisAtuais.stream()
+        .anyMatch(papel -> papel.getPapel() == PapelUsuario.ARQUIVO_EXPORTADOR);
+  }
+
+  private void auditarRevogacaoAutomatica(
+      UUID usuarioId,
+      AdminUserPrincipal ator,
+      String requestId,
+      Integer versaoAnterior,
+      Integer versaoNova,
+      OffsetDateTime agora) {
+    auditorias.save(AuditoriaEventoEntity.registrar(
+        UUID.randomUUID(),
+        ator.usuarioId(),
+        "STAFF_ARQUIVO_EXPORTADOR_REVOGAR_AUTO",
+        RECURSO,
+        usuarioId,
+        estadoExportadorJson(true, versaoAnterior),
+        estadoExportadorJson(false, versaoNova),
+        requestId,
+        agora));
+  }
+
+  private String estadoExportadorJson(boolean concedido, Integer versao) {
+    return "{\"papel\":\"ARQUIVO_EXPORTADOR\",\"concedido\":" + concedido
+        + ",\"versao\":" + versao + "}";
   }
 
   private void validarAtor(AdminUserPrincipal ator) {

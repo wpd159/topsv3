@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.admin.moderacao;
 
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAprovarAnuncioRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
@@ -52,15 +53,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AdminModeracaoAcaoService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AdminModeracaoAcaoService.class);
+    private static final String APROVACAO_OPERACAO_MDC = "aprovacaoOperacaoId";
 
     private static final int MOTIVO_MAX_LENGTH = 2_000;
     private static final String MOTIVO_APROVACAO_AUTOMATICA =
@@ -164,20 +174,44 @@ public class AdminModeracaoAcaoService {
             UUID anuncioId,
             AdminUserPrincipal actor,
             String requestId) {
+        return aprovarEPublicarAnuncio(anuncioId, actor, requestId, null);
+    }
+
+    @Transactional
+    public AdminAcaoModeracaoResponseDto aprovarEPublicarAnuncio(
+            UUID anuncioId,
+            AdminUserPrincipal actor,
+            String requestId,
+            AdminAprovarAnuncioRequestDto operacao) {
+        UUID operacaoId = operacao == null ? null : operacao.operacaoIdCliente();
+        long inicio = System.nanoTime();
+        observarConclusaoTransacional(operacaoId, inicio);
         validarAtor(actor);
-        AnuncioEntity anuncio = carregarContextoDecisaoFinal(
-                        anuncioId,
-                        AdminDecisaoModeracaoAcao.APROVAR)
-                .anuncio();
+        long inicioContexto = System.nanoTime();
+        AnuncioEntity anuncio;
+        try {
+            anuncio = carregarContextoDecisaoFinal(
+                            anuncioId,
+                            AdminDecisaoModeracaoAcao.APROVAR)
+                    .anuncio();
+        } catch (RuntimeException exception) {
+            observarFase(operacaoId, "CONTEXTO_LOCK_SQL", inicioContexto, "ERRO");
+            throw exception;
+        }
+        observarFase(operacaoId, "CONTEXTO_LOCK_SQL", inicioContexto, "OK");
         fotoElegivelAnuncioPolicy.validarParaAprovacao(anuncio.getId());
 
         if (anuncio.getStatus() == StatusAnuncio.PUBLICADO
                 && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO) {
             return respostaAprovacaoIdempotente(anuncio, requestId);
         }
+        validarVersaoAprovacao(anuncio, operacao == null ? null : operacao.operacaoIdCliente(),
+                operacao == null ? null : operacao.versaoAnuncioEsperada());
         if (anuncio.getStatus() == StatusAnuncio.APROVADO
                 && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO) {
-            return regularizarAprovacaoSemPublicacao(anuncio, actor, requestId);
+            return regularizarAprovacaoSemPublicacao(anuncio, actor, requestId,
+                    operacao == null ? null : operacao.operacaoIdCliente(),
+                    operacao == null ? null : operacao.versaoAnuncioEsperada());
         }
         if (anuncio.getStatus() != StatusAnuncio.PENDENTE_REVISAO
                 || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.PENDENTE) {
@@ -202,13 +236,20 @@ public class AdminModeracaoAcaoService {
                     return revisaoRepository.save(criada);
                 });
 
+        if (operacao != null && operacao.revisaoIdEsperada() != null
+                && !operacao.revisaoIdEsperada().equals(revisao.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao mudou antes da aprovacao");
+        }
+
         return decidirRevisaoCarregada(
                 revisao,
                 anuncio,
                 AdminDecisaoModeracaoAcao.APROVAR,
                 null,
                 actor,
-                requestId);
+                requestId,
+                operacao == null ? null : operacao.operacaoIdCliente(),
+                operacao == null ? null : operacao.versaoAnuncioEsperada());
     }
 
     @Transactional
@@ -217,30 +258,54 @@ public class AdminModeracaoAcaoService {
             AdminDecidirRevisaoRequestDto request,
             AdminUserPrincipal actor,
             String requestId) {
+        UUID operacaoId = request == null ? null : request.operacaoIdCliente();
+        observarConclusaoTransacional(operacaoId, System.nanoTime());
         validarAtor(actor);
         AdminDecisaoModeracaoAcao decisao = validarDecisao(request == null ? null : request.decisao());
         String motivo = motivoSeguroObrigatorioQuandoNecessario(
                 decisao,
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao());
-        RevisaoAnuncioEntity referencia = revisaoRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
-        AnuncioEntity anuncio = decisao == AdminDecisaoModeracaoAcao.APROVAR
-                        || decisao == AdminDecisaoModeracaoAcao.REPROVAR
-                ? carregarContextoDecisaoFinal(referencia.getAnuncioId(), decisao).anuncio()
-                : anuncioRepository.findByIdForModeration(referencia.getAnuncioId())
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "anuncio da revisao nao encontrado"));
-        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
-            fotoElegivelAnuncioPolicy.validarParaAprovacao(anuncio.getId());
+        long inicioContexto = System.nanoTime();
+        AnuncioEntity anuncio;
+        RevisaoAnuncioEntity revisao;
+        try {
+            RevisaoAnuncioEntity referencia = revisaoRepository.findById(id)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
+            anuncio = decisao == AdminDecisaoModeracaoAcao.APROVAR
+                            || decisao == AdminDecisaoModeracaoAcao.REPROVAR
+                    ? carregarContextoDecisaoFinal(referencia.getAnuncioId(), decisao).anuncio()
+                    : anuncioRepository.findByIdForModeration(referencia.getAnuncioId())
+                            .orElseThrow(() -> new ResponseStatusException(
+                                    HttpStatus.NOT_FOUND,
+                                    "anuncio da revisao nao encontrado"));
+            if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+                fotoElegivelAnuncioPolicy.validarParaAprovacao(anuncio.getId());
+            }
+            revisao = revisaoRepository.findByIdForUpdate(id)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
+        } catch (RuntimeException exception) {
+            observarFase(operacaoId, "CONTEXTO_LOCK_SQL", inicioContexto, "ERRO");
+            throw exception;
         }
-        RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
+        observarFase(operacaoId, "CONTEXTO_LOCK_SQL", inicioContexto, "OK");
         if (!revisao.getAnuncioId().equals(anuncio.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao nao pertence ao anuncio informado");
         }
-        return decidirRevisaoCarregada(revisao, anuncio, decisao, motivo, actor, requestId);
+        Integer versaoEsperada = decisao == AdminDecisaoModeracaoAcao.APROVAR && request != null
+                ? request.versaoAnuncioEsperada() : null;
+        return decidirRevisaoCarregada(revisao, anuncio, decisao, motivo, actor, requestId,
+                decisao == AdminDecisaoModeracaoAcao.APROVAR ? operacaoId : null, versaoEsperada);
+    }
+
+    private void validarVersaoAprovacao(AnuncioEntity anuncio, UUID operacaoId, Integer versaoEsperada) {
+        if (operacaoId == null && versaoEsperada == null) return; // Clientes legados continuam válidos.
+        if (operacaoId == null || versaoEsperada == null || versaoEsperada < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "operacao e versao obrigatorias para reconciliacao");
+        }
+        if (!versaoEsperada.equals(anuncio.getVersao())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "versao do anuncio mudou antes da aprovacao");
+        }
     }
 
     private AdminAcaoModeracaoResponseDto decidirRevisaoCarregada(
@@ -249,12 +314,18 @@ public class AdminModeracaoAcaoService {
             AdminDecisaoModeracaoAcao decisao,
             String motivo,
             AdminUserPrincipal actor,
-            String requestId) {
+            String requestId,
+            UUID operacaoId,
+            Integer versaoEsperada) {
         if (!revisaoAberta(revisao.getStatus()) || revisao.getFinalizadoEm() != null) {
             if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
-                return repetirOuRegularizarAprovacao(revisao, anuncio, actor, requestId);
+                return repetirOuRegularizarAprovacao(revisao, anuncio, actor, requestId,
+                        operacaoId, versaoEsperada);
             }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao ja finalizada");
+        }
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+            validarVersaoAprovacao(anuncio, operacaoId, versaoEsperada);
         }
         if (decisaoRepository.existsByRevisaoAnuncioId(revisao.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "decisao de revisao ja registrada");
@@ -334,7 +405,7 @@ public class AdminModeracaoAcaoService {
                     agora);
         }
 
-        String depois = snapshotRevisao(revisao, anuncio, decisao, motivo);
+        String depois = snapshotRevisao(revisao, anuncio, decisao, motivo, operacaoId, versaoEsperada);
         auditoriaRepository.save(AuditoriaEventoEntity.registrar(
                 UUID.randomUUID(),
                 actor.usuarioId(),
@@ -348,7 +419,8 @@ public class AdminModeracaoAcaoService {
 
         if (decisao == AdminDecisaoModeracaoAcao.APROVAR
                 || decisao == AdminDecisaoModeracaoAcao.REPROVAR) {
-            arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_REVISAO_" + decisao.name(), requestId, agora);
+            registrarArquivoAprovacao(anuncio.getId(), "MODERACAO_REVISAO_" + decisao.name(),
+                    requestId, agora, operacaoId);
         }
 
         return new AdminAcaoModeracaoResponseDto(
@@ -363,7 +435,9 @@ public class AdminModeracaoAcaoService {
                 false,
                 requestId,
                 agora,
-                mensagemRevisao(decisao));
+                mensagemRevisao(decisao),
+                operacaoId,
+                versaoEsperada);
     }
 
     @Transactional(noRollbackFor = PreviewGenerationException.class)
@@ -828,7 +902,9 @@ public class AdminModeracaoAcaoService {
             RevisaoAnuncioEntity revisao,
             AnuncioEntity anuncio,
             AdminUserPrincipal actor,
-            String requestId) {
+            String requestId,
+            UUID operacaoId,
+            Integer versaoEsperada) {
         if (revisao.getStatus() != StatusRevisaoAnuncio.APROVADA
                 || revisao.getFinalizadoEm() == null
                 || !decisaoRepository.existsByRevisaoAnuncioId(revisao.getId())
@@ -839,6 +915,7 @@ public class AdminModeracaoAcaoService {
         OffsetDateTime agora = agora();
         boolean regularizada = anuncio.getStatus() == StatusAnuncio.APROVADO;
         if (regularizada) {
+            validarVersaoAprovacao(anuncio, operacaoId, versaoEsperada);
             String antes = snapshotRevisao(revisao, anuncio, null, null);
             try {
                 anuncio.aprovarEPublicarAdministrativamente(agora);
@@ -855,10 +932,12 @@ public class AdminModeracaoAcaoService {
                     "REVISAO_ANUNCIO",
                     revisao.getId(),
                     antes,
-                    snapshotRevisao(revisao, anuncio, AdminDecisaoModeracaoAcao.APROVAR, null),
+                    snapshotRevisao(revisao, anuncio, AdminDecisaoModeracaoAcao.APROVAR, null,
+                            operacaoId, versaoEsperada),
                     requestId,
                     agora));
-            arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_PUBLICACAO_REGULARIZADA", requestId, agora);
+            registrarArquivoAprovacao(anuncio.getId(), "MODERACAO_PUBLICACAO_REGULARIZADA",
+                    requestId, agora, operacaoId);
         } else if (anuncio.getStatus() != StatusAnuncio.PUBLICADO) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -879,13 +958,17 @@ public class AdminModeracaoAcaoService {
                 agora,
                 regularizada
                         ? "anuncio aprovado anteriormente e publicado agora"
-                        : "anuncio ja estava aprovado e publicado");
+                        : "anuncio ja estava aprovado e publicado",
+                regularizada ? operacaoId : null,
+                regularizada ? versaoEsperada : null);
     }
 
     private AdminAcaoModeracaoResponseDto regularizarAprovacaoSemPublicacao(
             AnuncioEntity anuncio,
             AdminUserPrincipal actor,
-            String requestId) {
+            String requestId,
+            UUID operacaoId,
+            Integer versaoEsperada) {
         OffsetDateTime agora = agora();
         String antes = snapshotAnuncio(anuncio, null, null);
         try {
@@ -903,10 +986,11 @@ public class AdminModeracaoAcaoService {
                 "ANUNCIO",
                 anuncio.getId(),
                 antes,
-                snapshotAnuncio(anuncio, null, null),
+                snapshotAnuncio(anuncio, null, null, operacaoId, versaoEsperada),
                 requestId,
                 agora));
-        arquivoPublicidade.registrarEstado(anuncio.getId(), "MODERACAO_PUBLICACAO_REGULARIZADA", requestId, agora);
+        registrarArquivoAprovacao(anuncio.getId(), "MODERACAO_PUBLICACAO_REGULARIZADA",
+                requestId, agora, operacaoId);
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
                 "ANUNCIO",
@@ -919,7 +1003,9 @@ public class AdminModeracaoAcaoService {
                 false,
                 requestId,
                 agora,
-                "anuncio aprovado anteriormente e publicado agora");
+                "anuncio aprovado anteriormente e publicado agora",
+                operacaoId,
+                versaoEsperada);
     }
 
     private AdminAcaoModeracaoResponseDto respostaAprovacaoIdempotente(
@@ -1016,6 +1102,16 @@ public class AdminModeracaoAcaoService {
             AnuncioEntity anuncio,
             AdminDecisaoModeracaoAcao decisao,
             String motivoSanitizado) {
+        return snapshotRevisao(revisao, anuncio, decisao, motivoSanitizado, null, null);
+    }
+
+    private String snapshotRevisao(
+            RevisaoAnuncioEntity revisao,
+            AnuncioEntity anuncio,
+            AdminDecisaoModeracaoAcao decisao,
+            String motivoSanitizado,
+            UUID operacaoId,
+            Integer versaoEsperada) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("revisaoId", revisao.getId());
         values.put("anuncioId", anuncio.getId());
@@ -1027,6 +1123,10 @@ public class AdminModeracaoAcaoService {
         values.put("payloadSolicitadoOculto", true);
         values.put("emailRealEnviado", false);
         values.put("hardDeleteExecutado", false);
+        if (operacaoId != null) {
+            values.put("operacaoIdCliente", operacaoId);
+            values.put("versaoAnuncioAntes", versaoEsperada);
+        }
         return toJson(values);
     }
 
@@ -1055,6 +1155,15 @@ public class AdminModeracaoAcaoService {
             AnuncioEntity anuncio,
             RevisaoAnuncioEntity revisao,
             String motivoSanitizado) {
+        return snapshotAnuncio(anuncio, revisao, motivoSanitizado, null, null);
+    }
+
+    private String snapshotAnuncio(
+            AnuncioEntity anuncio,
+            RevisaoAnuncioEntity revisao,
+            String motivoSanitizado,
+            UUID operacaoId,
+            Integer versaoEsperada) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("anuncioId", anuncio.getId());
         values.put("revisaoId", revisao == null ? null : revisao.getId());
@@ -1065,6 +1174,11 @@ public class AdminModeracaoAcaoService {
         values.put("emailRealEnviado", false);
         values.put("whatsappRealEnviado", false);
         values.put("hardDeleteExecutado", false);
+        if (operacaoId != null) {
+            values.put("decisao", "APROVAR");
+            values.put("operacaoIdCliente", operacaoId);
+            values.put("versaoAnuncioAntes", versaoEsperada);
+        }
         return toJson(values);
     }
 
@@ -1172,6 +1286,53 @@ public class AdminModeracaoAcaoService {
 
     private OffsetDateTime agora() {
         return OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+    }
+
+    private void registrarArquivoAprovacao(
+            UUID anuncioId, String motivo, String requestId, OffsetDateTime instante, UUID operacaoId) {
+        String anterior = MDC.get(APROVACAO_OPERACAO_MDC);
+        if (operacaoId != null) {
+            MDC.put(APROVACAO_OPERACAO_MDC, operacaoId.toString());
+        }
+        long inicio = System.nanoTime();
+        try {
+            arquivoPublicidade.registrarEstado(anuncioId, motivo, requestId, instante);
+            observarFase(operacaoId, "ARQUIVO_TOTAL", inicio, "OK");
+        } catch (RuntimeException exception) {
+            observarFase(operacaoId, "ARQUIVO_TOTAL", inicio, "ERRO");
+            throw exception;
+        } finally {
+            if (anterior == null) {
+                MDC.remove(APROVACAO_OPERACAO_MDC);
+            } else {
+                MDC.put(APROVACAO_OPERACAO_MDC, anterior);
+            }
+        }
+    }
+
+    private void observarFase(UUID operacaoId, String fase, long inicio, String resultado) {
+        if (operacaoId != null) {
+            LOG.info("aprovacao_fase operacaoId={} fase={} duracaoMs={} resultado={}",
+                    operacaoId, fase, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicio), resultado);
+        }
+    }
+
+    private void observarConclusaoTransacional(UUID operacaoId, long inicio) {
+        if (operacaoId == null || !TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                String resultado = switch (status) {
+                    case STATUS_COMMITTED -> "TRANSACAO_COMMIT";
+                    case STATUS_ROLLED_BACK -> "TRANSACAO_ROLLBACK";
+                    default -> "TRANSACAO_INDETERMINADA";
+                };
+                observarFase(operacaoId, "CONCLUSAO_TRANSACAO", inicio, resultado);
+            }
+        });
     }
 
     private String mensagemRevisao(AdminDecisaoModeracaoAcao decisao) {

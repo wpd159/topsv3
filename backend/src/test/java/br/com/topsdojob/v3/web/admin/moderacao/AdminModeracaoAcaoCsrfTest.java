@@ -87,7 +87,7 @@ class AdminModeracaoAcaoCsrfTest {
                         .with(csrf()))
                 .andExpect(status().isOk());
 
-        verify(service).aprovarEPublicarAnuncio(any(), any(), any());
+        verify(service).aprovarEPublicarAnuncio(any(), any(), any(), any());
 
         mockMvc.perform(post("/api/admin/anuncios/{id}/midias/decisoes", UUID.randomUUID())
                         .with(user("moderador").authorities(

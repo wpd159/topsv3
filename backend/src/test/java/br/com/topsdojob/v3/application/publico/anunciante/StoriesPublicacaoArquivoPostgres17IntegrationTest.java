@@ -44,6 +44,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -442,21 +443,36 @@ class StoriesPublicacaoArquivoPostgres17IntegrationTest {
 
   @Test @Order(11)
   void premiumRealLiberaVideoECapturaStoryOuReverteDireitoAuditoriaEDoisArquivos() throws Exception {
+    long fixtureStarted = System.nanoTime();
     ActiveStory active = activeStory("premium-video");
     video(active.ad());
     UUID benefit = jdbc.queryForObject("select id from beneficio_premium where codigo='VIDEO_1'", UUID.class);
     var request = new AdminPremiumAtivarRequest(benefit, 1, "Operacao sintetica de video");
     assertThat(latestStory(active.story().storyId())).containsEntry("midias", 1);
+    long fixtureElapsed = System.nanoTime() - fixtureStarted;
 
+    long rollbackStarted = System.nanoTime();
     assertStorageRollback(active, () -> premium.ativarManual(active.ad().id(), request,
         "story-premium-video", active.actor(), "story-premium-failure"));
+    long rollbackElapsed = System.nanoTime() - rollbackStarted;
     assertThat(count("select count(*) from ativacao_beneficio where anuncio_id=? and beneficio_id=?", active.ad().id(), benefit)).isZero();
     assertThat(count("select count(*) from grupo_ativacao_beneficio where anuncio_id=?", active.ad().id())).isEqualTo(1);
     assertThat(count("select count(*) from auditoria_evento where request_id='story-premium-failure'")).isZero();
     assertThat(count("select count(*) from arquivo_publicidade_veiculacao where anuncio_id=?", active.ad().id())).isZero();
 
+    long[] storageBefore = storageCallCounts();
+    long activationStarted = System.nanoTime();
     var granted = premium.ativarManual(active.ad().id(), request, "story-premium-video",
         active.actor(), "story-premium-success");
+    // Freeze at the real proxied service return (including transaction completion), before diagnostics/assertions.
+    long activationElapsed = System.nanoTime() - activationStarted;
+    long[] storageAfter = storageCallCounts();
+    System.out.printf(Locale.ROOT,
+        "ADMIN_PREMIUM_TIMING_SYNTHETIC operation=ativarManual benefit=VIDEO_1 outcome=RETURNED "
+            + "operationMs=%.3f fixtureSetupMs=%.3f priorRollbackProofMs=%.3f "
+            + "storage=IN_MEMORY_NO_NETWORK getCalls=%d putIfAbsentCalls=%d deleteCalls=%d timingAssertion=false%n",
+        activationElapsed / 1_000_000.0, fixtureElapsed / 1_000_000.0, rollbackElapsed / 1_000_000.0,
+        storageAfter[0] - storageBefore[0], storageAfter[1] - storageBefore[1], storageAfter[2] - storageBefore[2]);
     var repeated = premium.ativarManual(active.ad().id(), request, "story-premium-video",
         active.actor(), "story-premium-repeat");
     assertThat(granted.status()).isEqualTo("ATIVA");
@@ -479,6 +495,15 @@ class StoriesPublicacaoArquivoPostgres17IntegrationTest {
         join arquivo_publicidade_story_versao v on v.id=m.versao_id
         join arquivo_publicidade_story_veiculacao j on j.id=v.veiculacao_id where j.story_id=?
         """, active.story().storyId())).isEqualTo(2);
+  }
+
+  private long[] storageCallCounts() {
+    var calls = org.mockito.Mockito.mockingDetails(storage).getInvocations();
+    return new long[] {
+        calls.stream().filter(call -> call.getMethod().getName().equals("get")).count(),
+        calls.stream().filter(call -> call.getMethod().getName().equals("putIfAbsent")).count(),
+        calls.stream().filter(call -> call.getMethod().getName().equals("delete")).count()
+    };
   }
 
   @Test @Order(12)

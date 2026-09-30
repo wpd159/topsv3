@@ -205,7 +205,7 @@ final class R2SigV4Client implements R2Operations {
       totalBytes += body.length;
       if (totalBytes > LIST_MAX_PAGES * LIST_PAGE_BYTES) throw invalidList();
       mark(budget, tracedPage, "parse_start", body.length);
-      ListPage page = parseList(body, bucket, prefix, cursor, budget);
+      ListPage page = parseList(body, bucket, prefix, cursor, budget, tracedPage);
       mark(budget, tracedPage, "parse_done", page.keys().size());
       totalItems += page.keys().size();
       if (totalItems > LIST_MAX_PAGES * LIST_PAGE_ITEMS) throw invalidList();
@@ -273,11 +273,13 @@ final class R2SigV4Client implements R2Operations {
     }
   }
 
-  private static ListPage parseList(byte[] body, String bucket, String prefix, String token,
-      LocalidadesConsultaOrcamento budget) {
+  private ListPage parseList(byte[] body, String bucket, String prefix, String token,
+      LocalidadesConsultaOrcamento budget, int page) {
     budget.conferir();
     try {
+      mark(budget, page, "factory_start", 0);
       DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+      mark(budget, page, "factory_created", 0);
       factory.setNamespaceAware(true);
       factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
       factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -288,12 +290,15 @@ final class R2SigV4Client implements R2Operations {
       factory.setAttribute("jdk.xml.maxElementDepth", "16");
       factory.setXIncludeAware(false);
       factory.setExpandEntityReferences(false);
+      mark(budget, page, "factory_ready", 0);
       var parser = factory.newDocumentBuilder();
       parser.setErrorHandler(new DefaultHandler() {
         @Override public void error(SAXParseException exception) throws SAXException { throw exception; }
         @Override public void fatalError(SAXParseException exception) throws SAXException { throw exception; }
       });
+      mark(budget, page, "builder_ready", 0);
       Element root = parser.parse(new ByteArrayInputStream(body)).getDocumentElement();
+      mark(budget, page, "dom_ready", 0);
       budget.conferir();
       if (!"ListBucketResult".equals(root.getLocalName())
           || !S3_XML_NAMESPACE.equals(root.getNamespaceURI())) throw invalidList();
@@ -327,6 +332,7 @@ final class R2SigV4Client implements R2Operations {
           throw invalidList();
         }
       }
+      mark(budget, page, "fields_scanned", keys.size());
       if (!bucket.equals(fields.get("Name")) || !"url".equals(fields.get("EncodingType"))
           || !prefix.equals(decodeListValue(fields.get("Prefix")))) throw invalidList();
       String truncatedValue = fields.get("IsTruncated");
@@ -344,6 +350,7 @@ final class R2SigV4Client implements R2Operations {
       if (fields.containsKey("KeyCount") && Integer.parseInt(fields.get("KeyCount")) != keys.size()) {
         throw invalidList();
       }
+      mark(budget, page, "fields_validated", keys.size());
       budget.conferir();
       return new ListPage(keys, truncated, next);
     } catch (R2StorageException exception) {

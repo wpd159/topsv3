@@ -30,6 +30,16 @@ public class AdminArquivoPublicidadeAccessAuditService {
     registrarInterno(atorId, veiculacaoId, midiaId, acao, requestId, finalidade);
   }
 
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void registrarRelatorio(UUID atorId, String requestId,
+      FinalidadeAcessoArquivoPublicidade finalidade, int quantidade, String escopoSha256) {
+    String dados = "{\"dadosPrivadosOcultos\":true,\"finalidade\":\"" + finalidade.name()
+        + "\",\"quantidade\":" + quantidade + ",\"escopoSha256\":\"" + escopoSha256 + "\"}";
+    repository.save(AuditoriaEventoEntity.registrar(UUID.randomUUID(), atorId,
+        "ARQUIVO_PUBLICIDADE_RELATORIO_PREPARADO", "ARQUIVO_PUBLICIDADE", null,
+        null, dados, requestId, OffsetDateTime.now(ZoneOffset.UTC)));
+  }
+
   private void registrarInterno(UUID atorId, UUID veiculacaoId, UUID midiaId, String acao,
       String requestId, FinalidadeAcessoArquivoPublicidade finalidade) {
     String dados = "{\"dadosPrivadosOcultos\":true";

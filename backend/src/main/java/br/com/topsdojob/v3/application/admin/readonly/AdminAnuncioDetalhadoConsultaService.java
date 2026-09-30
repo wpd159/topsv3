@@ -239,6 +239,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 fotoElegivelAnuncioPolicy.consultarTotais(anuncio.getId());
         return new AdminAnuncioDetalheDto(
                 anuncio.getId(),
+                anuncio.getVersao(),
                 anuncio.getSlug(),
                 AdminTextoSanitizer.resumo(anuncio.getTitulo(), 120),
                 descricaoResumo,
@@ -436,7 +437,8 @@ public class AdminAnuncioDetalhadoConsultaService {
                 usuario.getEmailNormalizado(),
                 formatarCpf(usuario.getCpfNormalizado()),
                 usuario.getTelefoneNormalizado(),
-                enumName(usuario.getStatus()));
+                enumName(usuario.getStatus()),
+                usuario.getDataNascimento());
     }
 
     private AdminRevisaoAbertaDto revisaoAberta(RevisaoAnuncioEntity revisao) {

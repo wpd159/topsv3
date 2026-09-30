@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -48,7 +48,9 @@ import {
 } from '@/lib/seo/indexnow-client'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
+import { ownerAge, ownerBirthLabel } from './owner-age'
 import { AdminAnuncioMidiaUploader } from './admin-anuncio-midia-uploader'
+import { AdminAnuncioVideoUploader } from './admin-anuncio-video-uploader'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
 import {
   AdminAdOwnerFormError,
@@ -58,7 +60,9 @@ import {
   decideAdminMedia,
   decideAdminPhotosBatch,
   decideAdminReview,
+  getAdminApprovalStatus,
   getAdminAd,
+  getAdminReview,
   getAdminAdQueueNavigation,
   getAdminMediaPreview,
   listAdminAdHistory,
@@ -74,11 +78,13 @@ import {
 import { adminAdQueueDetailHref, adminAdQueueListHref, parseAdminAdQueueContext } from './queue-context'
 import type {
   AdminAdDetail,
+  AdminApprovalRequest,
   AdminAdQueueNavigation,
   AdminLegalBlockCategory,
   AdminMediaItem,
   AdminMediaPreview,
   AdminModerationHistoryItem,
+  AdminModerationActionResponse,
   AdminPhotoBatchResponse,
 } from './types'
 
@@ -96,6 +102,90 @@ type LegalIntent =
   | { kind: 'BLOCK_USER'; title: string }
   | { kind: 'UNBLOCK_AD'; title: string }
   | { kind: 'UNBLOCK_USER'; title: string }
+
+type PendingApproval = AdminApprovalRequest & { anuncioId: string; revisaoId: string | null }
+
+function sameApproval(left: PendingApproval | null, right: PendingApproval) {
+  return left?.anuncioId === right.anuncioId
+    && left.operacaoId === right.operacaoId
+    && left.revisaoId === right.revisaoId
+    && left.versaoAnuncioAntes === right.versaoAnuncioAntes
+}
+
+function adMatchesApproval(ad: AdminAdDetail | null, operation: PendingApproval) {
+  return ad?.id === operation.anuncioId
+    && ad.versao === operation.versaoAnuncioAntes
+    && (ad.revisaoAberta?.id ?? null) === operation.revisaoId
+}
+
+function approvalRevisionKey(actorId: string | null, anuncioId: string, versao: number, revisaoId: string | null) {
+  return `${actorId ?? ''}:${anuncioId}:${versao}:${revisaoId ?? ''}`
+}
+
+function isActiveDetailPath(anuncioId: string, pathname: string | null) {
+  if (!pathname) return true
+  return pathname.replace(/\/$/, '') === `/admin/anuncios/${encodeURIComponent(anuncioId)}`
+}
+
+const APPROVAL_STORAGE_PREFIX = 'tops-admin-approval-v1:'
+
+function approvalStorageKey(actorId: string, anuncioId: string) {
+  return `${APPROVAL_STORAGE_PREFIX}${actorId}:${anuncioId}`
+}
+
+function persistPendingApproval(actorId: string | null, operation: PendingApproval) {
+  if (!actorId || typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(approvalStorageKey(actorId, operation.anuncioId), JSON.stringify(operation))
+  } catch { /* Sem armazenamento, a interface ainda bloqueia a tentativa corrente. */ }
+}
+
+function clearPendingApproval(actorId: string | null, operation: PendingApproval) {
+  if (!actorId || typeof window === 'undefined') return
+  try {
+    const key = approvalStorageKey(actorId, operation.anuncioId)
+    const stored = window.sessionStorage.getItem(key)
+    if (stored && sameApproval(JSON.parse(stored) as PendingApproval, operation)) {
+      window.sessionStorage.removeItem(key)
+    }
+  } catch { /* Não altera o resultado confirmado. */ }
+}
+
+function restorePendingApproval(actorId: string | null, anuncioId: string): PendingApproval | null {
+  if (!actorId || typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(approvalStorageKey(actorId, anuncioId))
+    if (!raw) return null
+    const item = JSON.parse(raw) as Partial<PendingApproval>
+    if (item.anuncioId === anuncioId && typeof item.operacaoId === 'string'
+      && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item.operacaoId)
+      && Number.isSafeInteger(item.versaoAnuncioAntes) && Number(item.versaoAnuncioAntes) >= 0
+      && (item.revisaoId == null || typeof item.revisaoId === 'string')) {
+      return item as PendingApproval
+    }
+  } catch { /* Referência inválida não comprova a conclusão da operação. */ }
+  return null
+}
+
+function validateApprovalResponse(response: AdminModerationActionResponse, operation: PendingApproval) {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const reviewConfirmed = response?.recursoTipo === 'REVISAO_ANUNCIO'
+    && response.status === 'APROVADA'
+    && (operation.revisaoId ? response.recursoId === operation.revisaoId : uuid.test(response.recursoId))
+  const legacyConfirmed = !operation.revisaoId && response?.recursoTipo === 'ANUNCIO'
+    && response.recursoId === operation.anuncioId && response.status === 'PUBLICADO'
+  if (!response || !uuid.test(response.id)
+    || response.operacaoIdCliente !== operation.operacaoId
+    || response.versaoAnuncioAntes !== operation.versaoAnuncioAntes
+    || response.decisao !== 'APROVAR' || response.auditoriaRegistrada !== true
+    || response.emailRealEnviado !== false || response.hardDeleteExecutado !== false
+    || !Number.isFinite(Date.parse(response.decididoEm)) || typeof response.mensagem !== 'string'
+    || (!reviewConfirmed && !legacyConfirmed)) {
+    // A 200 idempotent response can report an already approved ad without
+    // recording this decision. Do not attribute that prior approval to us.
+    throw new ApiContractError('A resposta não confirma uma aprovação registrada por esta operação. Confira a revisão por leitura; não reenvie a operação.', 'TECHNICAL_FAILURE', null, false, response?.requestId ?? null)
+  }
+}
 
 function indexNowContext(ad: AdminAdDetail) {
   return {
@@ -661,21 +751,45 @@ function PhotoDeleteDialog({
 }
 
 export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anuncioId: string; initialQuery?: string }) {
+  const pathname = usePathname()
+  const activeAdIdRef = useRef(anuncioId)
+  const routeContextRef = useRef({ anuncioId, pathname, generation: 0 })
+  if (routeContextRef.current.anuncioId !== anuncioId || routeContextRef.current.pathname !== pathname) {
+    routeContextRef.current = { anuncioId, pathname, generation: routeContextRef.current.generation + 1 }
+  }
+  activeAdIdRef.current = anuncioId
+  const routeIsActive = () => isActiveDetailPath(anuncioId,
+    typeof window !== 'undefined' ? window.location?.pathname ?? pathname : pathname)
   const router = useRouter()
   const queueParams = useMemo(() => new URLSearchParams(initialQuery), [initialQuery])
   const hasQueueContext = queueParams.get('fila') === '1'
   const queueContext = useMemo(() => parseAdminAdQueueContext(queueParams), [queueParams])
   const [ad, setAd] = useState<AdminAdDetail | null>(null)
+  const currentAdRef = useRef(ad)
+  currentAdRef.current = ad
   const [media, setMedia] = useState<AdminMediaItem[]>([])
   const [history, setHistory] = useState<AdminModerationHistoryItem[]>([])
   const [permissions, setPermissions] = useState<string[]>([])
   const [roles, setRoles] = useState<string[]>([])
+  const actorIdRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
   const [intent, setIntent] = useState<DecisionIntent | null>(null)
   const [actionError, setActionError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const decisionLock = useRef(false)
+  const decisionLockOwnerRef = useRef<typeof routeContextRef.current | null>(null)
+  const pendingApprovalRef = useRef<PendingApproval | null>(null)
+  const approvalConfirmedRef = useRef(new Map<string, PendingApproval>())
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null)
+  const [approvalChecking, setApprovalChecking] = useState(false)
+  const [approvalCheckError, setApprovalCheckError] = useState<unknown>(null)
+  const [approvalReadInconclusive, setApprovalReadInconclusive] = useState(false)
+  const [approvalFollowupError, setApprovalFollowupError] = useState<unknown>(null)
+  const approvalReadLock = useRef(false)
+  const approvalReadOwnerRef = useRef<typeof routeContextRef.current | null>(null)
+  const activityEpochRef = useRef(0)
+  const adminMediaAllowedRef = useRef(false)
   const [legalIntent, setLegalIntent] = useState<LegalIntent | null>(null)
   const [legalActionError, setLegalActionError] = useState<unknown>(null)
   const [legalBusy, setLegalBusy] = useState(false)
@@ -696,7 +810,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const photoDeleteLock = useRef(false)
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
   const [navigationError, setNavigationError] = useState<unknown>(null)
-  const [decisionOutcome, setDecisionOutcome] = useState<'APPROVED' | 'REPROVED' | 'OTHER' | null>(null)
+  const [decisionOutcome, setDecisionOutcome] = useState<'APPROVED' | 'REGULARIZED' | 'COMPLETED' | 'REPROVED' | 'OTHER' | null>(null)
   const [ownerEditOpen, setOwnerEditOpen] = useState(false)
   const [ownerEditName, setOwnerEditName] = useState('')
   const [ownerEditCpf, setOwnerEditCpf] = useState('')
@@ -710,6 +824,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     value: 'LIVRE' | 'RESTRITA_18'
     mode: 'DECISION' | 'RECLASSIFY'
   }, surfaceError = true) => {
+    const routeAtLoad = routeContextRef.current
+    const activityAtLoad = activityEpochRef.current
     setLoading(true)
     if (surfaceError) setError(null)
     try {
@@ -721,6 +837,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         canReadMedia ? listAdminAdMedia(anuncioId) : Promise.resolve(null),
         canReadHistory ? listAdminAdHistory(anuncioId) : Promise.resolve([]),
       ])
+      if (routeContextRef.current !== routeAtLoad || activityEpochRef.current !== activityAtLoad
+        || activeAdIdRef.current !== anuncioId || !routeIsActive()) return adResponse
       setAd(adResponse)
       const visibleMedia = mediaResponse?.itens.filter((item) => String(item.tipo) !== 'STORY') ?? []
       setMedia(visibleMedia)
@@ -733,6 +851,22 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       setHistory(historyResponse)
       setPermissions(sessionPermissions)
       setRoles(session?.papeis ?? [])
+      const loadedActorId = session?.usuarioId ?? null
+      if (actorIdRef.current !== loadedActorId) {
+        pendingApprovalRef.current = null
+        setPendingApproval(null)
+        setApprovalReadInconclusive(false)
+        setDecisionOutcome(null)
+        setApprovalFollowupError(null)
+      }
+      actorIdRef.current = loadedActorId
+      if (activeAdIdRef.current === anuncioId && !pendingApprovalRef.current) {
+        const restored = restorePendingApproval(actorIdRef.current, anuncioId)
+        if (restored) {
+          pendingApprovalRef.current = restored
+          setPendingApproval(restored)
+        }
+      }
       setVisibility(() => {
         const next: Record<string, 'LIVRE' | 'RESTRITA_18'> = {}
         mediaResponse?.itens.forEach((item) => { if (item.tipo === 'FOTO' && item.visibilidadeMidia) next[item.id] = item.visibilidadeMidia })
@@ -747,19 +881,61 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         }
         return next
       })
+      return adResponse
     } catch (reason) {
+      if (routeContextRef.current !== routeAtLoad || activityEpochRef.current !== activityAtLoad
+        || activeAdIdRef.current !== anuncioId || !routeIsActive()) return undefined
       if (!surfaceError) throw reason
       setError(reason)
     } finally {
-      setLoading(false)
+      if (routeContextRef.current === routeAtLoad && activityEpochRef.current === activityAtLoad
+        && activeAdIdRef.current === anuncioId && routeIsActive()) setLoading(false)
     }
   }, [anuncioId])
 
-  useEffect(() => { void load() }, [load, reload])
+  useEffect(() => {
+    activityEpochRef.current += 1
+    if (routeIsActive() && !pendingApprovalRef.current && decisionLock.current) {
+      decisionLockOwnerRef.current = null
+      decisionLock.current = false
+      setBusy(false)
+    }
+    if (routeIsActive() && pendingApprovalRef.current?.anuncioId === anuncioId) {
+      setPendingApproval(pendingApprovalRef.current)
+    }
+    return () => { activityEpochRef.current += 1 }
+  }, [anuncioId, pathname])
+
+  useEffect(() => { if (routeIsActive()) void load() }, [load, reload, pathname])
 
   useEffect(() => {
     setDecisionOutcome(null)
-  }, [anuncioId])
+    setIntent(null)
+    setActionError(null)
+    if (decisionLockOwnerRef.current !== routeContextRef.current) {
+      decisionLockOwnerRef.current = null
+      decisionLock.current = false
+      setBusy(false)
+    }
+    if (approvalReadOwnerRef.current !== routeContextRef.current) {
+      approvalReadOwnerRef.current = null
+      approvalReadLock.current = false
+      setApprovalChecking(false)
+    }
+    if (pendingApprovalRef.current?.anuncioId !== anuncioId) {
+      pendingApprovalRef.current = null
+      setPendingApproval(null)
+      setApprovalReadInconclusive(false)
+      setApprovalCheckError(null)
+    }
+  }, [anuncioId, pathname])
+
+  useEffect(() => {
+    if (ad?.id === anuncioId && ad.statusModeracao === 'PENDENTE'
+      && !approvalConfirmedRef.current.has(approvalRevisionKey(actorIdRef.current, ad.id, ad.versao, ad.revisaoAberta?.id ?? null))) {
+      setDecisionOutcome(null)
+    }
+  }, [ad, anuncioId])
 
   useEffect(() => {
     if (!hasQueueContext) return
@@ -829,7 +1005,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   }
 
   function openOwnerEdit() {
-    if (!ad?.anunciante) return
+    if (decisionLock.current || pendingApprovalRef.current || !ad?.anunciante) return
     setOwnerEditName(ad.anunciante.nomeCivil || ad.anunciante.nome || '')
     setOwnerEditCpf(maskCpf(ad.anunciante.cpf || ''))
     setOwnerEditError(null)
@@ -845,7 +1021,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   }
 
   async function confirmOwnerEdit() {
-    if (ownerEditLock.current || !ad?.anunciante) return
+    if (decisionLock.current || pendingApprovalRef.current || ownerEditLock.current || !ad?.anunciante) return
     const nome = ownerEditName.trim().replace(/\s+/g, ' ')
     const cpf = cpfDigits(ownerEditCpf)
     const errors: Record<string, string> = {}
@@ -892,6 +1068,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   async function confirmPhotoBatch() {
     if (
       photoBatchLock.current
+      || decisionLock.current
+      || pendingApprovalRef.current
       || !ad
       || !allPendingPhotosSelected
     ) return
@@ -941,7 +1119,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   }
 
   async function confirmPhotoDelete() {
-    if (photoDeleteLock.current || !photoDeleteTarget || !ad) return
+    if (decisionLock.current || pendingApprovalRef.current || photoDeleteLock.current || !photoDeleteTarget || !ad) return
     photoDeleteLock.current = true
     setPhotoDeleteBusy(true)
     setPhotoDeleteError(null)
@@ -980,22 +1158,155 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     }
   }
 
+  async function confirmedApproval(operation: PendingApproval, actorId: string | null, outcome: 'APPROVED' | 'REGULARIZED' | 'COMPLETED') {
+    const operacaoId = operation.operacaoId
+    const routeAtConfirmation = routeContextRef.current
+    const activityAtConfirmation = activityEpochRef.current
+    clearPendingApproval(actorId, operation)
+    approvalConfirmedRef.current.set(
+      approvalRevisionKey(actorId, operation.anuncioId, operation.versaoAnuncioAntes, operation.revisaoId),
+      operation,
+    )
+    const matchingPending = sameApproval(pendingApprovalRef.current, operation)
+    if (matchingPending) {
+      pendingApprovalRef.current = null
+    }
+    if (activeAdIdRef.current === operation.anuncioId && routeIsActive()
+      && actorIdRef.current === actorId
+      && matchingPending) {
+      setPendingApproval(null)
+      setApprovalCheckError(null)
+      setIntent(null)
+      setActionError(null)
+      if (adMatchesApproval(currentAdRef.current, operation)) setDecisionOutcome(outcome)
+    }
+    // The mutation is already confirmed. A cache/read failure must not offer a
+    // second approval or turn the committed decision into a failed mutation.
+    try {
+      await revalidarCacheCatalogoPublico()
+      const updated = routeContextRef.current === routeAtConfirmation
+        && activityEpochRef.current === activityAtConfirmation && routeIsActive()
+        && activeAdIdRef.current === operation.anuncioId
+        && actorIdRef.current === actorId
+        && adMatchesApproval(currentAdRef.current, operation)
+        ? await load(undefined, false)
+        : await getAdminAd(operation.anuncioId)
+      if (ad && updated) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: anuncioEstaPublicamenteIndexavel(ad.status) ? 'ATUALIZACAO' : 'PUBLICACAO',
+          previous: anuncioEstaPublicamenteIndexavel(ad.status) ? indexNowContext(ad) : null,
+          current: indexNowContext(updated),
+          changeFingerprint: operacaoId,
+        }))
+      }
+    } catch (followupError) {
+      if (activeAdIdRef.current === operation.anuncioId && routeIsActive()
+        && activityEpochRef.current === activityAtConfirmation
+        && actorIdRef.current === actorId
+        && adMatchesApproval(currentAdRef.current, operation)) {
+        setApprovalFollowupError(followupError)
+      }
+    }
+  }
+
+  async function checkApprovalByRead() {
+    const operation = pendingApprovalRef.current
+    if (!operation || operation.anuncioId !== anuncioId || approvalReadLock.current || !routeIsActive()) return
+    const actorAtStart = actorIdRef.current
+    const routeAtStart = routeContextRef.current
+    const activityAtStart = activityEpochRef.current
+    approvalReadLock.current = true
+    approvalReadOwnerRef.current = routeAtStart
+    setApprovalChecking(true)
+    setApprovalCheckError(null)
+    setApprovalReadInconclusive(false)
+    try {
+      const result = await getAdminApprovalStatus(operation.anuncioId, operation)
+      if (routeContextRef.current !== routeAtStart || activityEpochRef.current !== activityAtStart
+        || actorIdRef.current !== actorAtStart || !routeIsActive()
+        || !sameApproval(pendingApprovalRef.current, operation)) return
+      if (result.anuncioId !== operation.anuncioId || result.operacaoIdCliente !== operation.operacaoId) {
+        throw new ApiContractError('A consulta não corresponde a esta operação de aprovação. Nenhuma confirmação foi atribuída.', 'CONFLICT', 409)
+      }
+      if (result.estado === 'INCONCLUSIVA') {
+        setApprovalReadInconclusive(true)
+        return
+      }
+      if (!['CONFIRMADA', 'PUBLICACAO_REGULARIZADA'].includes(result.estado)
+        || result.versaoAnuncioAntes !== operation.versaoAnuncioAntes
+        || (operation.revisaoId && result.revisaoIdConfirmada !== operation.revisaoId)) {
+        throw new ApiContractError('A consulta não confirmou a revisão e a versão desta operação. O resultado continua incerto.', 'TECHNICAL_FAILURE', null, false)
+      }
+      await confirmedApproval(operation, actorAtStart,
+        result.estado === 'PUBLICACAO_REGULARIZADA' ? 'REGULARIZED' : 'APPROVED')
+    } catch (readError) {
+      if (routeContextRef.current === routeAtStart && activityEpochRef.current === activityAtStart
+        && actorIdRef.current === actorAtStart && routeIsActive()
+        && sameApproval(pendingApprovalRef.current, operation)) setApprovalCheckError(readError)
+    } finally {
+      if (approvalReadOwnerRef.current === routeAtStart) {
+        approvalReadOwnerRef.current = null
+        approvalReadLock.current = false
+        setApprovalChecking(false)
+      }
+    }
+  }
+
   async function confirmDecision(reason: string) {
-    if (!intent || decisionLock.current || !ad) return
+    if (!intent || decisionLock.current || pendingApprovalRef.current || !ad
+      || ad.id !== anuncioId || activeAdIdRef.current !== ad.id || !routeIsActive()) return
+    const approvalIntent = intent.kind === 'APPROVE_AD' || (intent.kind === 'REVIEW' && intent.action === 'APROVAR')
+    const approvalKey = approvalRevisionKey(actorIdRef.current, ad.id, ad.versao, ad.revisaoAberta?.id ?? null)
+    if (approvalIntent && approvalConfirmedRef.current.has(approvalKey)) return
+    const routeAtStart = routeContextRef.current
+    const activityAtStart = activityEpochRef.current
+    const actorAtStart = actorIdRef.current
+    const approvalStillCurrent = () => {
+      const current = currentAdRef.current
+      return routeContextRef.current === routeAtStart
+        && activityEpochRef.current === activityAtStart
+        && activeAdIdRef.current === ad.id
+        && routeIsActive()
+        && actorIdRef.current === actorAtStart
+        && current?.id === ad.id
+        && current.versao === ad.versao
+        && (current.revisaoAberta?.id ?? null) === (ad.revisaoAberta?.id ?? null)
+        && current.status === ad.status
+        && current.statusModeracao === ad.statusModeracao
+    }
+    const requireApprovalContext = () => {
+      if (!approvalStillCurrent()) {
+        throw new ApiContractError('O contexto do anúncio ou da revisão mudou durante a consulta. Confira os dados antes de aprovar.', 'CONFLICT', 409)
+      }
+    }
     decisionLock.current = true
+    decisionLockOwnerRef.current = routeAtStart
     setBusy(true)
     setActionError(null)
+    setApprovalFollowupError(null)
+    setDecisionOutcome(null)
+    let approvalAttempt: PendingApproval | null = null
     try {
       if (intent.kind === 'OPEN_REVIEW') await submitAdminReview(ad.id, reason)
       else if (intent.kind === 'APPROVE_AD') {
-        const response = await approveAdminAd(ad.id)
-        await revalidarCacheCatalogoPublico()
-        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
-          eventType: 'PUBLICACAO',
-          current: indexNowContext(ad),
-          changeFingerprint: response.requestId,
-        }))
-        setDecisionOutcome('APPROVED')
+        if (!Number.isSafeInteger(ad.versao) || ad.versao < 0) {
+          throw new ApiContractError('A versão do anúncio não está disponível. Atualize os dados antes de aprovar.', 'TECHNICAL_FAILURE', null, false)
+        }
+        const review = ad.revisaoAberta?.id ? await getAdminReview(ad.revisaoAberta.id) : null
+        if (review && (review.id !== ad.revisaoAberta?.id || review.anuncioId !== ad.id || !['ABERTA', 'EM_ANALISE'].includes(review.status))) {
+          throw new ApiContractError('O estado da revisão mudou. Confira os dados antes de aprovar.', 'CONFLICT', 409)
+        }
+        requireApprovalContext()
+        approvalAttempt = {
+          anuncioId: ad.id, operacaoId: crypto.randomUUID(), versaoAnuncioAntes: ad.versao,
+          revisaoId: review?.id ?? null,
+        }
+        pendingApprovalRef.current = approvalAttempt
+        persistPendingApproval(actorIdRef.current, approvalAttempt)
+        const response = await approveAdminAd(ad.id, approvalAttempt)
+        validateApprovalResponse(response, approvalAttempt)
+        await confirmedApproval(approvalAttempt, actorAtStart, 'COMPLETED')
+        return
       } else if (intent.kind === 'REPROVE_AD') {
         let reviewId = reviewOpen ? ad.revisaoAberta?.id : null
         if (!reviewId) {
@@ -1018,18 +1329,25 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         setDecisionOutcome('REPROVED')
       } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
-        const response = await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         if (intent.action === 'APROVAR') {
-          await revalidarCacheCatalogoPublico()
-          const updated = await getAdminAd(ad.id)
-          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
-            eventType: anuncioEstaPublicamenteIndexavel(ad.status) ? 'ATUALIZACAO' : 'PUBLICACAO',
-            previous: anuncioEstaPublicamenteIndexavel(ad.status) ? indexNowContext(ad) : null,
-            current: indexNowContext(updated),
-            changeFingerprint: response.requestId,
-          }))
+          if (!Number.isSafeInteger(ad.versao) || ad.versao < 0) {
+            throw new ApiContractError('A versão do anúncio não está disponível. Atualize os dados antes de aprovar.', 'TECHNICAL_FAILURE', null, false)
+          }
+          const review = await getAdminReview(ad.revisaoAberta.id)
+          if (review.id !== ad.revisaoAberta.id || review.anuncioId !== ad.id || !['ABERTA', 'EM_ANALISE'].includes(review.status)) {
+            throw new ApiContractError('O estado da revisão mudou. Confira os dados antes de aprovar.', 'CONFLICT', 409)
+          }
+          requireApprovalContext()
+          approvalAttempt = { anuncioId: ad.id, operacaoId: crypto.randomUUID(), versaoAnuncioAntes: ad.versao, revisaoId: review.id }
+          pendingApprovalRef.current = approvalAttempt
+          persistPendingApproval(actorIdRef.current, approvalAttempt)
+          const response = await decideAdminReview(review.id, intent.action, reason, approvalAttempt)
+          validateApprovalResponse(response, approvalAttempt)
+          await confirmedApproval(approvalAttempt, actorAtStart, 'COMPLETED')
+          return
         }
-        setDecisionOutcome(intent.action === 'APROVAR' ? 'APPROVED' : intent.action === 'REPROVAR' ? 'REPROVED' : 'OTHER')
+        await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
+        setDecisionOutcome(intent.action === 'REPROVAR' ? 'REPROVED' : 'OTHER')
       } else if (intent.kind === 'MEDIA') {
         const motivo = intent.action === 'REPROVAR' ? reason : undefined
         const observacao = intent.action === 'APROVAR'
@@ -1074,6 +1392,30 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       setIntent(null)
     } catch (reasonError) {
       const normalized = normalizeApiError(reasonError)
+      if (approvalIntent && !approvalAttempt && !approvalStillCurrent()) return
+      if (approvalAttempt && !approvalStillCurrent()) {
+        // O contexto mudou após o envio; preserve apenas a referência exata
+        // daquela operação, sem alterar o detalhe atual.
+        if (normalized.kind !== 'NETWORK_FAILURE' && normalized.kind !== 'TECHNICAL_FAILURE') {
+          clearPendingApproval(actorAtStart, approvalAttempt)
+          if (sameApproval(pendingApprovalRef.current, approvalAttempt)) {
+            pendingApprovalRef.current = null
+            if (routeIsActive() && actorIdRef.current === actorAtStart) setPendingApproval(null)
+          }
+        }
+        return
+      }
+      if (approvalAttempt && (normalized.kind === 'NETWORK_FAILURE' || normalized.kind === 'TECHNICAL_FAILURE')) {
+        setPendingApproval(approvalAttempt)
+        setIntent(null)
+        setApprovalCheckError(null)
+        setApprovalReadInconclusive(false)
+        return
+      }
+      if (approvalAttempt) {
+        if (sameApproval(pendingApprovalRef.current, approvalAttempt)) pendingApprovalRef.current = null
+        clearPendingApproval(actorAtStart, approvalAttempt)
+      }
       if (
         (intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD' || intent.kind === 'REVIEW')
         && normalized.kind === 'CONFLICT'
@@ -1118,8 +1460,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       }
       setActionError(reasonError)
     } finally {
-      decisionLock.current = false
-      setBusy(false)
+      if (decisionLockOwnerRef.current === routeAtStart) {
+        decisionLockOwnerRef.current = null
+        decisionLock.current = false
+        setBusy(false)
+      }
     }
   }
 
@@ -1128,7 +1473,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     reason: string,
     internalNote: string,
   ) {
-    if (!legalIntent || legalBusy || !ad) return
+    if (decisionLock.current || pendingApprovalRef.current || !legalIntent || legalBusy || !ad) return
     setLegalBusy(true)
     setLegalActionError(null)
     try {
@@ -1208,6 +1553,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   if (error || !ad) return <ContractState error={error ?? new Error('Anúncio indisponível.')} onRetry={() => setReload((value) => value + 1)} />
 
   async function confirmRemoval(reason: string) {
+    if (decisionLock.current || pendingApprovalRef.current) return
     if (!removalOpen || removalBusy || !ad) return
     setRemovalBusy(true)
     setRemovalActionError(null)
@@ -1248,6 +1594,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     && ad.statusModeracao === 'APROVADO'
   const canApproveAd = canDecideAdReview
     && ownerEligibleForModeration
+    && !(['APPROVED', 'REGULARIZED', 'COMPLETED'].includes(decisionOutcome ?? '')
+      && approvalConfirmedRef.current.has(approvalRevisionKey(actorIdRef.current, ad.id, ad.versao, ad.revisaoAberta?.id ?? null)))
     && (legacyApprovalWithoutPublication || (
       ad.statusModeracao === 'PENDENTE'
       && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
@@ -1269,8 +1617,21 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     : ad.fotosAprovadasTotal === 0
       ? 'Aprove ao menos uma foto antes de aprovar o anúncio.'
       : null
-  const canUploadAdminMedia = isAdmin && canModerateAd && canModerateMedia && !removed
-  const headerBusy = loading || busy || legalBusy || removalBusy
+  const approvalBlocked = busy || Boolean(pendingApproval)
+  const canUploadAdminMedia = isAdmin && canModerateAd && canModerateMedia && !removed && !approvalBlocked
+    && ad.id === anuncioId && routeIsActive()
+  adminMediaAllowedRef.current = canUploadAdminMedia && !loading && !legalBusy && !removalBusy
+  const uploadRoute = routeContextRef.current
+  const uploadEpoch = activityEpochRef.current
+  const uploadActor = actorIdRef.current
+  const adminVideoContextIsCurrent = () => routeContextRef.current === uploadRoute
+    && activityEpochRef.current === uploadEpoch
+    && actorIdRef.current === uploadActor
+    && activeAdIdRef.current === anuncioId
+    && currentAdRef.current?.id === anuncioId
+    && routeIsActive() && !decisionLock.current && !pendingApprovalRef.current
+    && adminMediaAllowedRef.current
+  const headerBusy = loading || approvalBlocked || legalBusy || removalBusy
   const headerActionClass = 'h-8 whitespace-nowrap px-2.5 text-xs'
 
   return (
@@ -1365,7 +1726,10 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 {'Excluir an\u00fancio'}
               </Button>
             ) : null}
-            {isAdmin && canModerateAd && !removed ? <Button asChild size="sm" variant="outline" className={headerActionClass}><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-1.5 h-4 w-4" />Editar anúncio</Link></Button> : null}
+            {isAdmin && canModerateAd && !removed ? headerBusy
+              ? <Button disabled size="sm" variant="outline" className={headerActionClass}><Pencil className="mr-1.5 h-4 w-4" />Editar anúncio</Button>
+              : <Button asChild size="sm" variant="outline" className={headerActionClass}><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-1.5 h-4 w-4" />Editar anúncio</Link></Button>
+              : null}
           </div>
         </div>
       </header>
@@ -1402,17 +1766,38 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         </nav>
       ) : null}
       {navigationError ? <ContractState error={navigationError} compact /> : null}
+      {pendingApproval ? (
+        <section role="alert" aria-label="Resultado incerto da aprovação" className="space-y-3 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">Resultado da aprovação ainda não confirmado</p>
+          <p>A resposta não chegou completa. A operação pode ter sido concluída ou continuar em andamento. Não reenvie a aprovação; ações incompatíveis nesta tela permanecem bloqueadas.</p>
+          <p className="break-all text-xs">Operação: {pendingApproval.operacaoId}</p>
+          {pendingApproval.revisaoId ? <p className="break-all text-xs">Revisão: {pendingApproval.revisaoId}</p> : <p>A revisão ainda não estava identificada. A consulta por operação verificará a evidência disponível.</p>}
+          {approvalReadInconclusive ? (
+            <div role="status">
+              <p>A consulta não encontrou evidência conclusiva desta operação. Ela pode continuar em andamento; o resultado permanece incerto.</p>
+            </div>
+          ) : null}
+          {approvalCheckError ? <ContractState error={approvalCheckError} compact /> : null}
+          <Button type="button" variant="outline" disabled={approvalChecking} onClick={() => void checkApprovalByRead()}>
+            {approvalChecking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Conferir aprovação por leitura
+          </Button>
+        </section>
+      ) : null}
       {decisionOutcome ? (
         <div role="status" className="flex flex-col gap-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:flex-row sm:items-center sm:justify-between">
           <span>
             {decisionOutcome === 'APPROVED'
               ? 'Anúncio aprovado e publicado com sucesso.'
+              : decisionOutcome === 'REGULARIZED'
+                ? 'Publicação do anúncio regularizada com sucesso.'
+              : decisionOutcome === 'COMPLETED'
+                ? 'Operação de publicação concluída com sucesso.'
               : decisionOutcome === 'REPROVED'
                 ? 'Anúncio reprovado. O anunciante foi informado sobre as alterações necessárias.'
                 : 'Decisão persistida. O avanço permanece sob seu controle.'}
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            {decisionOutcome === 'APPROVED' ? (
+            {['APPROVED', 'REGULARIZED', 'COMPLETED'].includes(decisionOutcome ?? '') ? (
               <>
                 <Button asChild size="sm" variant="outline">
                   <Link href={adminAdQueueListHref({ ...queueContext, page: 0, situacao: 'TODOS' })}>Ver Todos</Link>
@@ -1429,13 +1814,20 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           </div>
         </div>
       ) : null}
+      {approvalFollowupError ? (
+        <div role="alert" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">A operação foi confirmada, mas a atualização da tela ou do cache não terminou.</p>
+          <p>Não aprove novamente. Recarregue o detalhe para conferir os dados atuais.</p>
+          <ContractState error={approvalFollowupError} compact />
+        </div>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="rounded-md border border-zinc-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-zinc-950">Proprietário</h2>
             {isAdmin && canModerateAd && ad.anunciante ? (
-              <Button type="button" size="sm" variant="outline" onClick={openOwnerEdit}>
+              <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={openOwnerEdit}>
                 <Pencil className="h-4 w-4" />Editar dados do usuário
               </Button>
             ) : null}
@@ -1444,7 +1836,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             <div><span className="block text-xs text-zinc-500">Nome completo</span><strong>{ad.anunciante?.nomeCivil || ad.anunciante?.nome || 'Não informado'}</strong></div>
             <div><span className="block text-xs text-zinc-500">Conta</span><strong>{formatEnum(ad.anunciante?.status)}</strong></div>
             <div><span className="block text-xs text-zinc-500">E-mail</span><span className="break-all">{ad.anunciante?.email || 'Não informado'}</span></div>
-            <div><span className="block text-xs text-zinc-500">CPF</span><span>{ad.anunciante?.cpf || 'Não informado'}</span></div>
+            <div>
+              <span className="block text-xs text-zinc-500">CPF</span><span>{ad.anunciante?.cpf || 'Não informado'}</span>
+              <span className="mt-2 block text-xs text-zinc-500">Nascimento e idade (anos completos, Brasília)</span>
+              <span>{ownerBirthLabel(ad.anunciante?.dataNascimento)}{ownerAge(ad.anunciante?.dataNascimento) != null ? ` · ${ownerAge(ad.anunciante?.dataNascimento)} anos` : ' · Idade não disponível'}</span>
+            </div>
             <div className="sm:col-span-2"><span className="block text-xs text-zinc-500">WhatsApp</span>{whatsappDigits ? <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-pink-700 hover:underline">{maskPhoneBR(ad.anunciante?.whatsapp || '')}<ExternalLink className="h-3 w-3" /></a> : <span>Não informado</span>}</div>
           </div>
         </div>
@@ -1492,6 +1888,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                     <Button
                       type="button"
                       variant="outline"
+                      disabled={headerBusy}
                       onClick={() => setIntent({
                         kind: 'OPEN_REVIEW',
                         title: 'Abrir revisão do anúncio',
@@ -1506,6 +1903,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                       <Button
                         type="button"
                         variant="outline"
+                        disabled={headerBusy}
                         onClick={() => setIntent({
                           kind: 'REVIEW',
                           title: 'Solicitar ajuste no anúncio',
@@ -1544,11 +1942,22 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             </div>
           ) : null}
           {canUploadAdminMedia ? (
-            <AdminAnuncioMidiaUploader
-              anuncioId={ad.id}
-              disabled={loading}
-              onReload={() => load(undefined, false)}
-            />
+            <div className="grid gap-4 xl:grid-cols-2">
+              <AdminAnuncioMidiaUploader
+                key={`foto:${ad.id}`}
+                anuncioId={ad.id}
+                disabled={loading}
+                onReload={async () => { await load(undefined, false) }}
+              />
+              <AdminAnuncioVideoUploader
+                key={`video:${ad.id}`}
+                anuncioId={ad.id}
+                actorId={uploadActor}
+                isCurrent={adminVideoContextIsCurrent}
+                disabled={loading}
+                onReload={async () => { await load(undefined, false) }}
+              />
+            </div>
           ) : null}
           {!canModerateMedia ? (
             <p className="text-sm font-medium text-amber-700">Seu perfil não possui MIDIA_REVISAR.</p>
@@ -1582,7 +1991,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                           <PendingPhotoDecisionSelector
                             mediaId={item.id}
                             value={photoDecisions[item.id]}
-                            disabled={photoBatchBusy}
+                            disabled={photoBatchBusy || approvalBlocked}
                             onChange={(value) => selectPhotoDecision(item.id, value)}
                             onObservationChange={(value) => updatePhotoObservation(item.id, value)}
                           />
@@ -1592,7 +2001,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                           <MediaVisibilitySelector
                             mediaId={item.id}
                             value={selectedVisibility}
-                            disabled={busy}
+                            disabled={approvalBlocked}
                             onChange={(value) => setVisibility((current) => ({ ...current, [item.id]: value }))}
                           />
                         ) : null}
@@ -1602,7 +2011,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                             size="sm"
                             variant="destructive"
                             className="mt-4 w-full"
-                            disabled={busy || photoBatchBusy || photoDeleteBusy}
+                            disabled={approvalBlocked || photoBatchBusy || photoDeleteBusy}
                             onClick={() => setIntent({
                               kind: 'MEDIA',
                               title: 'Rejeitar foto',
@@ -1616,15 +2025,15 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                         ) : null}
                         {actionableVideo ? (
                           <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Button type="button" size="sm" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: 'Aplicar e aprovar vídeo', media: item, action: 'APROVAR', visibility: 'RESTRITA_18', requiresReason: false })}>Aplicar e aprovar</Button>
-                            <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: 'Rejeitar vídeo', media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button>
+                            <Button type="button" size="sm" disabled={approvalBlocked} onClick={() => setIntent({ kind: 'MEDIA', title: 'Aplicar e aprovar vídeo', media: item, action: 'APROVAR', visibility: 'RESTRITA_18', requiresReason: false })}>Aplicar e aprovar</Button>
+                            <Button type="button" size="sm" variant="destructive" disabled={approvalBlocked} onClick={() => setIntent({ kind: 'MEDIA', title: 'Rejeitar vídeo', media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button>
                           </div>
                         ) : reclassifiable && canReclassifyMedia ? (
                           <Button
                             type="button"
                             size="sm"
                             className="mt-4 w-full"
-                            disabled={busy || !selectedVisibility || selectedVisibility === item.visibilidadeMidia}
+                            disabled={approvalBlocked || !selectedVisibility || selectedVisibility === item.visibilidadeMidia}
                             onClick={() => selectedVisibility && setIntent({
                               kind: 'RECLASSIFY',
                               title: 'Aplicar nova classificação',
@@ -1642,7 +2051,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                             size="sm"
                             variant="destructive"
                             className="mt-2 w-full"
-                            disabled={photoDeleteBusy || photoBatchBusy || busy}
+                            disabled={photoDeleteBusy || photoBatchBusy || approvalBlocked}
                             onClick={() => {
                               setPhotoDeleteError(null)
                               setPhotoDeleteTarget(item)
@@ -1684,7 +2093,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 <div className="flex justify-end border-t border-zinc-200 pt-4">
                   <Button
                     type="button"
-                    disabled={!allPendingPhotosSelected || photoBatchBusy}
+                    disabled={!allPendingPhotosSelected || photoBatchBusy || approvalBlocked}
                     onClick={() => {
                       setPhotoBatchError(null)
                       setPhotoBatchOpen(true)
@@ -1700,7 +2109,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         </TabsContent>
 
         <TabsContent value="documentos"><AdminAnuncioDocumentos anuncioId={ad.id} anunciante={ad.anunciante} autorizado={canReadDocuments} /></TabsContent>
-        <TabsContent value="premium"><AdminAnuncioPremium anuncioId={ad.id} canManage={canManagePremium && !removed} disabledReason={removed ? 'Anuncio removido nao pode receber novas ativacoes Premium.' : undefined} /></TabsContent>
+        <TabsContent value="premium"><AdminAnuncioPremium anuncioId={ad.id} canManage={canManagePremium && !removed && !approvalBlocked} isMutationBlocked={() => decisionLock.current || Boolean(pendingApprovalRef.current)} disabledReason={removed ? 'Anuncio removido nao pode receber novas ativacoes Premium.' : approvalBlocked ? 'Aguarde a confirmação da aprovação antes de alterar benefícios.' : undefined} /></TabsContent>
         <TabsContent value="historico">{!canReadHistory ? <p className="text-sm font-medium text-amber-700">Sem permissão para consultar o histórico.</p> : history.length === 0 ? <p className="text-sm text-zinc-600">Nenhuma ação administrativa registrada.</p> : <ol className="divide-y divide-zinc-200 border-y border-zinc-200">{history.map((item) => <li key={item.id} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]"><div><p className="text-sm font-semibold text-zinc-900">{formatEnum(item.decisao || item.acao)}</p><p className="mt-1 text-xs text-zinc-600">{formatEnum(item.alvoTipo)} · {item.status ? formatEnum(item.status) : 'sem mudança de estado'}</p>{item.categoria ? <p className="mt-2 text-xs font-semibold uppercase text-red-700">{formatEnum(item.categoria)}</p> : null}{item.motivo ? <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">{item.motivo}</p> : null}{item.observacaoInterna ? <p className="mt-2 whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 text-xs text-zinc-600">Observação interna: {item.observacaoInterna}</p> : null}</div><div className="text-left text-xs text-zinc-500 sm:text-right"><p>{formatDate(item.criadoEm)}</p><p className="mt-1">Responsável {item.atorId?.slice(0, 8) || 'não identificado'}</p><p className="mt-1">Request {item.requestId?.slice(0, 16) || 'não informado'}</p></div></li>)}</ol>}</TabsContent>
       </Tabs>
 

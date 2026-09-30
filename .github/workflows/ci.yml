@@ -66,6 +66,8 @@ jobs:
           STORY_PERIODOS_POSTGRES17_ENABLED: "true"
           STORIES_PUBLICACAO_ARQUIVO_POSTGRES17_ENABLED: "true"
           ARQUIVO_PUBLICIDADE_TRANSICOES_POSTGRES17_ENABLED: "true"
+          APROVACAO_RECONCILIACAO_POSTGRES17_ENABLED: "true"
+          ARQUIVO_EXPORTADOR_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Preserve backend and cold JVM evidence
@@ -182,9 +184,12 @@ jobs:
           npm run test:public-data-access
           npm run test:health-readiness
           node scripts/test-photo-upload-validation.mjs
+          node scripts/test-wizard-photo-thumbnails-visual.mjs
           node scripts/test-meus-anuncios-fase-1b.mjs
           node scripts/test-admin-anuncios-fotos-lote.mjs
           node scripts/test-admin-anuncios-moderacao-v3.mjs
+          node scripts/test-admin-anuncios-video-upload.mjs
+          node scripts/test-admin-registros.mjs --browser
           node scripts/test-admin-stories-management-filters.mjs
           node scripts/test-restricted-media-age-seo.mjs
           node scripts/test-story-age-gate-fail-closed.mjs

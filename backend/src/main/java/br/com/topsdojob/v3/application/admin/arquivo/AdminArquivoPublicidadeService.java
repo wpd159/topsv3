@@ -5,6 +5,11 @@ import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Item;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Midia;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Versao;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Preservacao;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Relatorio;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Filtros;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.RelatorioRequest;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Tipo;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -55,33 +60,42 @@ public class AdminArquivoPublicidadeService {
   @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
   public AdminPaginaDto<Item> listar(int page, int size, UUID atorId, String requestId,
       FinalidadeAcessoArquivoPublicidade finalidade) {
+    return listar(page, size, Filtros.todos(), atorId, requestId, finalidade);
+  }
+
+  @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+  public AdminPaginaDto<Item> listar(int page, int size, Filtros filtros, UUID atorId,
+      String requestId, FinalidadeAcessoArquivoPublicidade finalidade) {
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para consulta privada");
     int pagina = Math.max(0, page);
     int tamanho = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
+    OffsetDateTime observadoEm = OffsetDateTime.now(ZoneOffset.UTC);
+    var sql = AdminArquivoPublicidadeConsulta.consulta(Tipo.ANUNCIO, filtros, List.of(), observadoEm);
     long total = jdbc.queryForObject(
-        "select count(*) from arquivo_publicidade_veiculacao", Long.class);
+        "select count(*)" + sql.fromWhere(), Long.class, sql.argumentos());
     List<Item> itens = jdbc.query("""
-        select v.id, v.anuncio_id, x.titulo, v.inicio_em, v.fim_em,
-               v.classificacao, v.relacao_material, v.cobertura
-          from arquivo_publicidade_veiculacao v
-          left join lateral (
-            select av.conteudo_json ->> 'titulo' as titulo
-              from arquivo_publicidade_versao av
-             where av.veiculacao_id = v.id
-             order by av.numero desc limit 1
-          ) x on true
-         order by v.inicio_em desc, v.id desc
-         limit ? offset ?
-        """, (rs, row) -> new Item(
+        select v.id, v.anuncio_id, v.contratante_usuario_id,
+               x.conteudo_json ->> 'titulo' as titulo, v.inicio_em, v.fim_em,
+               v.classificacao, v.relacao_material, v.cobertura,
+               v.encerramento_motivo, v.retencao_ate,
+        """ + AdminArquivoPublicidadeConsulta.resumo(Tipo.ANUNCIO) + sql.fromWhere()
+        + AdminArquivoPublicidadeConsulta.ordem(filtros) + " limit ? offset ? ",
+        (rs, row) -> new Item(
             rs.getObject("id", UUID.class),
             rs.getObject("anuncio_id", UUID.class),
             rs.getString("titulo"),
             instante(rs, "inicio_em"), instante(rs, "fim_em"),
             instante(rs, "fim_em") == null
-                || instante(rs, "fim_em").isAfter(OffsetDateTime.now(ZoneOffset.UTC))
+                || instante(rs, "fim_em").isAfter(observadoEm)
                 ? "EM_VEICULACAO" : "ENCERRADA",
             rs.getString("classificacao"), rs.getString("relacao_material"),
-            rs.getString("cobertura")), tamanho, (long) pagina * tamanho);
+            rs.getString("cobertura"), "ANUNCIO", rs.getString("slug"),
+            uuid(rs, "contratante_usuario_id"), rs.getString("anunciante_nome"),
+            rs.getString("beneficio_codigo"), rs.getLong("total_versoes"),
+            rs.getString("encerramento_motivo"), instante(rs, "retencao_ate"),
+            rs.getBoolean("preservacao_ativa"), AdminArquivoPublicidadeConsulta.fimTipo(
+                instante(rs, "fim_em"), rs.getString("encerramento_motivo"))),
+        sql.comPagina(tamanho, (long) pagina * tamanho));
     audit.registrar(atorId, null, "ARQUIVO_PUBLICIDADE_LISTA_CONSULTADA", requestId, finalidade);
     int totalPages = (int) Math.min(Integer.MAX_VALUE, (total + tamanho - 1) / tamanho);
     return new AdminPaginaDto<>(itens, pagina, tamanho, total, totalPages,
@@ -91,6 +105,38 @@ public class AdminArquivoPublicidadeService {
   @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
   public Detalhe detalhar(UUID id, UUID atorId, String requestId,
       FinalidadeAcessoArquivoPublicidade finalidade, boolean exportacao) {
+    if (exportacao) {
+      AdminArquivoExportadorAccessGuard.exigirAcessoAtual(jdbc, atorId);
+    }
+    return detalharInterno(id, atorId, requestId, finalidade, exportacao, true);
+  }
+
+  @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+  public Relatorio<Detalhe> relatorio(RelatorioRequest request, UUID atorId,
+      String requestId, FinalidadeAcessoArquivoPublicidade finalidade) {
+    AdminArquivoExportadorAccessGuard.exigirAcessoAtual(jdbc, atorId);
+    Objects.requireNonNull(finalidade, "finalidade obrigatoria para relatorio privado");
+    OffsetDateTime geradoEm = OffsetDateTime.now(ZoneOffset.UTC);
+    var sql = AdminArquivoPublicidadeConsulta.consulta(
+        Tipo.ANUNCIO, request.filtros(), request.ids(), geradoEm);
+    long total = jdbc.queryForObject("select count(*)" + sql.fromWhere(), Long.class,
+        sql.argumentos());
+    AdminArquivoPublicidadeConsulta.conferirEscopo(total, request.ids());
+    List<UUID> ids = jdbc.query("select v.id" + sql.fromWhere()
+        + AdminArquivoPublicidadeConsulta.ordem(request.filtros()),
+        (rs, row) -> uuid(rs, "id"), sql.argumentos());
+    AdminArquivoPublicidadeConsulta.conferirCompletude(total, ids);
+    List<Detalhe> registros = ids.stream().map(id ->
+        detalharInterno(id, atorId, requestId, finalidade, true, false)).toList();
+    audit.registrarRelatorio(atorId, requestId, finalidade, registros.size(),
+        AdminArquivoPublicidadeConsulta.escopoSha256(request));
+    return new Relatorio<>("ANUNCIO", geradoEm, request.fusoHorario(), atorId, finalidade,
+        request.filtros(), request.ids(), registros.size(), AdminArquivoPublicidadeConsulta.LIMITE_RELATORIO,
+        AdminArquivoPublicidadeConsulta.lacunasRelatorio(), registros);
+  }
+
+  private Detalhe detalharInterno(UUID id, UUID atorId, String requestId,
+      FinalidadeAcessoArquivoPublicidade finalidade, boolean exportacao, boolean registrarAcesso) {
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para consulta privada");
     List<Detalhe> base = jdbc.query("""
         select id, anuncio_id, contratante_usuario_id, ativacao_beneficio_id,
@@ -132,19 +178,33 @@ public class AdminArquivoPublicidadeService {
           item.segmentacao(), item.alcance(), item.conteudoSha256(), item.midias()))
           .toList();
     }
-    audit.registrar(atorId, id, exportacao
-        ? "ARQUIVO_PUBLICIDADE_EXPORTACAO_PREPARADA"
-        : "ARQUIVO_PUBLICIDADE_DETALHE_CONSULTADO", requestId, finalidade);
+    if (registrarAcesso) {
+      audit.registrar(atorId, id, exportacao
+          ? "ARQUIVO_PUBLICIDADE_EXPORTACAO_PREPARADA"
+          : "ARQUIVO_PUBLICIDADE_DETALHE_CONSULTADO", requestId, finalidade);
+    }
     return new Detalhe(v.id(), v.anuncioId(), v.contratanteUsuarioId(),
         v.ativacaoBeneficioId(), v.grupoAtivacaoId(),
         exportacao ? v.movimentoCreditoId() : null,
         exportacao ? v.pagamentoId() : null,
         v.natureza(), v.relacaoMaterial(), v.cobertura(),
-        v.inicioEm(), v.fimEm(), v.retencaoAte(), v.encerramentoMotivo(), versoes);
+        v.inicioEm(), v.fimEm(), v.retencaoAte(), v.encerramentoMotivo(), versoes,
+        v.fimTipo(), exportacao ? preservacoes(id) : List.of());
+  }
+
+  private List<Preservacao> preservacoes(UUID id) {
+    return jdbc.query("""
+        select id, fundamento, responsavel_usuario_id, inicio_em, revisar_em
+          from arquivo_publicidade_hold where veiculacao_id = ? and encerrado_em is null
+         order by inicio_em, id
+        """, (rs, row) -> new Preservacao(uuid(rs, "id"), rs.getString("fundamento"),
+            uuid(rs, "responsavel_usuario_id"), instante(rs, "inicio_em"),
+            instante(rs, "revisar_em")), id);
   }
 
   public Arquivo midia(UUID veiculacaoId, UUID midiaId, UUID atorId, String requestId,
       FinalidadeAcessoArquivoPublicidade finalidade) {
+    AdminArquivoExportadorAccessGuard.exigirAcessoAtual(jdbc, atorId);
     Objects.requireNonNull(finalidade, "finalidade obrigatoria para midia privada");
     List<MidiaPrivada> encontradas = jdbc.query("""
         select m.versao_id as origem_versao_id, m.anuncio_midia_id, m.variante,

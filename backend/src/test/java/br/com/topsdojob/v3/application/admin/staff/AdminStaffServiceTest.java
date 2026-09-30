@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -212,6 +213,101 @@ class AdminStaffServiceTest {
     verify(auditorias, never()).save(any());
     verify(sessions, never()).invalidateAll(id);
     verify(usuarios, never()).deleteById(any());
+  }
+
+  @Test
+  void rebaixamentoRevogaComplementoExportadorEAudita() {
+    UUID id = UUID.randomUUID();
+    prepararAdminExportador(id);
+
+    service.atualizar(
+        id, new AtualizarRequest("Administrador QA", "MODERADOR", true, 0),
+        admin(), "req-export-downgrade");
+
+    verify(papeis).deleteByUsuarioId(id);
+    assertRevogacaoAutomaticaAuditada(id, "req-export-downgrade");
+    verify(sessions).invalidateAll(id);
+  }
+
+  @Test
+  void desativacaoRevogaComplementoExportadorEAudita() {
+    UUID id = UUID.randomUUID();
+    prepararAdminExportador(id);
+
+    service.atualizar(
+        id, new AtualizarRequest("Administrador QA", "ADMIN", false, 0),
+        admin(), "req-export-deactivate");
+
+    verify(papeis).deleteByUsuarioIdAndPapel(id, PapelUsuario.ARQUIVO_EXPORTADOR);
+    assertRevogacaoAutomaticaAuditada(id, "req-export-deactivate");
+    verify(sessions).invalidateAll(id);
+  }
+
+  @Test
+  void remocaoRevogaComplementoExportadorEAudita() {
+    UUID id = UUID.randomUUID();
+    prepararAdminExportador(id);
+
+    service.remover(id, admin(), "req-export-remove");
+
+    verify(papeis).deleteByUsuarioIdAndPapel(id, PapelUsuario.ARQUIVO_EXPORTADOR);
+    assertRevogacaoAutomaticaAuditada(id, "req-export-remove");
+    verify(sessions).invalidateAll(id);
+  }
+
+  @Test
+  void reativacaoDeContaLegadaInativaNaoRestauraExportacao() {
+    UUID id = UUID.randomUUID();
+    UsuarioEntity staffInativo = UsuarioEntity.criarStaff(
+        id, "Administrador QA", "admin.inativo@example.invalid", false, agora());
+    when(usuarios.findByIdForUpdate(id)).thenReturn(Optional.of(staffInativo));
+    when(papeis.findByUsuarioId(id)).thenReturn(List.of(
+        PapelUsuarioEntity.criarStaff(id, PapelUsuario.ADMIN, admin().usuarioId(), agora()),
+        PapelUsuarioEntity.criarExportador(id, admin().usuarioId(), agora())));
+    when(usuarios.saveAndFlush(staffInativo)).thenReturn(staffInativo);
+    when(consulta.detalhar(id)).thenReturn(Optional.of(resumo(id, "ADMIN", true)));
+    when(consulta.permissoes(id)).thenReturn(List.of());
+    when(consulta.historico(id)).thenReturn(List.of());
+
+    service.atualizar(
+        id, new AtualizarRequest("Administrador QA", "ADMIN", true, 0),
+        admin(), "req-export-reactivate");
+
+    verify(papeis).deleteByUsuarioIdAndPapel(id, PapelUsuario.ARQUIVO_EXPORTADOR);
+    verify(papeis, never()).save(any());
+    assertRevogacaoAutomaticaAuditada(id, "req-export-reactivate");
+    verify(sessions).invalidateAll(id);
+  }
+
+  private void prepararAdminExportador(UUID id) {
+    UsuarioEntity staff = UsuarioEntity.criarStaff(
+        id, "Administrador QA", "admin.exportador@example.invalid", true, agora());
+    when(usuarios.findByIdForUpdate(id)).thenReturn(Optional.of(staff));
+    when(papeis.findByUsuarioId(id)).thenReturn(List.of(
+        PapelUsuarioEntity.criarStaff(id, PapelUsuario.ADMIN, admin().usuarioId(), agora()),
+        PapelUsuarioEntity.criarExportador(id, admin().usuarioId(), agora())));
+    when(consulta.bloquearAdministradoresAtivos()).thenReturn(List.of(id, UUID.randomUUID()));
+    when(usuarios.saveAndFlush(staff)).thenReturn(staff);
+    when(consulta.detalhar(id)).thenReturn(Optional.of(resumo(id, "ADMIN", false)));
+    when(consulta.permissoes(id)).thenReturn(List.of());
+    when(consulta.historico(id)).thenReturn(List.of());
+  }
+
+  private void assertRevogacaoAutomaticaAuditada(UUID id, String requestId) {
+    ArgumentCaptor<AuditoriaEventoEntity> eventos = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(auditorias, times(2)).save(eventos.capture());
+    assertThat(eventos.getAllValues())
+        .extracting(AuditoriaEventoEntity::getAcao)
+        .contains("STAFF_ARQUIVO_EXPORTADOR_REVOGAR_AUTO");
+    assertThat(eventos.getAllValues().stream()
+        .filter(evento -> "STAFF_ARQUIVO_EXPORTADOR_REVOGAR_AUTO".equals(evento.getAcao())))
+        .singleElement()
+        .satisfies(evento -> {
+          assertThat(evento.getRecursoId()).isEqualTo(id);
+          assertThat(evento.getRequestId()).isEqualTo(requestId);
+          assertThat(evento.getAntesJson()).contains("\"concedido\":true");
+          assertThat(evento.getDepoisJson()).contains("\"concedido\":false");
+        });
   }
 
   private AdminUserPrincipal admin() {

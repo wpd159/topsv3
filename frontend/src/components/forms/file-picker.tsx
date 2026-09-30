@@ -10,6 +10,7 @@ type FilePickerProps = {
   buttonLabel: string
   accept: string
   files: File[]
+  previewUrls?: (string | undefined)[]
   onSelect: (files: File[]) => void
   onRemove: (index: number) => void
   multiple?: boolean
@@ -23,6 +24,7 @@ export function FilePicker({
   buttonLabel,
   accept,
   files,
+  previewUrls,
   onSelect,
   onRemove,
   multiple = false,
@@ -32,6 +34,7 @@ export function FilePicker({
 }: FilePickerProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [failedPreviews, setFailedPreviews] = useState<Set<string>>(() => new Set())
 
   const select = (selected: FileList | null) => {
     if (!selected?.length || disabled) return
@@ -87,28 +90,53 @@ export function FilePicker({
       </div>
 
       {files.length ? (
-        <ul className="w-full min-w-0 max-w-full space-y-2 overflow-hidden" aria-live="polite">
-          {files.map((file, index) => (
-            <li
-              key={`${file.name}:${file.size}:${file.lastModified}:${index}`}
-              className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl border border-zinc-200 bg-white px-3 py-2"
-            >
-              <FileText className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-sm text-zinc-700" title={file.name}>
-                {file.name} selecionado
-              </span>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onRemove(index)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
-                aria-label={`Remover ${file.name}`}
-                title="Remover arquivo"
+        <ul className={cn(
+          'w-full min-w-0 max-w-full overflow-hidden',
+          previewUrls ? 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4' : 'space-y-2'
+        )} aria-live="polite">
+          {files.map((file, index) => {
+            const previewUrl = previewUrls?.[index]
+            return (
+              <li
+                key={`${file.name}:${file.size}:${file.lastModified}:${index}`}
+                className={cn(
+                  'flex w-full min-w-0 max-w-full gap-2 overflow-hidden rounded-xl border border-zinc-200 bg-white px-3 py-2',
+                  previewUrls ? 'flex-col items-center' : 'items-center'
+                )}
               >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
+                {previewUrls ? (
+                  <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-50">
+                    {previewUrl && !failedPreviews.has(previewUrl) ? (
+                      // Blob URLs stay local to this session and must not enter the public Next image optimizer.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewUrl}
+                        alt={`Prévia local da foto ${index + 1}: ${file.name}`}
+                        className="h-full w-full object-contain"
+                        onError={() => setFailedPreviews((current) => new Set(current).add(previewUrl))}
+                      />
+                    ) : <span className="px-1 text-center text-xs leading-4 text-zinc-600">Prévia indisponível</span>}
+                  </div>
+                ) : <FileText className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />}
+                <span className={cn(
+                  'min-w-0 truncate text-zinc-700',
+                  previewUrls ? 'w-full text-center text-xs' : 'flex-1 text-sm'
+                )} title={file.name}>
+                  {file.name}{previewUrls ? '' : ' selecionado'}
+                </span>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onRemove(index)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                  aria-label={previewUrls ? `Remover foto ${index + 1}: ${file.name}` : `Remover ${file.name}`}
+                  title="Remover arquivo"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </li>
+            )
+          })}
         </ul>
       ) : null}
     </div>

@@ -1,6 +1,32 @@
 import { adminApiUrl, apiErrorFromResponse, ApiContractError } from '@/lib/api-contract'
 
-export type PublicidadeRegistroResumo = {
+export type RegistroFamilia = 'publicidade' | 'stories'
+export type RegistroFimTipo = 'LIMITE_PREVISTO' | 'ENCERRAMENTO_REGISTRADO' | 'SEM_TERMINO_REGISTRADO'
+export type RegistroFiltros = {
+  termo?: string
+  anuncioId?: string
+  anuncianteId?: string
+  beneficio?: string
+  situacao?: 'EM_VEICULACAO' | 'ENCERRADA'
+  inicio?: string
+  fim?: string
+  ordenacao?: 'RECENTES' | 'ANTIGOS'
+}
+
+type RegistroIdentificacao = {
+  slug: string | null
+  anuncianteNome: string | null
+  anuncianteId: string
+  beneficioCodigo: string | null
+  totalVersoes: number
+  encerramentoMotivo: string | null
+  retencaoAte: string | null
+  preservacaoAtiva: boolean
+  fimTipo: RegistroFimTipo
+}
+
+export type PublicidadeRegistroResumo = RegistroIdentificacao & {
+  tipo: 'ANUNCIO'
   id: string
   anuncioId: string
   titulo: string | null
@@ -21,7 +47,8 @@ export type PublicidadeRegistrosPagina = {
   last: boolean
 }
 
-export type StoryRegistroResumo = {
+export type StoryRegistroResumo = RegistroIdentificacao & {
+  tipo: 'STORY'
   id: string
   storyId: string
   anuncioId: string | null
@@ -46,8 +73,12 @@ export type PublicidadeRegistroVersao = {
   vigenteAte: string | null
   motivo: string
   conteudo: unknown
+  contratante: unknown
+  comercial: unknown
+  segmentacao: unknown
+  alcance: unknown
   conteudoSha256: string
-  midias: { id: string; variante: string; mimeType: string; tamanhoBytes: number; ordem: number; arquivoUrl: string }[]
+  midias: { id: string; variante: string; mimeType: string; tamanhoBytes: number; ordem: number; sha256: string; arquivoUrl: string }[]
 }
 
 export type PublicidadeRegistroDetalhe = {
@@ -65,6 +96,8 @@ export type PublicidadeRegistroDetalhe = {
   fimEm: string | null
   retencaoAte: string | null
   encerramentoMotivo: string | null
+  fimTipo: RegistroFimTipo
+  preservacoes: { id: string; fundamento: string; responsavelUsuarioId: string; inicioEm: string; revisarEm: string | null }[]
   versoes: PublicidadeRegistroVersao[]
 }
 
@@ -81,6 +114,20 @@ export const FINALIDADES_ACESSO_ARQUIVO = [
 ] as const
 
 export type FinalidadeAcessoArquivo = typeof FINALIDADES_ACESSO_ARQUIVO[number]['codigo']
+
+export type RegistroRelatorio = {
+  tipo: 'ANUNCIO' | 'STORY'
+  geradoEm: string
+  fusoHorario: string
+  responsavelId: string
+  finalidade: FinalidadeAcessoArquivo
+  filtros: RegistroFiltros
+  idsSelecionados: string[]
+  quantidade: number
+  limiteRegistros: number
+  lacunas: string[]
+  registros: (PublicidadeRegistroDetalhe | StoryRegistroDetalhe)[]
+}
 
 const BASE_PATH = '/registros/publicidade'
 const STORY_PATH = '/registros/stories'
@@ -107,19 +154,31 @@ async function csrfValue() {
   return readCsrfValue()
 }
 
-async function postRead(path: string, signal?: AbortSignal, accept = 'application/json') {
+async function postRead(path: string, signal?: AbortSignal, accept = 'application/json', body?: unknown) {
   const csrf = await csrfValue()
   const headers = new Headers({ Accept: accept })
   if (csrf) headers.set(['X', 'XSRF', 'TOKEN'].join('-'), csrf)
+  if (body !== undefined) headers.set('Content-Type', 'application/json')
   const response = await fetch(adminApiUrl(path), {
     method: 'POST',
     credentials: 'include',
     cache: 'no-store',
     headers,
     signal,
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })
   if (!response.ok) throw await apiErrorFromResponse(response)
   return response
+}
+
+export function filtrosRegistroQuery(filtros: RegistroFiltros) {
+  const query = new URLSearchParams()
+  for (const field of ['termo', 'anuncioId', 'anuncianteId', 'beneficio', 'situacao', 'inicio', 'fim', 'ordenacao'] as const) {
+    const value = filtros[field]?.trim()
+    if (value) query.set(field, value)
+  }
+  const encoded = query.toString()
+  return encoded ? `&${encoded}` : ''
 }
 
 function invalidPayload() {
@@ -135,9 +194,10 @@ export async function listarRegistrosPublicidade(
   page: number,
   finalidade: FinalidadeAcessoArquivo,
   signal?: AbortSignal,
+  filtros: RegistroFiltros = {},
 ): Promise<PublicidadeRegistrosPagina> {
   const pagina = Math.max(0, Math.trunc(page) || 0)
-  const response = await postRead(`${BASE_PATH}?page=${pagina}&size=20&${queryFinalidade(finalidade)}`, signal)
+  const response = await postRead(`${BASE_PATH}?page=${pagina}&size=20&${queryFinalidade(finalidade)}${filtrosRegistroQuery(filtros)}`, signal)
   const payload: unknown = await response.json()
   if (!payload || typeof payload !== 'object' || !('itens' in payload) || !Array.isArray(payload.itens)) {
     throw invalidPayload()
@@ -181,9 +241,10 @@ export async function listarRegistrosStory(
   page: number,
   finalidade: FinalidadeAcessoArquivo,
   signal?: AbortSignal,
+  filtros: RegistroFiltros = {},
 ): Promise<StoryRegistrosPagina> {
   const pagina = Math.max(0, Math.trunc(page) || 0)
-  const response = await postRead(`${STORY_PATH}?page=${pagina}&size=20&${queryFinalidade(finalidade)}`, signal)
+  const response = await postRead(`${STORY_PATH}?page=${pagina}&size=20&${queryFinalidade(finalidade)}${filtrosRegistroQuery(filtros)}`, signal)
   const payload: unknown = await response.json()
   if (!payload || typeof payload !== 'object' || !('itens' in payload) || !Array.isArray(payload.itens)) {
     throw invalidPayload()
@@ -221,4 +282,35 @@ export async function baixarMidiaStory(
     'application/octet-stream',
   )
   return response.blob()
+}
+
+export async function prepararRelatorioRegistros(
+  familia: RegistroFamilia,
+  finalidade: FinalidadeAcessoArquivo,
+  filtros: RegistroFiltros,
+  ids: string[] = [],
+  signal?: AbortSignal,
+): Promise<RegistroRelatorio> {
+  const base = familia === 'publicidade' ? BASE_PATH : STORY_PATH
+  const response = await postRead(`${base}/relatorio?${queryFinalidade(finalidade)}`, signal, 'application/json', {
+    filtros, ids, fusoHorario: 'America/Sao_Paulo',
+  })
+  const payload: unknown = await response.json()
+  if (!payload || typeof payload !== 'object' || !('registros' in payload) || !Array.isArray(payload.registros)
+    || !('quantidade' in payload) || payload.quantidade !== payload.registros.length
+    || payload.registros.length > 100 || !('limiteRegistros' in payload) || payload.limiteRegistros !== 100
+    || !('tipo' in payload) || payload.tipo !== (familia === 'stories' ? 'STORY' : 'ANUNCIO')
+    || !('finalidade' in payload) || payload.finalidade !== finalidade
+    || !('idsSelecionados' in payload) || !Array.isArray(payload.idsSelecionados)
+    || payload.idsSelecionados.length !== ids.length || new Set(payload.idsSelecionados).size !== ids.length
+    || !ids.every((id) => (payload.idsSelecionados as unknown[]).includes(id))
+    || (ids.length > 0 && (payload.registros.length !== ids.length
+      || !payload.registros.every((registro) => registro && typeof registro === 'object' && 'id' in registro && ids.includes(registro.id))))
+    || !('geradoEm' in payload) || typeof payload.geradoEm !== 'string'
+    || !('responsavelId' in payload) || typeof payload.responsavelId !== 'string'
+    || !('fusoHorario' in payload) || payload.fusoHorario !== 'America/Sao_Paulo'
+    || !('lacunas' in payload) || !Array.isArray(payload.lacunas)) {
+    throw invalidPayload()
+  }
+  return payload as RegistroRelatorio
 }

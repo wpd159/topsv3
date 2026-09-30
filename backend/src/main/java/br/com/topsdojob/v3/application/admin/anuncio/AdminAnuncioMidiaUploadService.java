@@ -4,10 +4,21 @@ import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioMidiaUpload
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService.ItemUpload;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService.ResultadoUpload;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -25,12 +36,24 @@ public class AdminAnuncioMidiaUploadService {
             "ROLE_ADMIN", "ANUNCIO_MODERAR", "MIDIA_REVISAR");
 
     private final AnuncioRepository anuncioRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final AnuncioBloqueioJuridicoRepository bloqueioRepository;
+    private final RevisaoAnuncioRepository revisaoRepository;
+    private final MidiaUploadValidator uploadValidator;
     private final AnuncioMidiaUploadCoreService uploadCoreService;
 
     public AdminAnuncioMidiaUploadService(
             AnuncioRepository anuncioRepository,
+            UsuarioRepository usuarioRepository,
+            AnuncioBloqueioJuridicoRepository bloqueioRepository,
+            RevisaoAnuncioRepository revisaoRepository,
+            MidiaUploadValidator uploadValidator,
             AnuncioMidiaUploadCoreService uploadCoreService) {
         this.anuncioRepository = anuncioRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.bloqueioRepository = bloqueioRepository;
+        this.revisaoRepository = revisaoRepository;
+        this.uploadValidator = uploadValidator;
         this.uploadCoreService = uploadCoreService;
     }
 
@@ -45,15 +68,48 @@ public class AdminAnuncioMidiaUploadService {
         if (anuncioId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncioId obrigatorio");
         }
+        MidiaValidada validada = uploadValidator.validar(arquivo);
+        UUID proprietarioId = null;
+        if (validada.video()) {
+            proprietarioId = anuncioRepository.findUsuarioIdById(anuncioId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+            UsuarioEntity proprietario = usuarioRepository.findByIdForUpdate(proprietarioId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                            "proprietario do anuncio nao encontrado"));
+            if (proprietario.getStatus() != StatusUsuario.ATIVO
+                    || proprietario.getTipoConta() != TipoContaUsuario.ANUNCIANTE
+                    || proprietario.getDesativadoEm() != null
+                    || proprietario.getExcluidoEm() != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "proprietario do anuncio nao pode receber midia");
+            }
+        }
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
                 .filter(item -> item.getStatus() != StatusAnuncio.REMOVIDO)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "anuncio nao encontrado"));
+        if (validada.video()) {
+            if (!proprietarioId.equals(anuncio.getUsuarioId())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
+            }
+            if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO
+                    || bloqueioRepository.findAtivoPorAnuncioForUpdate(anuncioId).isPresent()
+                    || bloqueioRepository.findAtivoPorUsuarioForUpdate(
+                            proprietarioId, EscopoBloqueioJuridico.ANUNCIO_E_USUARIO).isPresent()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "bloqueio juridico impede alteracao do anuncio");
+            }
+            if (revisaoRepository.existsByAnuncioIdAndStatusIn(
+                    anuncioId, List.of(StatusRevisaoAnuncio.EM_ANALISE))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "anuncio possui revisao em analise");
+            }
+        }
 
         ResultadoUpload resultado = uploadCoreService.enviarAdministrativo(
-                anuncio, arquivo, idempotencyKey);
+                anuncio, validada, idempotencyKey);
         ItemUpload item = resultado.itemUnico();
         return new AdminAnuncioMidiaUploadDto(
                 item.midiaId(),

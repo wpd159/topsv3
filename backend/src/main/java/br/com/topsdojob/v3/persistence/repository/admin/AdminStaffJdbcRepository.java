@@ -228,6 +228,9 @@ public class AdminStaffJdbcRepository {
       case "STAFF_ATUALIZAR" -> "Dados ou papel atualizados";
       case "STAFF_ATIVAR" -> "Conta ativada";
       case "STAFF_DESATIVAR" -> "Conta desativada";
+      case "STAFF_ARQUIVO_EXPORTADOR_CONCEDER" -> "Exportacao do arquivo concedida";
+      case "STAFF_ARQUIVO_EXPORTADOR_REVOGAR" -> "Exportacao do arquivo revogada";
+      case "STAFF_ARQUIVO_EXPORTADOR_REVOGAR_AUTO" -> "Exportacao do arquivo revogada automaticamente";
       default -> "Alteração administrativa";
     };
   }

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAprovarAnuncioRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
@@ -159,6 +160,54 @@ class AdminModeracaoAnuncioServiceTest {
         verify(decisaoRepository).save(any());
         verify(auditoriaRepository).save(any());
         verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
+    }
+
+    @Test
+    void operacaoDeNegocioEAuditadaIndependentementeDoRequestIdHttpERepeticaoNaoConfirmaNovoAto() {
+        Fixture fixture = fixtureComKycValidado();
+        when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+                fixture.anuncio().getId(),
+                List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
+                .thenReturn(Optional.of(fixture.revisao()));
+        UUID operacaoId = UUID.randomUUID();
+        int versaoAntes = fixture.anuncio().getVersao();
+        var request = new AdminAprovarAnuncioRequestDto(operacaoId, versaoAntes, fixture.revisao().getId());
+
+        var response = service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(), fixture.actor(), "request-id-do-proxy", request);
+
+        assertThat(response.auditoriaRegistrada()).isTrue();
+        assertThat(response.requestId()).isEqualTo("request-id-do-proxy");
+        assertThat(response.operacaoIdCliente()).isEqualTo(operacaoId);
+        assertThat(response.versaoAnuncioAntes()).isEqualTo(versaoAntes);
+        ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+        verify(auditoriaRepository).save(audit.capture());
+        assertThat(audit.getValue().getRequestId()).isEqualTo("request-id-do-proxy");
+        assertThat(audit.getValue().getDepoisJson())
+                .contains("\"operacaoIdCliente\":\"" + operacaoId + "\"")
+                .contains("\"versaoAnuncioAntes\":" + versaoAntes);
+
+        var retry = service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(), fixture.actor(), "novo-request-id-do-proxy", request);
+        assertThat(retry.auditoriaRegistrada()).isFalse();
+        assertThat(retry.operacaoIdCliente()).isNull();
+        verify(decisaoRepository, times(1)).save(any());
+        verify(auditoriaRepository, times(1)).save(any());
+    }
+
+    @Test
+    void versaoDivergenteRecusaAprovacaoAntesDaDecisaoOuAuditoria() {
+        Fixture fixture = fixtureComKycValidado();
+        var request = new AdminAprovarAnuncioRequestDto(
+                UUID.randomUUID(), fixture.anuncio().getVersao() + 1, fixture.revisao().getId());
+
+        assertThatThrownBy(() -> service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(), fixture.actor(), "request-id-do-proxy", request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("versao do anuncio mudou");
+        verify(decisaoRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test

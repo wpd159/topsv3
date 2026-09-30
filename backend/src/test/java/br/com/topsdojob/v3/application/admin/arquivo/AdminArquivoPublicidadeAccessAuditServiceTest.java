@@ -58,4 +58,23 @@ class AdminArquivoPublicidadeAccessAuditServiceTest {
     assertTrue(evento.getDepoisJson().contains("\"finalidade\":\"AUDITORIA_INTERNA\""));
     assertFalse(evento.getDepoisJson().contains(atorId.toString()));
   }
+
+  @Test
+  void relatorioAuditaSomentePreparoFinalidadeQuantidadeEHashDoEscopo() {
+    var repository = mock(AuditoriaEventoRepository.class);
+    var service = new AdminArquivoPublicidadeAccessAuditService(repository);
+    UUID ator = UUID.randomUUID();
+    service.registrarRelatorio(ator, "req-relatorio", FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA,
+        42, "a".repeat(64));
+    var captor = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(repository).save(captor.capture());
+    var evento = captor.getValue();
+    assertEquals("ARQUIVO_PUBLICIDADE_RELATORIO_PREPARADO", evento.getAcao());
+    assertEquals(ator, evento.getAtorUsuarioId());
+    assertEquals(null, evento.getRecursoId());
+    assertTrue(evento.getDepoisJson().contains("\"quantidade\":42"));
+    assertTrue(evento.getDepoisJson().contains("\"escopoSha256\":\"" + "a".repeat(64) + "\""));
+    assertFalse(evento.getDepoisJson().contains("impresso"));
+    assertFalse(evento.getDepoisJson().contains(ator.toString()));
+  }
 }

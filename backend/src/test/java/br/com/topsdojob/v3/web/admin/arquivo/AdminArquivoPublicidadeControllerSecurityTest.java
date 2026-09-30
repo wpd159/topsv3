@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -13,6 +14,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Detalhe;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Arquivo;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Relatorio;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Filtros;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.RelatorioRequest;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeService;
 import br.com.topsdojob.v3.application.admin.arquivo.FinalidadeAcessoArquivoPublicidade;
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionDto;
@@ -31,6 +35,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = AdminArquivoPublicidadeController.class,
@@ -45,7 +50,7 @@ class AdminArquivoPublicidadeControllerSecurityTest {
     UUID id = UUID.randomUUID();
     UUID midiaId = UUID.randomUUID();
     var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-    when(service.listar(eq(0), eq(20), any(), any(), eq(finalidade)))
+    when(service.listar(eq(0), eq(20), any(Filtros.class), any(), any(), eq(finalidade)))
         .thenReturn(new AdminPaginaDto<>(List.of(), 0, 20, 0, 0, true));
     var detalhe = new Detalhe(
         id, UUID.randomUUID(), UUID.randomUUID(), null, null, null, null,
@@ -120,6 +125,57 @@ class AdminArquivoPublicidadeControllerSecurityTest {
             .with(authentication(token(PapelUsuario.ADMIN, true, true))))
         .andExpect(status().isForbidden());
     verify(service, never()).detalhar(eq(id), any(), any(), eq(null), eq(false));
+  }
+
+  @Test
+  void relatorioCompletoExigePermissaoSeparadaFinalidadeECsrf() throws Exception {
+    var finalidade = FinalidadeAcessoArquivoPublicidade.ATENDIMENTO_FISCALIZACAO;
+    var filtro = Filtros.todos();
+    var request = new RelatorioRequest(filtro, List.of(), "America/Sao_Paulo");
+    when(service.relatorio(eq(request), any(), any(), eq(finalidade))).thenReturn(
+        new Relatorio<>("ANUNCIO", OffsetDateTime.now(), request.fusoHorario(), UUID.randomUUID(),
+            finalidade, filtro, List.of(), 0, 100, List.of("Preparado, nao impresso"), List.of()));
+    mockMvc.perform(post("/api/admin/registros/publicidade/relatorio")
+            .param("finalidade", finalidade.name()).contentType(MediaType.APPLICATION_JSON)
+            .content("{}").with(csrf()).with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"));
+    verify(service).relatorio(eq(request), any(), any(), eq(finalidade));
+  }
+
+  @Test
+  void relatorioRecusaAcessoIncompletoEParametrosInvalidosAntesDaConsulta() throws Exception {
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA.name();
+    for (var auth : List.of(token(PapelUsuario.ADMIN, true, false),
+        token(PapelUsuario.ADMIN, false, true), token(PapelUsuario.MODERADOR, true, true),
+        token(PapelUsuario.USUARIO, true, true),
+        token(PapelUsuario.ARQUIVO_EXPORTADOR, true, true))) {
+      mockMvc.perform(post("/api/admin/registros/publicidade/relatorio")
+              .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
+              .content("{}").with(csrf()).with(authentication(auth)))
+          .andExpect(status().isForbidden());
+    }
+    mockMvc.perform(post("/api/admin/registros/publicidade/relatorio")
+            .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
+            .content("{}").with(csrf()))
+        .andExpect(status().isUnauthorized());
+    mockMvc.perform(post("/api/admin/registros/publicidade/relatorio")
+            .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
+            .content("{}").with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isForbidden());
+    mockMvc.perform(post("/api/admin/registros/publicidade/relatorio")
+            .contentType(MediaType.APPLICATION_JSON).content("{}")
+            .with(csrf()).with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isBadRequest());
+    mockMvc.perform(post("/api/admin/registros/publicidade/relatorio")
+            .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"filtros\":{\"inicio\":\"2026-09-02T00:00:00Z\",\"fim\":\"2026-09-01T00:00:00Z\"}}")
+            .with(csrf()).with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isBadRequest());
+    mockMvc.perform(post("/api/admin/registros/publicidade")
+            .param("finalidade", finalidade).param("beneficio", "INVALIDO'")
+            .with(csrf()).with(authentication(token(PapelUsuario.ADMIN, true, false))))
+        .andExpect(status().isBadRequest());
+    verifyNoInteractions(service);
   }
 
   private UsernamePasswordAuthenticationToken token(

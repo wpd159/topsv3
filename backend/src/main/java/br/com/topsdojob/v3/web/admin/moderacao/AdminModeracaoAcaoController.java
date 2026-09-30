@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.web.admin.moderacao;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoAcaoService;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLoteService;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAprovarAnuncioRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteResponseDto;
@@ -50,9 +51,10 @@ public class AdminModeracaoAcaoController {
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_MODERAR')")
     public AdminAcaoModeracaoResponseDto aprovarEPublicarAnuncio(
             @PathVariable UUID id,
+            @RequestBody(required = false) AdminAprovarAnuncioRequestDto request,
             @AuthenticationPrincipal AdminUserPrincipal actor,
             HttpServletRequest httpRequest) {
-        return service.aprovarEPublicarAnuncio(id, actor, RequestIdContext.current(httpRequest));
+        return service.aprovarEPublicarAnuncio(id, actor, RequestIdContext.current(httpRequest), request);
     }
 
     @PostMapping("/api/admin/midias/{id}/decidir")

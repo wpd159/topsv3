@@ -3,6 +3,8 @@ package br.com.topsdojob.v3.web.admin.arquivo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,6 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Arquivo;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeDtos.Relatorio;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.Filtros;
+import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoPublicidadeConsulta.RelatorioRequest;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoStoryDtos.Detalhe;
 import br.com.topsdojob.v3.application.admin.arquivo.AdminArquivoStoryService;
 import br.com.topsdojob.v3.application.admin.arquivo.FinalidadeAcessoArquivoPublicidade;
@@ -29,6 +34,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = AdminArquivoStoryController.class, properties = "app.env=homologacao")
@@ -42,7 +48,7 @@ class AdminArquivoStoryControllerSecurityTest {
     UUID id = UUID.randomUUID();
     UUID midiaId = UUID.randomUUID();
     var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
-    when(service.listar(eq(0), eq(20), any(), any(), eq(finalidade)))
+    when(service.listar(eq(0), eq(20), any(Filtros.class), any(), any(), eq(finalidade)))
         .thenReturn(new AdminPaginaDto<>(List.of(), 0, 20, 0, 0, true));
     var detalhe = new Detalhe(id, UUID.randomUUID(), null, UUID.randomUUID(),
         UUID.randomUUID(), null, null, null, "MIDIA_UPLOAD", "REMUNERADA", "SIM",
@@ -101,6 +107,42 @@ class AdminArquivoStoryControllerSecurityTest {
             .param("finalidade", finalidade.name())
             .with(authentication(token(PapelUsuario.ADMIN, true, true))))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void relatorioStoriesCompletoTemGuardIndependenteDaConsulta() throws Exception {
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA;
+    var request = new RelatorioRequest(null, null, null);
+    when(service.relatorio(eq(request), any(), any(), eq(finalidade))).thenReturn(
+        new Relatorio<>("STORY", OffsetDateTime.now(), request.fusoHorario(), UUID.randomUUID(),
+            finalidade, request.filtros(), List.of(), 0, 100, List.of(), List.of()));
+    mockMvc.perform(post("/api/admin/registros/stories/relatorio")
+            .param("finalidade", finalidade.name()).contentType(MediaType.APPLICATION_JSON)
+            .content("{}").with(csrf()).with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"));
+    verify(service).relatorio(eq(request), any(), any(), eq(finalidade));
+  }
+
+  @Test
+  void relatorioStoriesRecusaFaltaDePermissaoFinalidadeECsrf() throws Exception {
+    var finalidade = FinalidadeAcessoArquivoPublicidade.AUDITORIA_INTERNA.name();
+    for (var auth : List.of(token(PapelUsuario.ADMIN, true, false),
+        token(PapelUsuario.ADMIN, false, true), token(PapelUsuario.MODERADOR, true, true),
+        token(PapelUsuario.ARQUIVO_EXPORTADOR, true, true))) {
+      mockMvc.perform(post("/api/admin/registros/stories/relatorio")
+              .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
+              .content("{}").with(csrf()).with(authentication(auth)))
+          .andExpect(status().isForbidden());
+    }
+    mockMvc.perform(post("/api/admin/registros/stories/relatorio")
+            .param("finalidade", finalidade).contentType(MediaType.APPLICATION_JSON)
+            .content("{}").with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isForbidden());
+    mockMvc.perform(post("/api/admin/registros/stories/relatorio")
+            .contentType(MediaType.APPLICATION_JSON).content("{}")
+            .with(csrf()).with(authentication(token(PapelUsuario.ADMIN, true, true))))
+        .andExpect(status().isBadRequest());
+    verifyNoInteractions(service);
   }
 
   private UsernamePasswordAuthenticationToken token(

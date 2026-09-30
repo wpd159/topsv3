@@ -144,24 +144,24 @@ class AdminMidiaRbacMethodSecurityTest {
     @Test
     void adminEModeradorComPermissaoPodemAprovarEPublicarPelaOperacaoUnica() {
         autenticar("ROLE_ADMIN", "ANUNCIO_MODERAR");
-        controller.aprovarEPublicarAnuncio(UUID.randomUUID(), null, new MockHttpServletRequest());
+        controller.aprovarEPublicarAnuncio(UUID.randomUUID(), null, null, new MockHttpServletRequest());
 
         autenticar("ROLE_MODERADOR", "ANUNCIO_MODERAR");
-        controller.aprovarEPublicarAnuncio(UUID.randomUUID(), null, new MockHttpServletRequest());
+        controller.aprovarEPublicarAnuncio(UUID.randomUUID(), null, null, new MockHttpServletRequest());
 
-        verify(service, org.mockito.Mockito.times(2)).aprovarEPublicarAnuncio(any(), any(), any());
+        verify(service, org.mockito.Mockito.times(2)).aprovarEPublicarAnuncio(any(), any(), any(), any());
     }
 
     @Test
     void anuncianteEAdminSemPermissaoNaoPodemUsarOperacaoUnica() {
         autenticar("ROLE_ANUNCIANTE", "ANUNCIO_MODERAR");
         assertThatThrownBy(() -> controller.aprovarEPublicarAnuncio(
-                UUID.randomUUID(), null, new MockHttpServletRequest()))
+                UUID.randomUUID(), null, null, new MockHttpServletRequest()))
                 .isInstanceOf(AuthorizationDeniedException.class);
 
         autenticar("ROLE_ADMIN");
         assertThatThrownBy(() -> controller.aprovarEPublicarAnuncio(
-                UUID.randomUUID(), null, new MockHttpServletRequest()))
+                UUID.randomUUID(), null, null, new MockHttpServletRequest()))
                 .isInstanceOf(AuthorizationDeniedException.class);
     }
 

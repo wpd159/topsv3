@@ -350,6 +350,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(detalhe.anunciante().nomeCivil()).isEqualTo("Nome Civil Completo");
         assertThat(detalhe.anunciante().email()).isEqualTo("pessoa@example.invalid");
         assertThat(detalhe.anunciante().cpf()).isEqualTo("123.456.789-09");
+        assertThat(detalhe.anunciante().dataNascimento()).isEqualTo(LocalDate.of(1990, 5, 10));
         assertThat(detalhe.anunciante().whatsapp()).isEqualTo("+5562888888888");
         assertThat(detalhe.metricas().visualizacoes().total()).isEqualTo(25);
         assertThat(detalhe.metricas().cliquesWhatsapp()).isEqualTo(5);
