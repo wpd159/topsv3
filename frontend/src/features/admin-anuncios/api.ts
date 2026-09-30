@@ -6,13 +6,14 @@ import {
   requireArrayPayload,
 } from '@/lib/api-contract'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
-import { validatePhotoUpload } from '@/lib/photo-upload-validation'
+import { isSupportedUploadVideo, validatePhotoUpload } from '@/lib/photo-upload-validation'
 
 import type {
   AdminAdDetail,
   AdminAdFilters,
   AdminAdListItem,
   AdminAdMediaUploadResponse,
+  AdminAdVideoUploadResponse,
   AdminAdQueueNavigation,
   AdminAdRemovalResponse,
   AdminAdOwnerUpdate,
@@ -26,6 +27,7 @@ import type {
   AdminMediaPreview,
   AdminModerationActionResponse,
   AdminApprovalRequest,
+  AdminApprovalStatus,
   AdminReviewState,
   AdminModerationHistoryItem,
   AdminPage,
@@ -388,6 +390,95 @@ export async function uploadAdminAdMedia(id: string, arquivo: File, idempotencyK
   }, { unsupportedPhotoUpload: true })
 }
 
+const ADMIN_VIDEO_STATUSES = new Set(['PENDENTE', 'AJUSTE_SOLICITADO', 'PUBLICAVEL', 'REJEITADA', 'REMOVIDA'])
+const ADMIN_VIDEO_FILE_STATUSES = new Set(['PENDENTE', 'VALIDADO', 'REJEITADO', 'REMOVIDO'])
+
+export function adminVideoUploadIssue(arquivo: File): string | null {
+  if (arquivo.size === 0) return 'O arquivo está vazio. Selecione outro vídeo.'
+  if (!isSupportedUploadVideo(arquivo)) return 'Formato de vídeo não aceito. Selecione um vídeo MP4 ou MOV.'
+  return null
+}
+
+function canonicalAdminVideoUpload(payload: unknown, anuncioId: string, requestIdHeader: string | null): AdminAdVideoUploadResponse {
+  const item = payload && typeof payload === 'object' ? payload as Partial<AdminAdVideoUploadResponse> : null
+  if (!item || typeof item.midiaId !== 'string' || !item.midiaId.trim()
+    || item.anuncioId !== anuncioId || item.tipo !== 'VIDEO' || item.finalidade !== 'GALERIA'
+    || !Number.isInteger(item.ordem) || (item.ordem ?? -1) < 0
+    || typeof item.idempotente !== 'boolean'
+    || typeof item.status !== 'string' || !ADMIN_VIDEO_STATUSES.has(item.status)
+    || typeof item.statusArquivo !== 'string' || !ADMIN_VIDEO_FILE_STATUSES.has(item.statusArquivo)
+    || !item.idempotente && (item.status !== 'PENDENTE' || item.statusArquivo !== 'PENDENTE')
+    || typeof item.requestId !== 'string' || !item.requestId.trim()) {
+    throw new ApiContractError(
+      'O serviço retornou uma confirmação de vídeo incompatível. O arquivo foi mantido para conferência e nova tentativa.',
+      'TECHNICAL_FAILURE', 502, true, requestIdHeader, 'ADMIN_VIDEO_UPLOAD_INVALID_RESPONSE',
+    )
+  }
+  return item as AdminAdVideoUploadResponse
+}
+
+export async function uploadAdminAdVideo(
+  id: string,
+  arquivo: File,
+  idempotencyKey: string,
+  onProgress?: (percentual: number) => void,
+): Promise<AdminAdVideoUploadResponse> {
+  const issue = adminVideoUploadIssue(arquivo)
+  if (issue) throw new ApiContractError(issue, 'INVALID_REQUEST', null, false, null, 'ADMIN_VIDEO_UPLOAD_LOCAL_INVALID')
+  if (!/^[A-Za-z0-9._:-]{1,160}$/.test(idempotencyKey)) {
+    throw new ApiContractError('Chave da operação de vídeo inválida.', 'INVALID_REQUEST', null, false)
+  }
+  const secureHeaders = await csrfHeaders('multipart')
+  return new Promise<AdminAdVideoUploadResponse>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', adminApiUrl(`/anuncios/${encodeURIComponent(id)}/midias`))
+    xhr.withCredentials = true
+    xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('Idempotency-Key', idempotencyKey)
+    Object.entries(secureHeaders).forEach(([name, value]) => xhr.setRequestHeader(name, value))
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress?.(Math.min(99, Math.max(0, Math.floor((event.loaded / event.total) * 100))))
+      }
+    }
+    xhr.onerror = () => reject(normalizeApiError(new Error('Falha de rede durante o envio do vídeo.')))
+    xhr.onabort = () => reject(normalizeApiError(new Error('Envio do vídeo interrompido.')))
+    xhr.onload = () => {
+      const requestId = xhr.getResponseHeader('X-Request-Id')
+      if (xhr.status === 0) {
+        reject(normalizeApiError(new Error('Resposta de rede ausente durante o envio do vídeo.')))
+        return
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const headers = new Headers()
+        if (requestId) headers.set('X-Request-Id', requestId)
+        void apiErrorFromResponse(new Response(xhr.responseText, { status: xhr.status, headers }), {
+          preserveServerMessage: true,
+        }).then((error) => reject(xhr.status === 413
+          ? new ApiContractError('O vídeo excede o limite permitido pelo servidor.', 'INVALID_REQUEST', 413,
+            false, error.requestId, error.code)
+          : error), (error) => reject(normalizeApiError(error)))
+        return
+      }
+      try {
+        resolve(canonicalAdminVideoUpload(JSON.parse(xhr.responseText), id, requestId))
+      } catch (error) {
+        reject(error instanceof ApiContractError ? error : new ApiContractError(
+          'O serviço retornou uma confirmação de vídeo incompatível. O arquivo foi mantido para conferência e nova tentativa.',
+          'TECHNICAL_FAILURE', 502, true, requestId, 'ADMIN_VIDEO_UPLOAD_INVALID_RESPONSE',
+        ))
+      }
+    }
+    const form = new FormData()
+    form.append('arquivo', arquivo)
+    try {
+      xhr.send(form)
+    } catch (error) {
+      reject(normalizeApiError(error))
+    }
+  })
+}
+
 export async function listAdminAdHistory(id: string) {
   return requireArrayPayload<AdminModerationHistoryItem>(
     await request(`/anuncios/${encodeURIComponent(id)}/historico-moderacao`)
@@ -451,6 +542,14 @@ export function submitAdminReview(id: string, motivo: string) {
 
 export function getAdminReview(reviewId: string) {
   return request<AdminReviewState>(`/moderacao/revisoes/${encodeURIComponent(reviewId)}`)
+}
+
+export function getAdminApprovalStatus(anuncioId: string, operation: AdminApprovalRequest) {
+  const query = new URLSearchParams({ versaoAnuncioEsperada: String(operation.versaoAnuncioAntes) })
+  if (operation.revisaoId) query.set('revisaoIdEsperada', operation.revisaoId)
+  return request<AdminApprovalStatus>(
+    `/anuncios/${encodeURIComponent(anuncioId)}/aprovacao-operacoes/${encodeURIComponent(operation.operacaoId)}/status?${query.toString()}`,
+  )
 }
 
 export function approveAdminAd(id: string, operation?: AdminApprovalRequest) {

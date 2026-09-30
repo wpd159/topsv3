@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageException;
 import br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -37,8 +38,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -51,6 +57,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 public class ArquivoPublicidadeRegistroService {
   private static final Logger LOG = LoggerFactory.getLogger(ArquivoPublicidadeRegistroService.class);
+  private static final Pattern R2_HTTP_STATUS = Pattern.compile(
+      "^R2 (GET|PUT|PUT_IF_ABSENT|HEAD|LIST|DELETE) retornou HTTP ([1-5][0-9]{2})$");
   private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
   private static final Set<String> MOTIVOS_RETIRADA_FOTO = Set.of(
       "MIDIA_REMOVIDA_PELO_PROPRIETARIO", "MODERACAO_FOTO_EXCLUIDA");
@@ -223,8 +231,11 @@ public class ArquivoPublicidadeRegistroService {
     if (motivo == null || motivo.isBlank()) {
       throw new IllegalArgumentException("motivo obrigatorio para arquivo publicitario");
     }
-    entityManager.flush();
-    Map<String, Object> anuncio = unico("""
+    long inicioSql = System.nanoTime();
+    Map<String, Object> anuncio;
+    try {
+      entityManager.flush();
+      anuncio = unico("""
         SELECT a.id, a.usuario_id, a.slug, a.titulo, a.descricao, a.status,
                a.status_moderacao, a.categoria, a.preco, a.whatsapp_normalizado,
                a.link_conteudo, a.publicado_em, a.ultima_publicacao_em,
@@ -234,6 +245,11 @@ public class ArquivoPublicidadeRegistroService {
         FROM anuncio a JOIN usuario u ON u.id = a.usuario_id
         WHERE a.id = :anuncioId FOR UPDATE OF a
         """, Map.of("anuncioId", anuncioId));
+    } catch (RuntimeException exception) {
+      observarFase("ARQUIVO_LOCK_SQL", inicioSql, "ERRO", exception);
+      throw exception;
+    }
+    observarFase("ARQUIVO_LOCK_SQL", inicioSql, "OK", null);
     if (anuncio == null) {
       return;
     }
@@ -419,13 +435,26 @@ public class ArquivoPublicidadeRegistroService {
     }
     Map<String, Object> segmentacao = Map.of("estado", "NAO_AFERIDA_NA_CAPTURA");
     Map<String, Object> alcance = Map.of("estado", "NAO_MENSURADO", "destinatariosUnicos", "DESCONHECIDO");
-    String conteudoJson = json(conteudo);
-    String contratanteJson = json(contratante);
-    String comercialJson = json(comercial);
-    String segmentacaoJson = json(segmentacao);
-    String alcanceJson = json(alcance);
-    String hash = sha256((conteudoJson + contratanteJson + comercialJson
-        + segmentacaoJson + alcanceJson).getBytes(StandardCharsets.UTF_8));
+    long inicioPreparacao = System.nanoTime();
+    String conteudoJson;
+    String contratanteJson;
+    String comercialJson;
+    String segmentacaoJson;
+    String alcanceJson;
+    String hash;
+    try {
+      conteudoJson = json(conteudo);
+      contratanteJson = json(contratante);
+      comercialJson = json(comercial);
+      segmentacaoJson = json(segmentacao);
+      alcanceJson = json(alcance);
+      hash = sha256((conteudoJson + contratanteJson + comercialJson
+          + segmentacaoJson + alcanceJson).getBytes(StandardCharsets.UTF_8));
+    } catch (RuntimeException exception) {
+      observarFase("ARQUIVO_PREPARACAO_HASH", inicioPreparacao, "ERRO", exception);
+      throw exception;
+    }
+    observarFase("ARQUIVO_PREPARACAO_HASH", inicioPreparacao, "OK", null);
     OffsetDateTime limite = ativacao == null ? null : instanteJdbc(ativacao.get("fim_em"));
     Map<String, Object> anterior = unico("""
         SELECT id, numero, conteudo_sha256 FROM arquivo_publicidade_versao
@@ -700,7 +729,7 @@ public class ArquivoPublicidadeRegistroService {
       String chaveOrigem,
       Map<ChaveMidia, Map<String, Object>> fontes,
       List<MidiaReferencia> referencias) {
-    StoredObject original = storage.get(origem, chaveOrigem);
+    StoredObject original = medirFase("ARQUIVO_GET_ORIGEM", () -> storage.get(origem, chaveOrigem));
     if (original == null || original.content() == null || original.content().length == 0
         || original.contentType() == null) {
       throw new IllegalStateException("bytes da midia exibida indisponiveis: " + midia.get("id"));
@@ -708,13 +737,14 @@ public class ArquivoPublicidadeRegistroService {
     if ("FOTO".equals(midia.get("tipo")) && !IMAGE_TYPES.contains(original.contentType())) {
       throw new IllegalStateException("tipo de foto exibida divergente: " + midia.get("id"));
     }
-    String hash = sha256(original.content());
+    String hash = medirFase("ARQUIVO_HASH_ORIGEM", () -> sha256(original.content()));
     Object esperado = midia.get("sha256");
     if ("ORIGINAL".equals(variante) && esperado != null && !hash.equals(esperado)) {
       throw new IllegalStateException("hash da fonte de midia divergente: " + midia.get("id"));
     }
     Map<String, Object> fonte = fontes.get(new ChaveMidia((UUID) midia.get("id"), variante));
-    if (copiaAnteriorIntegra(storage, janelaId, usuarioId, midia, variante, fonte, original, hash)) {
+    if (medirFase("ARQUIVO_REUSO", () -> copiaAnteriorIntegra(
+        storage, janelaId, usuarioId, midia, variante, fonte, original, hash))) {
       referencias.add(new MidiaReferencia((UUID) fonte.get("origem_midia_id"),
           (UUID) midia.get("id"), variante, ((Number) midia.get("ordem")).intValue()));
       return null;
@@ -722,8 +752,8 @@ public class ArquivoPublicidadeRegistroService {
     String objetoDestino = storageProperties.getPrivateMediaPrefix()
         + "arquivo-publicidade/" + versaoId + "/" + midia.get("id")
         + "/" + variante.toLowerCase(java.util.Locale.ROOT);
-    ObjectWriteResult resultado = storage.putIfAbsent(
-        StorageArea.PRIVATE_MEDIA, objetoDestino, original.content(), original.contentType());
+    ObjectWriteResult resultado = medirFase("ARQUIVO_PUT_PRIVADO", () -> storage.putIfAbsent(
+        StorageArea.PRIVATE_MEDIA, objetoDestino, original.content(), original.contentType()));
     if (resultado == ObjectWriteResult.CREATED) {
       TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
         @Override
@@ -739,16 +769,47 @@ public class ArquivoPublicidadeRegistroService {
         }
       });
     }
-    StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, objetoDestino);
-    if (confirmada == null || confirmada.content() == null
-        || !hash.equals(sha256(confirmada.content()))
-        || !Objects.equals(original.contentType(), confirmada.contentType())) {
-      throw new IllegalStateException("copia privada da midia nao confirmou integridade: " + midia.get("id"));
-    }
+    medirFase("ARQUIVO_CONFIRMACAO", () -> {
+      StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, objetoDestino);
+      if (confirmada == null || confirmada.content() == null
+          || !hash.equals(sha256(confirmada.content()))
+          || !Objects.equals(original.contentType(), confirmada.contentType())) {
+        throw new IllegalStateException("copia privada da midia nao confirmou integridade: " + midia.get("id"));
+      }
+      return confirmada;
+    });
     return new MidiaCopiada(UUID.randomUUID(), (UUID) midia.get("id"),
         (UUID) midia.get("arquivo_midia_id"), variante, objetoDestino,
         hash, original.contentType(), original.content().length,
         ((Number) midia.get("ordem")).intValue());
+  }
+
+  private <T> T medirFase(String fase, Supplier<T> operacao) {
+    long inicio = System.nanoTime();
+    try {
+      T resultado = operacao.get();
+      observarFase(fase, inicio, "OK", null);
+      return resultado;
+    } catch (RuntimeException exception) {
+      observarFase(fase, inicio, "ERRO", exception);
+      throw exception;
+    }
+  }
+
+  private void observarFase(String fase, long inicio, String resultado, RuntimeException exception) {
+    String operacaoId = MDC.get("aprovacaoOperacaoId");
+    if (operacaoId == null) {
+      return;
+    }
+    String status = "NA";
+    if (exception instanceof R2StorageException && exception.getMessage() != null) {
+      Matcher matcher = R2_HTTP_STATUS.matcher(exception.getMessage());
+      if (matcher.matches()) {
+        status = matcher.group(2);
+      }
+    }
+    LOG.info("aprovacao_arquivo_fase operacaoId={} fase={} duracaoMs={} resultado={} statusR2={}",
+        operacaoId, fase, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicio), resultado, status);
   }
 
   /** Reuse is local to the preceding version of this window, never a hash lookup. */

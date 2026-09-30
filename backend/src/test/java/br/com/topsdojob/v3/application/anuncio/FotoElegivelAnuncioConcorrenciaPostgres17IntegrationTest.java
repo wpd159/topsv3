@@ -10,10 +10,13 @@ import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaPosCommitC
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaUploadService;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioMidiaUploadDto;
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionDto;
+import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
+import br.com.topsdojob.v3.application.admin.premium.PremiumExpiracaoPolicyService;
 import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -32,6 +35,8 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.EnumMap;
@@ -80,6 +85,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Import({
         FotoElegivelAnuncioPolicy.class,
         MidiaUploadValidator.class,
+        LimiteMidiasAnuncioService.class,
+        BeneficioAnuncioConsultaService.class,
+        PremiumExpiracaoPolicyService.class,
         FotoUploadProcessor.class,
         AnuncioMidiaUploadCoreService.class,
         AdminAnuncioMidiaUploadService.class,
@@ -321,6 +329,151 @@ class FotoElegivelAnuncioConcorrenciaPostgres17IntegrationTest {
         assertInvariantePublicacao(fixture.anuncioId());
     }
 
+    @Test
+    void doisUploadsAdministrativosDeVideoNaoExcedemBeneficioVigente() throws Exception {
+        Fixture fixture = fixture("PUBLICADO", "APROVADO");
+        ativarVideoSintetico(fixture.anuncioId());
+        MockMultipartFile video = new MockMultipartFile(
+                "arquivo", "video-sintetico.mp4", "video/mp4", videoBasico());
+        AdminUserPrincipal administrador = administrador();
+        storage.prepararBloqueioDoProximoPut();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        AdminAnuncioMidiaUploadDto primeiro;
+        Throwable segundo;
+        try {
+            Future<AdminAnuncioMidiaUploadDto> primeiraTentativa = executor.submit(() ->
+                    uploadService.enviar(fixture.anuncioId(), video, "video-admin-1",
+                            administrador, "request-video-1"));
+            assertThat(storage.aguardarPut(5, TimeUnit.SECONDS)).isTrue();
+            CountDownLatch segundaIniciada = new CountDownLatch(1);
+            Future<Throwable> segundaTentativa = executor.submit(() -> {
+                segundaIniciada.countDown();
+                try {
+                    uploadService.enviar(fixture.anuncioId(), video, "video-admin-2",
+                            administrador, "request-video-2");
+                    return null;
+                } catch (Throwable exception) {
+                    return exception;
+                }
+            });
+            assertThat(segundaIniciada.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> segundaTentativa.get(500, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            storage.liberarPut();
+            primeiro = primeiraTentativa.get(10, TimeUnit.SECONDS);
+            segundo = segundaTentativa.get(10, TimeUnit.SECONDS);
+        } finally {
+            storage.liberarPut();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(primeiro.tipo()).isEqualTo("VIDEO");
+        assertThat(primeiro.status()).isEqualTo("PENDENTE");
+        assertThat(primeiro.statusArquivo()).isEqualTo("PENDENTE");
+        assertThat(segundo).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(exception.getReason()).contains("limite de video");
+        });
+        assertThat(jdbc.queryForObject(
+                "select count(*) from anuncio_midia where anuncio_id = ? and tipo = 'VIDEO'",
+                Long.class, fixture.anuncioId())).isEqualTo(1L);
+        assertThat(jdbc.queryForMap("""
+                select midia.status, midia.visibilidade_midia, arquivo.status_arquivo,
+                       arquivo.largura, arquivo.altura
+                from anuncio_midia midia join arquivo_midia arquivo on arquivo.id = midia.arquivo_midia_id
+                where midia.id = ?
+                """, primeiro.midiaId())).containsEntry("status", "PENDENTE")
+                .containsEntry("visibilidade_midia", "RESTRITA_18")
+                .containsEntry("status_arquivo", "PENDENTE")
+                .containsEntry("largura", null)
+                .containsEntry("altura", null);
+        AdminAnuncioMidiaUploadDto repetido = uploadService.enviar(
+                fixture.anuncioId(), video, "video-admin-1", administrador, "request-video-retry");
+        assertThat(repetido.idempotente()).isTrue();
+        assertThat(repetido.midiaId()).isEqualTo(primeiro.midiaId());
+        assertThat(storage.quantidade(StorageArea.PRIVATE_MEDIA)).isEqualTo(1);
+        assertThat(storage.quantidade(StorageArea.PUBLIC_MEDIA)).isZero();
+    }
+
+    @Test
+    void falhaNaConfirmacaoDoStorageReverteBancoECompensaVideoNovo() {
+        Fixture fixture = fixture("PUBLICADO", "APROVADO");
+        ativarVideoSintetico(fixture.anuncioId());
+        MockMultipartFile video = new MockMultipartFile(
+                "arquivo", "video-sintetico.mp4", "video/mp4", videoBasico());
+        storage.prepararFalhaNaConfirmacaoDoProximoGet();
+
+        assertThatThrownBy(() -> uploadService.enviar(
+                fixture.anuncioId(), video, "video-storage-falhou",
+                administrador(), "request-video-falhou"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("falha sintetica na confirmacao do storage");
+        assertThat(jdbc.queryForObject(
+                "select count(*) from anuncio_midia where anuncio_id = ? and tipo = 'VIDEO'",
+                Long.class, fixture.anuncioId())).isZero();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from arquivo_midia where chave_objeto like ?",
+                Long.class, "%/anuncios/" + fixture.anuncioId() + "/%")).isZero();
+        assertThat(storage.quantidade(StorageArea.PRIVATE_MEDIA)).isZero();
+
+        AdminAnuncioMidiaUploadDto repetido = uploadService.enviar(
+                fixture.anuncioId(), video, "video-storage-falhou",
+                administrador(), "request-video-retry");
+        assertThat(repetido.tipo()).isEqualTo("VIDEO");
+        assertThat(repetido.status()).isEqualTo("PENDENTE");
+        assertThat(repetido.idempotente()).isFalse();
+        assertThat(storage.quantidade(StorageArea.PRIVATE_MEDIA)).isEqualTo(1);
+    }
+
+    private void ativarVideoSintetico(UUID anuncioId) {
+        UUID usuarioId = jdbc.queryForObject(
+                "select usuario_id from anuncio where id = ?", UUID.class, anuncioId);
+        UUID beneficioId = jdbc.queryForObject(
+                "select id from beneficio_premium where codigo = 'VIDEO_1'", UUID.class);
+        UUID grupoId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now();
+        jdbc.update("""
+                insert into grupo_ativacao_beneficio (
+                  id, tipo, origem, usuario_id, anuncio_id, validade_inicio_em,
+                  validade_fim_em, status, criado_em, atualizado_em
+                ) values (?, 'ADMIN', 'ADMIN', ?, ?, ?, ?, 'ATIVO', ?, ?)
+                """, grupoId, usuarioId, anuncioId, agora.minusDays(1), agora.plusDays(30), agora, agora);
+        jdbc.update("""
+                insert into ativacao_beneficio (
+                  id, beneficio_id, usuario_id, anuncio_id, grupo_ativacao_id, origem,
+                  inicio_em, fim_em, status, custo_creditos_snapshot, criado_em
+                ) values (?, ?, ?, ?, ?, 'ADMIN', ?, ?, 'ATIVA', 0, ?)
+                """, UUID.randomUUID(), beneficioId, usuarioId, anuncioId, grupoId,
+                agora.minusDays(1), agora.plusDays(30), agora);
+    }
+
+    private byte[] videoBasico() {
+        byte[] ftyp = box("ftyp", concat("isom".getBytes(StandardCharsets.US_ASCII), new byte[4]));
+        byte[] hdlr = box("hdlr", concat(new byte[8], "vide".getBytes(StandardCharsets.US_ASCII)));
+        byte[] moov = box("moov", box("trak", box("mdia", hdlr)));
+        byte[] mdat = box("mdat", new byte[] {1, 2, 3, 4});
+        return concat(ftyp, moov, mdat);
+    }
+
+    private byte[] box(String type, byte[] payload) {
+        return concat(ByteBuffer.allocate(4).putInt(payload.length + 8).array(),
+                type.getBytes(StandardCharsets.US_ASCII), payload);
+    }
+
+    private byte[] concat(byte[]... parts) {
+        int size = 0;
+        for (byte[] part : parts) size += part.length;
+        byte[] result = new byte[size];
+        int offset = 0;
+        for (byte[] part : parts) {
+            System.arraycopy(part, 0, result, offset, part.length);
+            offset += part.length;
+        }
+        return result;
+    }
+
     private void aprovar(UUID anuncioId) {
         transacao().executeWithoutResult(status -> {
             anuncioRepository.findByIdForModeration(anuncioId).orElseThrow();
@@ -539,6 +692,7 @@ class FotoElegivelAnuncioConcorrenciaPostgres17IntegrationTest {
         private final Map<StorageArea, ConcurrentMap<String, StoredObject>> objects =
                 new EnumMap<>(StorageArea.class);
         private final AtomicBoolean bloquearProximoPut = new AtomicBoolean();
+        private final AtomicBoolean falharProximoGet = new AtomicBoolean();
         private volatile CountDownLatch putIniciado = new CountDownLatch(0);
         private volatile CountDownLatch liberarPut = new CountDownLatch(0);
 
@@ -553,6 +707,11 @@ class FotoElegivelAnuncioConcorrenciaPostgres17IntegrationTest {
             putIniciado = new CountDownLatch(1);
             liberarPut = new CountDownLatch(1);
             bloquearProximoPut.set(true);
+        }
+
+        void prepararFalhaNaConfirmacaoDoProximoGet() {
+            objects.values().forEach(Map::clear);
+            falharProximoGet.set(true);
         }
 
         boolean aguardarPut(long timeout, TimeUnit unit) throws InterruptedException {
@@ -603,6 +762,9 @@ class FotoElegivelAnuncioConcorrenciaPostgres17IntegrationTest {
 
         @Override
         public StoredObject get(StorageArea area, String key) {
+            if (falharProximoGet.compareAndSet(true, false)) {
+                throw new IllegalStateException("falha sintetica na confirmacao do storage");
+            }
             StoredObject value = objects.get(area).get(key);
             return value == null ? null : objeto(value.content(), value.contentType());
         }

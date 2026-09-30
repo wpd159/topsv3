@@ -321,6 +321,10 @@ export type AdminAdMediaUploadResponse = {
   requestId: string
 }
 
+export type AdminAdVideoUploadResponse = Omit<AdminAdMediaUploadResponse, 'tipo'> & {
+  tipo: 'VIDEO'
+}
+
 export type AdminModerationHistoryItem = {
   id: string
   alvoTipo: string
@@ -365,6 +369,14 @@ export type AdminApprovalRequest = {
   operacaoId: string
   versaoAnuncioAntes: number
   revisaoId?: string | null
+}
+
+export type AdminApprovalStatus = {
+  estado: 'CONFIRMADA' | 'PUBLICACAO_REGULARIZADA' | 'INCONCLUSIVA'
+  operacaoIdCliente: string
+  anuncioId: string
+  revisaoIdConfirmada?: string | null
+  versaoAnuncioAntes?: number | null
 }
 
 export type AdminStoryPublication = {

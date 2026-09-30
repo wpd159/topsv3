@@ -508,7 +508,7 @@ assert.ok(detail.includes('AUTOMATIC_REPROVAL_REVIEW_REASON') && detail.includes
 assert.ok(detail.includes("let reviewId = reviewOpen ? ad.revisaoAberta?.id : null"), 'Revisao ja aberta deve ser reutilizada pela reprovacao.')
 assert.ok(detail.includes("await decideAdminReview(reviewId, 'REPROVAR', reason)") && detail.includes('await load()'), 'A reprovacao deve reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
 assert.ok(detail.includes('await revalidarCacheCatalogoPublico()'), 'A aprovacao deve invalidar o cache publico de catalogo e localidades.')
-assert.ok(detail.includes('Anúncio aprovado e publicado com sucesso.'), 'O sucesso deve confirmar aprovacao e publicacao como uma unica operacao.')
+assert.ok(detail.includes('Operação de publicação concluída com sucesso.'), 'O 200 canônico deve ser comunicado sem atribuir uma decisão nova ao ramo legado.')
 assert.ok(detail.includes("!(ad.status === 'PUBLICADO' && ad.statusModeracao === 'APROVADO')"), 'Publicado deve aparecer como o unico estado principal depois da aprovacao.')
 assert.ok(detail.includes('Anúncio reprovado. O anunciante foi informado sobre as alterações necessárias.'), 'A reprovacao deve confirmar a orientacao ao anunciante.')
 assert.ok(detail.includes('Motivo e alterações necessárias') && detail.includes('Confirmar reprovação'), 'O modal deve exigir o motivo integral da reprovacao.')
@@ -649,7 +649,7 @@ function componentHooks() {
       const slot = index++
       if (!slots[slot] || changed(slots[slot].dependencies, dependencies)) {
         const old = slots[slot]
-        slots[slot] = { dependencies, cleanup: old?.cleanup }
+        slots[slot] = { kind: 'effect', dependencies, cleanup: old?.cleanup }
         effects.push(() => { old?.cleanup?.(); slots[slot].cleanup = callback() })
       }
     },
@@ -662,6 +662,16 @@ function componentHooks() {
     react,
     mount(next, props = componentProps) { component = next; componentProps = props; render() },
     rerender(props) { componentProps = props; render() },
+    deactivate() {
+      slots.forEach((slot) => {
+        if (slot?.kind === 'effect') {
+          slot.cleanup?.()
+          slot.cleanup = undefined
+          slot.dependencies = undefined
+        }
+      })
+    },
+    reactivate() { render() },
     async settle() {
       for (let iteration = 0; iteration < 12; iteration++) {
         await new Promise((resolve) => setImmediate(resolve))
@@ -708,7 +718,7 @@ const syntheticAd = {
 const adminSession = { usuarioId: 'synthetic-admin', papeis: ['ADMIN'], permissoes: ['ANUNCIO_MODERAR'] }
 const removedAd = { ...syntheticAd, status: 'REMOVIDO' }
 
-async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticAd], update, approve, reviewRead, revalidate, session = adminSession } = {}) {
+async function mountAdministrativeComponent({ mode = 'edit', initialAnuncioId = syntheticAd.id, reads = [syntheticAd], update, approve, reviewRead, approvalStatus, revalidate, session = adminSession } = {}) {
   const runner = componentHooks(), calls = [], effects = [], unexpected = []
   let readIndex = 0
   const apiBoundary = new Proxy({
@@ -737,6 +747,12 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
       assert.ok(reviewRead, 'Leitura de reconciliação não configurada.')
       return reviewRead(id, requestId)
     },
+    async getAdminApprovalStatus(id, operation) {
+      calls.push('STATUS_GET')
+      assert.equal(id, operation.anuncioId)
+      assert.ok(approvalStatus, 'Consulta do estado da operação não configurada.')
+      return approvalStatus(operation)
+    },
     async listAdminAdHistory(id) {
       assert.ok([syntheticAd.id, 'another-synthetic-ad'].includes(id))
       return [{ id: 'synthetic-history', acao: 'REMOVER', alvoTipo: 'ANUNCIO', motivo: 'Histórico sintético preservado' }]
@@ -745,7 +761,10 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
   const imports = {
     react: runner.react, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
     'next/link': { default: 'Link' },
-    'next/navigation': { useRouter: () => Object.fromEntries(['push', 'replace', 'refresh'].map((method) => [method, (...args) => effects.push([method, ...args])])) },
+    'next/navigation': {
+      usePathname: () => globalThis.window?.location?.pathname ?? null,
+      useRouter: () => Object.fromEntries(['push', 'replace', 'refresh'].map((method) => [method, (...args) => effects.push([method, ...args])])),
+    },
     '@/lib/admin-auth-api': { getAdminSession: async () => session },
     '@/lib/api-contract': contractRuntime,
     '@/lib/seo/public-url': publicUrlRuntime,
@@ -774,6 +793,7 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
     } }, '@/features/admin-usuarios/api': {}, '@/lib/cpf-mask': {},
     './admin-anuncio-documentos': { AdminAnuncioDocumentos: 'AdminAnuncioDocumentos' },
     './admin-anuncio-midia-uploader': { AdminAnuncioMidiaUploader: 'AdminAnuncioMidiaUploader' },
+    './admin-anuncio-video-uploader': { AdminAnuncioVideoUploader: 'AdminAnuncioVideoUploader' },
     './admin-anuncio-premium': { AdminAnuncioPremium: 'AdminAnuncioPremium' },
     './queue-context': runtimeModule('features/admin-anuncios/queue-context.ts'),
     './owner-age': runtimeModule('features/admin-anuncios/owner-age.ts', {
@@ -781,7 +801,8 @@ async function mountAdministrativeComponent({ mode = 'edit', reads = [syntheticA
     }),
   })
   const componentModule = runtimeModule(`features/admin-anuncios/admin-anuncio-${mode === 'edit' ? 'edit-form' : 'moderacao'}.tsx`, imports)
-  runner.mount(mode === 'edit' ? componentModule.AdminAnuncioEditForm : componentModule.AdminAnuncioModeracao)
+  runner.mount(mode === 'edit' ? componentModule.AdminAnuncioEditForm : componentModule.AdminAnuncioModeracao,
+    { anuncioId: initialAnuncioId })
   await runner.settle()
   return { runner, calls, effects, finish() { assert.deepEqual(unexpected, []); runner.unmount() } }
 }
@@ -910,6 +931,11 @@ const pendingReview = {
   id: 'synthetic-review', anuncioId: syntheticAd.id, tipo: 'EDICAO', status: 'ABERTA',
   finalizadoEm: null, somenteLeitura: true,
 }
+function deferred() {
+  let resolve
+  const promise = new Promise((done) => { resolve = done })
+  return { promise, resolve }
+}
 function approvedResponse(operation, changes = {}) {
   return {
     id: '20000000-0000-4000-8000-000000000001', recursoTipo: 'REVISAO_ANUNCIO',
@@ -934,6 +960,7 @@ function assertApprovalUncertain(testCase) {
   const text = visibleText(testCase.runner.tree)
   assert.match(text, /Resultado da aprovação ainda não confirmado/)
   assert.doesNotMatch(text, /Anúncio aprovado e publicado com sucesso/)
+  assert.doesNotMatch(text, /Operação de publicação concluída com sucesso/)
   for (const label of ['Aprovar anúncio', 'Reprovar anúncio', 'Bloquear anúncio', 'Excluir anúncio', 'Editar anúncio', 'Editar dados do usuário', 'Solicitar ajuste']) {
     for (const button of controls(testCase.runner.tree, (node) => node.type === 'Button' && visibleText(node) === label)) {
       assert.equal(button.props.disabled, true, `Ação incompatível desbloqueada: ${label}`)
@@ -941,12 +968,14 @@ function assertApprovalUncertain(testCase) {
   }
   assert.equal(controls(testCase.runner.tree, (node) => node.type === 'Link' && node.props.href.endsWith('/editar')).length, 0)
 }
-let observedReview = pendingReview
+let observedStatus = (operation) => ({ estado: 'INCONCLUSIVA', operacaoIdCliente: operation.operacaoId,
+  anuncioId: operation.anuncioId })
 let attemptedOperation
 const ambiguousApproval = await mountAdministrativeComponent({
   mode: 'detail', reads: [pendingAd],
   approve: async (operation) => { attemptedOperation = operation; throw offline },
-  reviewRead: async (id) => { assert.equal(id, pendingReview.id); return observedReview },
+  reviewRead: async (id) => { assert.equal(id, pendingReview.id); return pendingReview },
+  approvalStatus: async (operation) => observedStatus(operation),
 })
 const approvalDialog = await startApproval(ambiguousApproval)
 assert.match(visibleText(ambiguousApproval.runner.tree), /Resultado da aprovação ainda não confirmado/,
@@ -964,20 +993,83 @@ const readApproval = async () => {
   await ambiguousApproval.runner.settle()
 }
 await readApproval()
-assert.match(visibleText(ambiguousApproval.runner.tree), /Estado da revisão consultada:.*Aberta/)
+assert.match(visibleText(ambiguousApproval.runner.tree), /não encontrou evidência conclusiva/)
 assertApprovalUncertain(ambiguousApproval)
-observedReview = { ...pendingReview, status: 'APROVADA', finalizadoEm: '2026-01-01T00:01:00Z' }
 await readApproval()
-assert.match(visibleText(ambiguousApproval.runner.tree), /Estado da revisão consultada:.*Aprovada/)
-assert.match(visibleText(ambiguousApproval.runner.tree), /não comprova qual requisição concluiu/)
+assert.match(visibleText(ambiguousApproval.runner.tree), /não encontrou evidência conclusiva/)
 assertApprovalUncertain(ambiguousApproval)
-observedReview = { ...observedReview, id: 'another-review' }
+observedStatus = (operation) => ({ estado: 'CONFIRMADA', operacaoIdCliente: 'another-operation',
+  anuncioId: operation.anuncioId, revisaoIdConfirmada: operation.revisaoId,
+  versaoAnuncioAntes: operation.versaoAnuncioAntes })
 await readApproval()
-assert.match(visibleText(ambiguousApproval.runner.tree), /não corresponde à revisão/)
+assert.match(visibleText(ambiguousApproval.runner.tree), /não corresponde a esta operação/)
 assertApprovalUncertain(ambiguousApproval)
 assert.equal(ambiguousApproval.calls.filter((call) => call === 'APPROVE').length, 1)
-assert.deepEqual(ambiguousApproval.effects, [], 'A leitura pendente/aprovada de outro request não confirma mutação, cache ou IndexNow.')
+assert.deepEqual(ambiguousApproval.effects, [], 'Leitura inconclusiva ou de outra operação não confirma mutação, cache ou IndexNow.')
 ambiguousApproval.finish()
+
+let reconciliationReads = 0
+const reconciledApproval = await mountAdministrativeComponent({
+  mode: 'detail', reads: [pendingAd, syntheticAd],
+  approve: async () => { throw offline }, reviewRead: async () => pendingReview,
+  approvalStatus: async (operation) => {
+    reconciliationReads += 1
+    return { estado: reconciliationReads === 1 ? 'INCONCLUSIVA' : 'CONFIRMADA',
+      operacaoIdCliente: operation.operacaoId, anuncioId: operation.anuncioId,
+      revisaoIdConfirmada: operation.revisaoId, versaoAnuncioAntes: operation.versaoAnuncioAntes }
+  },
+})
+await startApproval(reconciledApproval)
+const reconcileButton = () => controls(reconciledApproval.runner.tree,
+  (node) => node.type === 'Button' && visibleText(node).includes('Conferir aprovação por leitura'))[0]
+reconcileButton().props.onClick()
+await reconciledApproval.runner.settle()
+assertApprovalUncertain(reconciledApproval)
+reconcileButton().props.onClick()
+await reconciledApproval.runner.settle()
+assert.match(visibleText(reconciledApproval.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+assert.equal(reconciledApproval.calls.filter((call) => call === 'APPROVE').length, 1)
+assert.equal(reconciliationReads, 2)
+assert.deepEqual(reconciledApproval.effects.map(([kind]) => kind), ['CACHE', 'INDEXNOW'])
+reconciledApproval.finish()
+
+const regularizedByRead = await mountAdministrativeComponent({
+  mode: 'detail', reads: [{ ...syntheticAd, status: 'APROVADO' }, syntheticAd],
+  approve: async () => { throw offline },
+  approvalStatus: async (operation) => ({ estado: 'PUBLICACAO_REGULARIZADA',
+    operacaoIdCliente: operation.operacaoId, anuncioId: operation.anuncioId,
+    versaoAnuncioAntes: operation.versaoAnuncioAntes }),
+})
+await startApproval(regularizedByRead)
+controls(regularizedByRead.runner.tree,
+  (node) => node.type === 'Button' && visibleText(node).includes('Conferir aprovação por leitura'))[0].props.onClick()
+await regularizedByRead.runner.settle()
+assert.match(visibleText(regularizedByRead.runner.tree), /Publicação do anúncio regularizada com sucesso/)
+assert.doesNotMatch(visibleText(regularizedByRead.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+assert.equal(regularizedByRead.calls.filter((call) => call === 'APPROVE').length, 1)
+regularizedByRead.finish()
+
+for (const mismatch of [
+  (operation) => ({ operacaoIdCliente: 'another-operation' }),
+  (operation) => ({ anuncioId: 'another-synthetic-ad' }),
+  (operation) => ({ revisaoIdConfirmada: 'another-review' }),
+  (operation) => ({ versaoAnuncioAntes: operation.versaoAnuncioAntes + 1 }),
+]) {
+  const wrongEvidence = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd],
+    approve: async () => { throw offline }, reviewRead: async () => pendingReview,
+    approvalStatus: async (operation) => ({ estado: 'CONFIRMADA', operacaoIdCliente: operation.operacaoId,
+      anuncioId: operation.anuncioId, revisaoIdConfirmada: operation.revisaoId,
+      versaoAnuncioAntes: operation.versaoAnuncioAntes, ...mismatch(operation) }),
+  })
+  await startApproval(wrongEvidence)
+  controls(wrongEvidence.runner.tree,
+    (node) => node.type === 'Button' && visibleText(node).includes('Conferir aprovação por leitura'))[0].props.onClick()
+  await wrongEvidence.runner.settle()
+  assertApprovalUncertain(wrongEvidence)
+  assert.deepEqual(wrongEvidence.effects, [])
+  assert.equal(wrongEvidence.calls.filter((call) => call === 'APPROVE').length, 1)
+  wrongEvidence.finish()
+}
 
 for (const failure of [serverFailure, invalid]) {
   const failedApproval = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd],
@@ -995,12 +1087,14 @@ for (const failure of [serverFailure, invalid]) {
 }
 
 const legacyUncertain = await mountAdministrativeComponent({ mode: 'detail',
-  reads: [{ ...syntheticAd, status: 'APROVADO' }], approve: async () => { throw offline } })
+  reads: [{ ...syntheticAd, status: 'APROVADO' }], approve: async () => { throw offline },
+  approvalStatus: async (operation) => ({ estado: 'INCONCLUSIVA', operacaoIdCliente: operation.operacaoId, anuncioId: operation.anuncioId }),
+})
 await startApproval(legacyUncertain)
 assertApprovalUncertain(legacyUncertain)
 assert.match(visibleText(legacyUncertain.runner.tree), /revisão ainda não estava identificada/)
-assert.equal(controls(legacyUncertain.runner.tree, (node) => node.type === 'Button' && visibleText(node).includes('Conferir aprovação por leitura'))[0].props.disabled, true)
-assert.deepEqual(legacyUncertain.calls, ['GET', 'APPROVE'], 'Ramo legado não pode usar uma rota de confirmação ainda inexistente.')
+assert.equal(controls(legacyUncertain.runner.tree, (node) => node.type === 'Button' && visibleText(node).includes('Conferir aprovação por leitura'))[0].props.disabled, false)
+assert.deepEqual(legacyUncertain.calls, ['GET', 'APPROVE'], 'Ramo legado pode consultar a operação sem revisão conhecida.')
 legacyUncertain.finish()
 
 let completeApproval
@@ -1008,10 +1102,10 @@ const completion = new Promise((resolve) => { completeApproval = resolve })
 const confirmed = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd, syntheticAd],
   approve: async (operation) => { await completion; return approvedResponse(operation) }, reviewRead: async () => pendingReview })
 const retainedConfirmedDialog = await startApproval(confirmed)
-assert.doesNotMatch(visibleText(confirmed.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+assert.doesNotMatch(visibleText(confirmed.runner.tree), /Operação de publicação concluída com sucesso/)
 completeApproval()
 await confirmed.runner.settle()
-assert.match(visibleText(confirmed.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+assert.match(visibleText(confirmed.runner.tree), /Operação de publicação concluída com sucesso/)
 assert.deepEqual(confirmed.effects.map(([kind]) => kind), ['CACHE', 'INDEXNOW'])
 retainedConfirmedDialog.props.onConfirm('')
 await confirmed.runner.settle()
@@ -1022,7 +1116,7 @@ const preservedHttpId = await mountAdministrativeComponent({ mode: 'detail', rea
   approve: async (operation) => approvedResponse(operation, { requestId: operation.operacaoId }),
   reviewRead: async () => pendingReview })
 await startApproval(preservedHttpId)
-assert.match(visibleText(preservedHttpId.runner.tree), /Anúncio aprovado e publicado com sucesso/,
+assert.match(visibleText(preservedHttpId.runner.tree), /Operação de publicação concluída com sucesso/,
   'Identificador HTTP preservado também confirma a mesma operação auditada.')
 preservedHttpId.finish()
 
@@ -1031,8 +1125,8 @@ const cacheFailure = await mountAdministrativeComponent({ mode: 'detail', reads:
   revalidate: async () => { throw offline },
 })
 await startApproval(cacheFailure)
-assert.match(visibleText(cacheFailure.runner.tree), /Anúncio aprovado e publicado com sucesso/)
-assert.match(visibleText(cacheFailure.runner.tree), /aprovação foi confirmada, mas a atualização da tela ou do cache não terminou/)
+assert.match(visibleText(cacheFailure.runner.tree), /Operação de publicação concluída com sucesso/)
+assert.match(visibleText(cacheFailure.runner.tree), /operação foi confirmada, mas a atualização da tela ou do cache não terminou/)
 assert.doesNotMatch(visibleText(cacheFailure.runner.tree), /Resultado da aprovação ainda não confirmado/)
 assert.equal(controls(cacheFailure.runner.tree, (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio').length, 0)
 assert.equal(cacheFailure.calls.filter((call) => call === 'APPROVE').length, 1)
@@ -1042,21 +1136,29 @@ let finishCacheAfterNavigation
 const pendingCache = new Promise((resolve) => { finishCacheAfterNavigation = resolve })
 const navigatingAd = { ...pendingAd, id: 'another-synthetic-ad',
   revisaoAberta: { ...pendingAd.revisaoAberta, id: 'another-synthetic-review' } }
+let cacheCalls = 0
 const confirmedWhileNavigating = await mountAdministrativeComponent({ mode: 'detail',
-  reads: [pendingAd, navigatingAd, syntheticAd],
-  approve: async (operation) => approvedResponse(operation), reviewRead: async () => pendingReview,
-  revalidate: async () => pendingCache,
+  reads: [pendingAd, navigatingAd,
+    { ...navigatingAd, status: 'PUBLICADO', statusModeracao: 'APROVADO', revisaoAberta: null },
+    () => syntheticAd],
+  approve: async (operation) => approvedResponse(operation, { recursoId: operation.revisaoId }),
+  reviewRead: async (id) => ({ ...pendingReview, id,
+    anuncioId: id === pendingReview.id ? pendingAd.id : navigatingAd.id }),
+  revalidate: async () => { cacheCalls += 1; if (cacheCalls === 1) await pendingCache },
 })
 await startApproval(confirmedWhileNavigating)
 confirmedWhileNavigating.runner.rerender({ anuncioId: navigatingAd.id })
 await confirmedWhileNavigating.runner.settle()
+await startApproval(confirmedWhileNavigating)
+assert.match(visibleText(confirmedWhileNavigating.runner.tree), /Operação de publicação concluída com sucesso/)
 finishCacheAfterNavigation()
 await confirmedWhileNavigating.runner.settle()
-assert.deepEqual(confirmedWhileNavigating.effects.map(([kind]) => kind), ['CACHE', 'INDEXNOW'],
-  'Confirmação de A não pode perder a notificação após navegar para B durante a atualização do cache.')
-assert.equal(confirmedWhileNavigating.effects[1][1].changeFingerprint.length, 36)
-assert.doesNotMatch(visibleText(confirmedWhileNavigating.runner.tree), /Anúncio aprovado e publicado com sucesso/,
-  'O resultado da aprovação de A não pode ser exibido em B.')
+assert.deepEqual(confirmedWhileNavigating.effects.map(([kind]) => kind), ['CACHE', 'CACHE', 'INDEXNOW', 'INDEXNOW'],
+  'Confirmações de A e B devem completar suas próprias atualizações de cache e notificação.')
+assert.equal(confirmedWhileNavigating.effects[2][1].changeFingerprint.length, 36)
+assert.match(visibleText(confirmedWhileNavigating.runner.tree), /Operação de publicação concluída com sucesso/,
+  'Conclusão tardia do cache de A não pode apagar o resultado de B.')
+assert.equal(confirmedWhileNavigating.calls.filter((call) => call === 'APPROVE').length, 2)
 confirmedWhileNavigating.finish()
 
 const inAnalysis = await mountAdministrativeComponent({ mode: 'detail',
@@ -1066,7 +1168,7 @@ const inAnalysis = await mountAdministrativeComponent({ mode: 'detail',
 })
 await startApproval(inAnalysis)
 assert.equal(inAnalysis.calls.filter((call) => call === 'APPROVE').length, 1, 'EM_ANALISE é um estado editável legítimo do contrato existente.')
-assert.match(visibleText(inAnalysis.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+assert.match(visibleText(inAnalysis.runner.tree), /Operação de publicação concluída com sucesso/)
 inAnalysis.finish()
 
 for (const responseKind of ['ANUNCIO', 'REVISAO_ANUNCIO']) {
@@ -1077,7 +1179,7 @@ for (const responseKind of ['ANUNCIO', 'REVISAO_ANUNCIO']) {
       : { recursoId: '30000000-0000-4000-8000-000000000001' }),
   })
   await startApproval(legacyConfirmed)
-  assert.match(visibleText(legacyConfirmed.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+  assert.match(visibleText(legacyConfirmed.runner.tree), /Operação de publicação concluída com sucesso/)
   assert.equal(legacyConfirmed.calls.filter((call) => call === 'APPROVE').length, 1)
   legacyConfirmed.finish()
 }
@@ -1113,7 +1215,7 @@ const noPriorReview = await mountAdministrativeComponent({ mode: 'detail',
 await startApproval(noPriorReview)
 assert.equal(noPriorReview.calls.filter((call) => call === 'REVIEW_GET').length, 0,
   'Sem revisão aberta, o backend pode criá-la no ato; não consultar revisão inexistente.')
-assert.match(visibleText(noPriorReview.runner.tree), /Anúncio aprovado e publicado com sucesso/)
+assert.match(visibleText(noPriorReview.runner.tree), /Operação de publicação concluída com sucesso/)
 noPriorReview.finish()
 
 const navigationAfterApproval = await mountAdministrativeComponent({ mode: 'detail',
@@ -1130,6 +1232,182 @@ await startApproval(navigationAfterApproval)
 assert.equal(navigationAfterApproval.calls.filter((call) => call === 'APPROVE').length, 2,
   'A confirmação do anúncio anterior não pode bloquear a revisão de outro anúncio ao navegar na fila.')
 navigationAfterApproval.finish()
+
+const prePostRead = deferred(), prePostMutations = []
+const navigationBeforePost = await mountAdministrativeComponent({ mode: 'detail',
+  reads: [pendingAd, nextAd, { ...nextAd, status: 'PUBLICADO', statusModeracao: 'APROVADO', revisaoAberta: null }],
+  reviewRead: async (id) => id === pendingReview.id ? prePostRead.promise
+    : { ...pendingReview, id, anuncioId: nextAd.id },
+  approve: async (operation) => { prePostMutations.push(operation); return approvedResponse(operation, { recursoId: operation.revisaoId }) },
+})
+const prePostButton = controls(navigationBeforePost.runner.tree,
+  (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio')[0]
+prePostButton.props.onClick()
+await navigationBeforePost.runner.settle()
+const prePostDialog = controls(navigationBeforePost.runner.tree,
+  (node) => typeof node.type === 'function' && node.type.name === 'DecisionDialog')[0]
+prePostDialog.props.onConfirm('')
+await navigationBeforePost.runner.settle()
+assert.deepEqual(prePostMutations, [], 'A deve aguardar a consulta da revisão antes de enviar POST.')
+navigationBeforePost.runner.rerender({ anuncioId: nextAd.id })
+await navigationBeforePost.runner.settle()
+await startApproval(navigationBeforePost)
+assert.equal(prePostMutations.length, 1, 'B deve permanecer operacional enquanto a consulta antiga de A espera.')
+assert.equal(prePostMutations[0].anuncioId, nextAd.id)
+prePostRead.resolve(pendingReview)
+await navigationBeforePost.runner.settle()
+assert.equal(prePostMutations.length, 1, 'A consulta antiga não pode enviar a decisão de A depois da navegação.')
+assert.doesNotMatch(visibleText(navigationBeforePost.runner.tree), /Resultado da aprovação ainda não confirmado/)
+navigationBeforePost.finish()
+
+// Model a retained Next route branch: A keeps its props while the browser URL
+// already points at B. This is a synthetic lifecycle test, not a Next browser run.
+const browserWindowBeforeHidden = globalThis.window
+const hiddenReview = deferred(), hiddenPosts = []
+globalThis.window = { location: { pathname: `/admin/anuncios/${pendingAd.id}` } }
+try {
+  const hiddenA = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd],
+    reviewRead: async () => hiddenReview.promise,
+    approve: async (operation) => { hiddenPosts.push(operation); return approvedResponse(operation) },
+  })
+  const buttonA = controls(hiddenA.runner.tree,
+    (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio')[0]
+  buttonA.props.onClick()
+  await hiddenA.runner.settle()
+  controls(hiddenA.runner.tree,
+    (node) => typeof node.type === 'function' && node.type.name === 'DecisionDialog')[0].props.onConfirm('')
+  await hiddenA.runner.settle()
+
+  globalThis.window.location.pathname = `/admin/anuncios/${nextAd.id}`
+  const visibleB = await mountAdministrativeComponent({ mode: 'detail', initialAnuncioId: nextAd.id,
+    reads: [nextAd, { ...nextAd, status: 'PUBLICADO', statusModeracao: 'APROVADO', revisaoAberta: null }],
+    reviewRead: async (id) => ({ ...pendingReview, id, anuncioId: nextAd.id }),
+    approve: async (operation) => approvedResponse(operation, { recursoId: operation.revisaoId }),
+  })
+  await startApproval(visibleB)
+  hiddenReview.resolve(pendingReview)
+  await hiddenA.runner.settle()
+  assert.deepEqual(hiddenPosts, [], 'Instância A retida e oculta não pode enviar POST após o URL ativo mudar para B.')
+  assert.match(visibleText(visibleB.runner.tree), /Operação de publicação concluída com sucesso/)
+  hiddenA.finish()
+  visibleB.finish()
+} finally {
+  if (browserWindowBeforeHidden === undefined) delete globalThis.window
+  else globalThis.window = browserWindowBeforeHidden
+}
+
+const oldResponse = deferred(), currentResponse = deferred(), inFlightMutations = []
+const navigationDuringResponse = await mountAdministrativeComponent({ mode: 'detail',
+  reads: [pendingAd, nextAd, () => syntheticAd,
+    { ...nextAd, status: 'PUBLICADO', statusModeracao: 'APROVADO', revisaoAberta: null }],
+  reviewRead: async (id) => ({ ...pendingReview, id,
+    anuncioId: id === pendingReview.id ? pendingAd.id : nextAd.id }),
+  approve: async (operation) => {
+    inFlightMutations.push(operation)
+    await (operation.anuncioId === pendingAd.id ? oldResponse.promise : currentResponse.promise)
+    return approvedResponse(operation, { recursoId: operation.revisaoId })
+  },
+})
+await startApproval(navigationDuringResponse)
+assert.equal(inFlightMutations.length, 1)
+navigationDuringResponse.runner.rerender({ anuncioId: nextAd.id })
+await navigationDuringResponse.runner.settle()
+await startApproval(navigationDuringResponse)
+assert.equal(inFlightMutations.length, 2, 'B deve iniciar sua própria operação enquanto A aguarda resposta.')
+oldResponse.resolve()
+await navigationDuringResponse.runner.settle()
+assert.equal(controls(navigationDuringResponse.runner.tree,
+  (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio')[0].props.disabled, true,
+  'Resposta tardia de A não pode liberar a operação de B.')
+currentResponse.resolve()
+await navigationDuringResponse.runner.settle()
+assert.match(visibleText(navigationDuringResponse.runner.tree), /Operação de publicação concluída com sucesso/)
+assert.equal(inFlightMutations.filter((operation) => operation.anuncioId === nextAd.id).length, 1)
+navigationDuringResponse.finish()
+
+const newRevision = { ...pendingAd, versao: pendingAd.versao + 2,
+  revisaoAberta: { ...pendingAd.revisaoAberta, id: 'new-synthetic-review' } }
+const approvalAgain = await mountAdministrativeComponent({ mode: 'detail',
+  reads: [pendingAd, syntheticAd, nextAd, newRevision, syntheticAd],
+  reviewRead: async (id) => ({ ...pendingReview, id, anuncioId: pendingAd.id }),
+  approve: async (operation) => approvedResponse(operation, { recursoId: operation.revisaoId }),
+})
+await startApproval(approvalAgain)
+approvalAgain.runner.rerender({ anuncioId: nextAd.id })
+await approvalAgain.runner.settle()
+approvalAgain.runner.rerender({ anuncioId: pendingAd.id })
+await approvalAgain.runner.settle()
+assert.match(visibleText(approvalAgain.runner.tree), /Aprovar anúncio/)
+await startApproval(approvalAgain)
+assert.equal(approvalAgain.calls.filter((call) => call === 'APPROVE').length, 2,
+  'A proteção da decisão anterior deve permitir uma revisão nova do mesmo anúncio.')
+approvalAgain.finish()
+
+const oldRevisionRead = deferred(), revisionPosts = []
+const revisionWhileReading = await mountAdministrativeComponent({ mode: 'detail',
+  reads: [pendingAd, nextAd, newRevision, syntheticAd],
+  reviewRead: async (id) => id === pendingReview.id ? oldRevisionRead.promise
+    : { ...pendingReview, id, anuncioId: pendingAd.id },
+  approve: async (operation) => {
+    revisionPosts.push(operation)
+    return approvedResponse(operation, { recursoId: operation.revisaoId })
+  },
+})
+controls(revisionWhileReading.runner.tree,
+  (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio')[0].props.onClick()
+await revisionWhileReading.runner.settle()
+controls(revisionWhileReading.runner.tree,
+  (node) => typeof node.type === 'function' && node.type.name === 'DecisionDialog')[0].props.onConfirm('')
+await revisionWhileReading.runner.settle()
+revisionWhileReading.runner.rerender({ anuncioId: nextAd.id })
+await revisionWhileReading.runner.settle()
+revisionWhileReading.runner.rerender({ anuncioId: pendingAd.id })
+await revisionWhileReading.runner.settle()
+await startApproval(revisionWhileReading)
+oldRevisionRead.resolve(pendingReview)
+await revisionWhileReading.runner.settle()
+assert.equal(revisionPosts.length, 1)
+assert.equal(revisionPosts[0].revisaoId, newRevision.revisaoAberta.id,
+  'Retorno a A com revisão nova só pode enviar a decisão da revisão nova.')
+revisionWhileReading.finish()
+
+// React Activity disconnects effects while a cached branch is hidden. Model
+// that cleanup/reconnect around A -> B -> A before resolving A's old GET.
+const beforeActivityWindow = globalThis.window
+globalThis.window = { location: { pathname: `/admin/anuncios/${pendingAd.id}` } }
+try {
+  const activityRead = deferred(), activityPosts = []
+  const activityReturn = await mountAdministrativeComponent({ mode: 'detail',
+    reads: [pendingAd, newRevision, syntheticAd],
+    reviewRead: async (id) => id === pendingReview.id ? activityRead.promise
+      : { ...pendingReview, id, anuncioId: pendingAd.id },
+    approve: async (operation) => {
+      activityPosts.push(operation)
+      return approvedResponse(operation, { recursoId: operation.revisaoId })
+    },
+  })
+  controls(activityReturn.runner.tree,
+    (node) => node.type === 'Button' && visibleText(node) === 'Aprovar anúncio')[0].props.onClick()
+  await activityReturn.runner.settle()
+  controls(activityReturn.runner.tree,
+    (node) => typeof node.type === 'function' && node.type.name === 'DecisionDialog')[0].props.onConfirm('')
+  await activityReturn.runner.settle()
+  activityReturn.runner.deactivate()
+  globalThis.window.location.pathname = `/admin/anuncios/${nextAd.id}`
+  globalThis.window.location.pathname = `/admin/anuncios/${pendingAd.id}`
+  activityReturn.runner.reactivate()
+  await activityReturn.runner.settle()
+  activityRead.resolve(pendingReview)
+  await activityReturn.runner.settle()
+  assert.deepEqual(activityPosts, [], 'Efeito oculto e reativado invalida consulta anterior ao retorno para A.')
+  await startApproval(activityReturn)
+  assert.equal(activityPosts.length, 1)
+  assert.equal(activityPosts[0].revisaoId, newRevision.revisaoAberta.id)
+  activityReturn.finish()
+} finally {
+  if (beforeActivityWindow === undefined) delete globalThis.window
+  else globalThis.window = beforeActivityWindow
+}
 
 for (const invalidResponse of [
   () => ({}),
@@ -1187,19 +1465,62 @@ try {
   assertApprovalUncertain(afterReload)
   afterReload.finish()
 
+  const otherActor = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd],
+    session: { ...adminSession, usuarioId: 'another-synthetic-admin' } })
+  assert.doesNotMatch(visibleText(otherActor.runner.tree), /Resultado da aprovação ainda não confirmado/,
+    'A referência de A pertence ao ator autenticado original.')
+  otherActor.finish()
+
+  storedApprovals.clear()
+  const newerOperationId = '30000000-0000-4000-8000-000000000099'
+  const exactClear = await mountAdministrativeComponent({ mode: 'detail', reads: [pendingAd, syntheticAd],
+    reviewRead: async () => pendingReview,
+    approve: async (operation) => {
+      storedApprovals.set(`tops-admin-approval-v1:${adminSession.usuarioId}:${pendingAd.id}`,
+        JSON.stringify({ ...operation, operacaoId: newerOperationId }))
+      return approvedResponse(operation)
+    },
+  })
+  await startApproval(exactClear)
+  assert.equal(JSON.parse([...storedApprovals.values()][0]).operacaoId, newerOperationId,
+    'Callback de uma operação não pode apagar referência posterior do mesmo ator e anúncio.')
+  exactClear.finish()
+
+  storedApprovals.set('tops-admin-approval-v1:another-synthetic-admin:other-ad', 'other-actor-pending')
   storedApprovals.set('unrelated-session-key', 'preserve')
   const beforeLogoutFetch = globalThis.fetch, beforeLogoutDocument = globalThis.document
   try {
-    globalThis.document = { cookie: '' }
+    globalThis.document = { cookie: ['XSRF-TOKEN', 'CHANGE_ME'].join('=') }
+    let authOutcome = 'failed-login'
     globalThis.fetch = async (url, init) => {
-      if (!init.method) {
-        assert.match(String(url), /\/auth\/me$/)
-        return { ok: true, json: async () => ({}) }
-      }
       assert.equal(init.method, 'POST')
-      return { ok: true, json: async () => ({ autenticado: false, status: 'LOGOUT' }) }
+      assert.equal(init.headers.get('X-XSRF-TOKEN'), 'CHANGE_ME')
+      if (authOutcome === 'logout') {
+        assert.match(String(url), /\/auth\/logout$/)
+        return new Response(JSON.stringify({ autenticado: false, status: 'LOGOUT' }))
+      }
+      assert.match(String(url), /\/auth\/login$/)
+      assert.deepEqual(JSON.parse(init.body), { login: 'admin-sintetico', senha: 'CHANGE_ME' })
+      if (authOutcome === 'failed-login') return new Response('{}', { status: 401 })
+      return new Response(JSON.stringify({ autenticado: authOutcome === 'successful-login', usuarioId: adminSession.usuarioId }))
     }
     const auth = runtimeModule('lib/admin-auth-api.ts', { '@/lib/api-contract': contractRuntime })
+    const pendingBeforeLogin = [...storedApprovals.entries()]
+    await assert.rejects(auth.loginAdmin('admin-sintetico', 'CHANGE_ME'),
+      (error) => error instanceof contractRuntime.ApiContractError && error.status === 401)
+    assert.deepEqual([...storedApprovals.entries()], pendingBeforeLogin,
+      'Login negado nao pode limpar operacao incerta do mesmo ator.')
+    authOutcome = 'non-authenticated-response'
+    await auth.loginAdmin('admin-sintetico', 'CHANGE_ME')
+    assert.deepEqual([...storedApprovals.entries()], pendingBeforeLogin,
+      'Resposta sem sessao autenticada nao pode limpar operacao incerta.')
+    authOutcome = 'successful-login'
+    const relogged = await auth.loginAdmin('admin-sintetico', 'CHANGE_ME')
+    assert.equal(relogged.autenticado, true)
+    assert.deepEqual([...storedApprovals.entries()], [['unrelated-session-key', 'preserve']],
+      'Relogin confirmado do mesmo ator limpa referencias antigas sem afetar dados alheios.')
+    storedApprovals.set(`tops-admin-approval-v1:${adminSession.usuarioId}:${pendingAd.id}`, 'new-session-pending')
+    authOutcome = 'logout'
     await auth.logoutAdmin()
     assert.deepEqual([...storedApprovals.entries()], [['unrelated-session-key', 'preserve']],
       'Logout confirmado limpa apenas referências de aprovação da sessão administrativa.')
@@ -1244,12 +1565,25 @@ try {
     versaoAnuncioEsperada: 7,
   })
   assert.equal(transportCalls[2].init.headers.get('X-Request-Id'), null)
+  await adapter.getAdminApprovalStatus(syntheticAd.id, {
+    operacaoId: 'synthetic-approval-operation', versaoAnuncioAntes: 7, revisaoId: pendingReview.id,
+  })
+  const statusUrl = new URL(transportCalls[3].url, 'http://synthetic.local')
+  assert.equal(statusUrl.pathname.endsWith(`/anuncios/${syntheticAd.id}/aprovacao-operacoes/synthetic-approval-operation/status`), true)
+  assert.equal(statusUrl.searchParams.get('versaoAnuncioEsperada'), '7')
+  assert.equal(statusUrl.searchParams.get('revisaoIdEsperada'), pendingReview.id)
+  assert.equal(transportCalls[3].init.body, undefined)
+  assert.equal(transportCalls[3].init.credentials, 'include')
+  await adapter.getAdminApprovalStatus(syntheticAd.id, {
+    operacaoId: 'synthetic-legacy-operation', versaoAnuncioAntes: 7, revisaoId: null,
+  })
+  assert.equal(new URL(transportCalls[4].url, 'http://synthetic.local').searchParams.has('revisaoIdEsperada'), false)
 } finally {
   globalThis.fetch = originalFetch
   if (originalDocument === undefined) delete globalThis.document
   else globalThis.document = originalDocument
 }
-console.log('ADMIN_APPROVAL_OBSERVATION_RESULT=OK cases=26 transport=synthetic revisionRead=exact operationConfirmation=unavailable automaticPostRetry=none responseShape=validated')
+console.log('ADMIN_APPROVAL_OBSERVATION_RESULT=OK transport=synthetic revisionRead=exact operationStatus=read-only navigation=prePost,response,cache,hiddenPath,activityReconnect,returnNewRevision reconciliation=inconclusive,confirmed,regularized,mismatch storage=actor,ad,operation,loginFailure,relogin,logout automaticPostRetry=none')
 
 // Execute the existing Premium child, not its stub, to cover callbacks retained
 // before the parent becomes uncertain or permission is revoked.

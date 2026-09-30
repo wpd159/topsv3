@@ -106,13 +106,25 @@ async function request<T>(
   return (await response.json()) as T
 }
 
+function clearPendingAdminApprovals() {
+  if (typeof window === 'undefined') return
+  try {
+    for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.sessionStorage.key(index)
+      if (key?.startsWith('tops-admin-approval-v1:')) window.sessionStorage.removeItem(key)
+    }
+  } catch { /* A autenticação concluída não depende da limpeza local de armazenamento. */ }
+}
+
 export async function loginAdmin(login: string, credential: string) {
   const credentialField = ['se', 'nha'].join('')
-  return request<AdminSession>('/login', {
+  const session = await request<AdminSession>('/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ login, [credentialField]: credential }),
   })
+  if (session?.autenticado === true) clearPendingAdminApprovals()
+  return session
 }
 
 export async function getAdminSession() {
@@ -126,14 +138,7 @@ export async function getAdminSession() {
 
 export async function logoutAdmin() {
   await request<{ autenticado: boolean; status: string }>('/logout', { method: 'POST' })
-  if (typeof window !== 'undefined') {
-    try {
-      for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
-        const key = window.sessionStorage.key(index)
-        if (key?.startsWith('tops-admin-approval-v1:')) window.sessionStorage.removeItem(key)
-      }
-    } catch { /* Logout concluído; falha local de armazenamento não reabre sessão. */ }
-  }
+  clearPendingAdminApprovals()
 }
 
 export function changeAdminPassword(

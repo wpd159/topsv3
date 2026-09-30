@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProces
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -52,6 +53,7 @@ public class AnuncioMidiaUploadCoreService {
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final MidiaUploadValidator uploadValidator;
+    private final LimiteMidiasAnuncioService limiteService;
     private final FotoUploadProcessor fotoProcessor;
     private final R2StorageProperties storageProperties;
     private final ObjectProvider<ObjectStorage> storageProvider;
@@ -60,12 +62,14 @@ public class AnuncioMidiaUploadCoreService {
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             MidiaUploadValidator uploadValidator,
+            LimiteMidiasAnuncioService limiteService,
             FotoUploadProcessor fotoProcessor,
             R2StorageProperties storageProperties,
             ObjectProvider<ObjectStorage> storageProvider) {
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.uploadValidator = uploadValidator;
+        this.limiteService = limiteService;
         this.fotoProcessor = fotoProcessor;
         this.storageProperties = storageProperties;
         this.storageProvider = storageProvider;
@@ -84,7 +88,7 @@ public class AnuncioMidiaUploadCoreService {
             throw new IllegalArgumentException("capacidade de upload obrigatoria");
         }
         return enviar(anuncioBloqueado, new ArrayList<>(arquivos), idempotencyKey,
-                ModoUpload.PROPRIETARIO, capacidade);
+                ModoUpload.PROPRIETARIO, capacidade, null);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -96,7 +100,19 @@ public class AnuncioMidiaUploadCoreService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "arquivo obrigatorio");
         }
         return enviar(anuncioBloqueado, List.of(arquivo), idempotencyKey,
-                ModoUpload.ADMINISTRATIVO, null);
+                ModoUpload.ADMINISTRATIVO, null, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ResultadoUpload enviarAdministrativo(
+            AnuncioEntity anuncioBloqueado,
+            MidiaValidada arquivoValidado,
+            String idempotencyKey) {
+        if (arquivoValidado == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "arquivo obrigatorio");
+        }
+        return enviar(anuncioBloqueado, List.of(), idempotencyKey,
+                ModoUpload.ADMINISTRATIVO, null, arquivoValidado);
     }
 
     private ResultadoUpload enviar(
@@ -104,12 +120,15 @@ public class AnuncioMidiaUploadCoreService {
             List<MultipartFile> arquivos,
             String idempotencyKey,
             ModoUpload modo,
-            CapacidadeProprietario capacidade) {
+            CapacidadeProprietario capacidade,
+            MidiaValidada arquivoValidado) {
         if (anuncio == null || anuncio.getId() == null) {
             throw new IllegalArgumentException("anuncio bloqueado obrigatorio");
         }
         String chave = chaveIdempotencia(idempotencyKey);
-        List<UploadLoteItem> itens = validarTodos(anuncio.getId(), arquivos, chave, modo);
+        List<UploadLoteItem> itens = arquivoValidado == null
+                ? validarTodos(anuncio.getId(), arquivos, chave, modo)
+                : List.of(itemValidado(anuncio.getId(), chave + ":0", modo, arquivoValidado));
         List<AnuncioMidiaEntity> vinculosBloqueados = exigirLista(
                 anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncio.getId()));
         List<AnuncioMidiaEntity> vinculosIdempotentes = exigirLista(
@@ -124,7 +143,7 @@ public class AnuncioMidiaUploadCoreService {
         Map<UUID, ArquivoMidiaEntity> arquivoPorId = arquivosBloqueados.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
-        ObjectStorage storage = storageObrigatorio();
+        ObjectStorage storage = null;
 
         List<ItemUpload> repetidos = new ArrayList<>();
         for (UploadLoteItem item : itens) {
@@ -135,6 +154,7 @@ public class AnuncioMidiaUploadCoreService {
                         "chave idempotente possui registro incompleto");
             }
             if (existente != null) {
+                if (storage == null) storage = storageObrigatorio();
                 AnuncioMidiaEntity vinculo = validarRepeticaoExistente(
                         anuncio.getId(), item.vinculoId(), vinculoExistente, existente, item.validada());
                 verificarArquivoPersistido(storage, existente);
@@ -147,11 +167,21 @@ public class AnuncioMidiaUploadCoreService {
         if (!repetidos.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "chave idempotente possui lote incompleto");
         }
+        List<AnuncioMidiaEntity> atuais = vinculosAtivos(vinculosBloqueados);
         if (modo == ModoUpload.PROPRIETARIO) {
             validarCapacidade(itens, capacidade);
+        } else if (itens.stream().anyMatch(item -> item.validada().video())) {
+            var limite = Objects.requireNonNull(limiteService.resolver(anuncio.getId()),
+                    "limite de midias obrigatorio");
+            long videosAtuais = atuais.stream()
+                    .filter(item -> item.getTipo() == TipoAnuncioMidia.VIDEO)
+                    .count();
+            int videosDisponiveis = limite.videoAtivo()
+                    ? (int) Math.max(0, (long) limite.maxVideos() - videosAtuais) : 0;
+            validarCapacidade(itens, new CapacidadeProprietario(
+                    Integer.MAX_VALUE, videosDisponiveis, limite.videoAtivo()));
         }
-
-        List<AnuncioMidiaEntity> atuais = vinculosAtivos(vinculosBloqueados);
+        if (storage == null) storage = storageObrigatorio();
         int proximaOrdem = atuais.stream()
                 .map(AnuncioMidiaEntity::getOrdem)
                 .filter(Objects::nonNull)
@@ -212,21 +242,21 @@ public class AnuncioMidiaUploadCoreService {
     private List<UploadLoteItem> validarTodos(
             UUID anuncioId, List<MultipartFile> arquivos, String chave, ModoUpload modo) {
         List<UploadLoteItem> itens = new ArrayList<>();
-        String namespace = modo == ModoUpload.ADMINISTRATIVO
-                ? IDEMPOTENCIA_ADMIN : IDEMPOTENCIA_PROPRIETARIO;
         for (int index = 0; index < arquivos.size(); index++) {
             MidiaValidada validada = uploadValidator.validar(arquivos.get(index));
-            if (modo == ModoUpload.ADMINISTRATIVO && validada.video()) {
-                throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                        "formato de arquivo nao permitido");
-            }
-            String chaveItem = chave + ":" + index;
-            itens.add(new UploadLoteItem(
-                    validada,
-                    uuidDeterministico(namespace, "arquivo", anuncioId, chaveItem),
-                    uuidDeterministico(namespace, "vinculo", anuncioId, chaveItem)));
+            itens.add(itemValidado(anuncioId, chave + ":" + index, modo, validada));
         }
         return List.copyOf(itens);
+    }
+
+    private UploadLoteItem itemValidado(
+            UUID anuncioId, String chaveItem, ModoUpload modo, MidiaValidada validada) {
+        String namespace = modo == ModoUpload.ADMINISTRATIVO
+                ? IDEMPOTENCIA_ADMIN : IDEMPOTENCIA_PROPRIETARIO;
+        return new UploadLoteItem(
+                validada,
+                uuidDeterministico(namespace, "arquivo", anuncioId, chaveItem),
+                uuidDeterministico(namespace, "vinculo", anuncioId, chaveItem));
     }
 
     private void validarCapacidade(List<UploadLoteItem> itens, CapacidadeProprietario capacidade) {

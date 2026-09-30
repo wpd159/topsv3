@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProces
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
@@ -58,13 +59,15 @@ class AnuncioMidiaUploadCoreServiceTest {
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final MidiaUploadValidator validator = mock(MidiaUploadValidator.class);
+    private final LimiteMidiasAnuncioService limiteService = mock(LimiteMidiasAnuncioService.class);
     private final FotoUploadProcessor fotoProcessor = mock(FotoUploadProcessor.class);
     private final ObjectStorage storage = mock(ObjectStorage.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
     private final R2StorageProperties storageProperties = storageProperties();
     private final AnuncioMidiaUploadCoreService service = new AnuncioMidiaUploadCoreService(
-            midiaRepository, arquivoRepository, validator, fotoProcessor, storageProperties, storageProvider);
+            midiaRepository, arquivoRepository, validator, limiteService,
+            fotoProcessor, storageProperties, storageProvider);
     private final List<AnuncioMidiaEntity> vinculos = new ArrayList<>();
     private final Map<UUID, ArquivoMidiaEntity> arquivos = new LinkedHashMap<>();
     private final Map<String, StoredObject> objetos = new LinkedHashMap<>();
@@ -75,6 +78,8 @@ class AnuncioMidiaUploadCoreServiceTest {
 
     @BeforeEach
     void setUp() {
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 1, false, true));
         when(storageProvider.getIfAvailable()).thenReturn(storage);
         when(midiaRepository.findByAnuncioIdForUpdate(ANUNCIO_ID))
                 .thenAnswer(ignored -> List.copyOf(vinculos));
@@ -198,7 +203,124 @@ class AnuncioMidiaUploadCoreServiceTest {
     }
 
     @Test
-    void ownerVideoSemDimensoesPreservaRecusasDeBeneficioLimiteFormatoEAdmin() {
+    void adminAceitaVideoValidadoSemDimensoesPendenteRestrito() {
+        MockMultipartFile multipart = videoBasico();
+        MidiaUploadValidator realValidator = new MidiaUploadValidator(new MidiaUploadProperties());
+        assertThat(realValidator.validar(multipart).video()).isTrue();
+
+        var resultado = serviceComValidador(realValidator)
+                .enviarAdministrativo(anuncio, multipart, "admin-video-valido");
+
+        assertThat(resultado.itemUnico().tipo()).isEqualTo(TipoAnuncioMidia.VIDEO);
+        assertThat(resultado.itemUnico().status()).isEqualTo(StatusAnuncioMidia.PENDENTE);
+        assertThat(vinculos).singleElement().satisfies(item ->
+                assertThat(item.getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18));
+        assertThat(arquivos.values()).singleElement().satisfies(item -> {
+            assertThat(item.getLargura()).isNull();
+            assertThat(item.getAltura()).isNull();
+        });
+    }
+
+    @Test
+    void adminRepeteMesmoVideoSemDuplicarEBloqueiaOutraChaveNoLimite() {
+        MockMultipartFile video = videoBasico();
+        AnuncioMidiaUploadCoreService realService =
+                serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()));
+
+        var primeiro = realService.enviarAdministrativo(anuncio, video, "video-admin-1");
+        var repetido = realService.enviarAdministrativo(anuncio, video, "video-admin-1");
+
+        assertThat(repetido.idempotente()).isTrue();
+        assertThat(repetido.itemUnico().midiaId()).isEqualTo(primeiro.itemUnico().midiaId());
+        assertThatThrownBy(() -> realService.enviarAdministrativo(anuncio, video, "video-admin-2"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getReason()).contains("limite de video");
+                });
+        assertThat(vinculos).hasSize(1);
+        assertThat(objetos).hasSize(1);
+        verify(storage, times(1)).putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), eq("video/mp4"));
+    }
+
+    @Test
+    void adminVideoInvalidoEAcimaDoLimiteNaoCriamObjeto() throws Exception {
+        MidiaUploadProperties propriedades = new MidiaUploadProperties();
+        propriedades.setMaxVideoBytes(videoBasico().getSize() - 1);
+        AnuncioMidiaUploadCoreService limitado = serviceComValidador(new MidiaUploadValidator(propriedades));
+        assertThatThrownBy(() -> limitado.enviarAdministrativo(anuncio, videoBasico(), "video-grande"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE));
+        MockMultipartFile invalido = new MockMultipartFile(
+                "arquivo", "video.mp4", "video/mp4", new byte[] {1, 2, 3});
+        assertThatThrownBy(() -> serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()))
+                .enviarAdministrativo(anuncio, invalido, "video-invalido"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
+        MockMultipartFile extensaoInvalida = new MockMultipartFile(
+                "arquivo", "video.avi", "video/mp4", videoBasico().getBytes());
+        assertThatThrownBy(() -> serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()))
+                .enviarAdministrativo(anuncio, extensaoInvalida, "formato-invalido"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
+        verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+    }
+
+    @Test
+    void adminVideoCompensaObjetoCriadoQuandoVinculoFalha() {
+        AnuncioMidiaUploadCoreService realService =
+                serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()));
+        org.mockito.Mockito.doThrow(new IllegalStateException("falha sintetica no vinculo"))
+                .when(midiaRepository).save(any());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            objetos.remove(invocation.getArgument(1));
+            return null;
+        }).when(storage).delete(eq(StorageArea.PRIVATE_MEDIA), any());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> realService.enviarAdministrativo(anuncio, videoBasico(), "video-falha"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("falha sintetica no vinculo");
+            assertThat(objetos).hasSize(1);
+            TransactionSynchronizationManager.getSynchronizations().forEach(item ->
+                    item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertThat(objetos).isEmpty();
+        verify(storage, times(1)).delete(eq(StorageArea.PRIVATE_MEDIA), any());
+    }
+
+    @Test
+    void adminVideoFalhaNaConfirmacaoStorageCompensaObjetoCriado() {
+        AnuncioMidiaUploadCoreService realService =
+                serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()));
+        org.mockito.Mockito.doThrow(new IllegalStateException("falha sintetica no storage"))
+                .when(storage).get(eq(StorageArea.PRIVATE_MEDIA), any());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            objetos.remove(invocation.getArgument(1));
+            return null;
+        }).when(storage).delete(eq(StorageArea.PRIVATE_MEDIA), any());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> realService.enviarAdministrativo(
+                    anuncio, videoBasico(), "video-storage-falhou"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("falha sintetica no storage");
+            assertThat(objetos).hasSize(1);
+            TransactionSynchronizationManager.getSynchronizations().forEach(item ->
+                    item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertThat(vinculos).isEmpty();
+        assertThat(objetos).isEmpty();
+        verify(storage).delete(eq(StorageArea.PRIVATE_MEDIA), any());
+    }
+
+    @Test
+    void ownerVideoSemDimensoesPreservaRecusasDeBeneficioLimiteEFormato() {
         AnuncioMidiaUploadCoreService realService =
                 serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()));
         MockMultipartFile video = videoBasico();
@@ -221,10 +343,6 @@ class AnuncioMidiaUploadCoreServiceTest {
                 new AnuncioMidiaUploadCoreService.CapacidadeProprietario(4, 1, true)))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
-        assertThatThrownBy(() -> realService.enviarAdministrativo(anuncio, video, "admin-video"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
-
         assertThat(arquivos).isEmpty();
         assertThat(vinculos).isEmpty();
         assertThat(objetos).isEmpty();
@@ -304,17 +422,20 @@ class AnuncioMidiaUploadCoreServiceTest {
     }
 
     @Test
-    void adminRecusaVideoAntesDeResolverOuEscreverStorage() {
-        MultipartFile multipart = mock(MultipartFile.class);
-        when(validator.validar(multipart)).thenReturn(validada(true, "a".repeat(64)));
+    void adminRecusaVideoSemBeneficioAntesDeEscreverStorage() {
+        MultipartFile multipart = videoBasico();
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
 
-        assertThatThrownBy(() -> service.enviarAdministrativo(anuncio, multipart, "video-admin"))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        exception -> assertThat(exception.getStatusCode())
-                                .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
+        assertThatThrownBy(() -> serviceComValidador(new MidiaUploadValidator(new MidiaUploadProperties()))
+                .enviarAdministrativo(anuncio, multipart, "video-admin"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getReason()).contains("beneficio Video");
+                });
 
-        verify(storageProvider, never()).getIfAvailable();
         verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+        verify(storageProvider, never()).getIfAvailable();
     }
 
     @Test
@@ -382,7 +503,7 @@ class AnuncioMidiaUploadCoreServiceTest {
 
     private AnuncioMidiaUploadCoreService serviceComValidador(MidiaUploadValidator realValidator) {
         return new AnuncioMidiaUploadCoreService(
-                midiaRepository, arquivoRepository, realValidator, fotoProcessor,
+                midiaRepository, arquivoRepository, realValidator, limiteService, fotoProcessor,
                 storageProperties, storageProvider);
     }
 
