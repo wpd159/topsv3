@@ -201,6 +201,7 @@ jobs:
           node scripts/test-sensitive-image-authorization.mjs
           node scripts/test-ultima-foto-encerramento.mjs
           node scripts/test-owner-photo-preview.mjs
+          node scripts/test-owner-video-local-preview-visual.mjs
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           node scripts/test-indexnow-v3.mjs
