@@ -53,6 +53,7 @@ import {
 import {
   initialWizardFormState,
   initialWizardKycState,
+  type EditPendingMedia,
   type WizardFormState,
   type WizardStepId,
 } from './types'
@@ -221,6 +222,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [editAnuncio, setEditAnuncio] = useState<MeuAnuncio | null>(null)
   const previousAnuncioRef = useRef<MeuAnuncio | null>(null)
   const [editMedia, setEditMedia] = useState<MinhasMidiasResponse | null>(null)
+  const editVideoAutoStartedRef = useRef<{ scope: string; entry: EditPendingMedia } | null>(null)
   const mediaPreviewRefreshRef = useRef<Promise<void> | null>(null)
   const [mediaBusy, setMediaBusy] = useState(false)
   const mediaBusyRef = useRef(false)
@@ -1169,6 +1171,15 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           }}
           pendingSaveNotice={pendingSaveNotice}
           accountScope={progressScope}
+          actorId={cacheUserId}
+          onAutoVideoStart={(entry) => {
+            if (publishLockRef.current || !mediaBusyRef.current || terminalAnuncioRef.current
+              || !mountedRef.current || progressScopeRef.current !== progressScope) return false
+            const previous = editVideoAutoStartedRef.current
+            if (previous?.scope === progressScope && previous.entry === entry) return false
+            editVideoAutoStartedRef.current = { scope: progressScope, entry }
+            return true
+          }}
           onPersistedChange={acceptMediaResponse}
           onInteractionStart={beginMediaInteraction}
           onInteractionEnd={endMediaInteraction}

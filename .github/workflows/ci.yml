@@ -189,6 +189,8 @@ jobs:
           node scripts/test-admin-anuncios-fotos-lote.mjs
           node scripts/test-admin-anuncios-moderacao-v3.mjs
           node scripts/test-admin-anuncios-video-upload.mjs
+          node scripts/test-admin-usuarios-v3.mjs
+          node scripts/test-admin-credit-validation.mjs
           node scripts/test-admin-registros.mjs --browser
           node scripts/test-admin-stories-management-filters.mjs
           node scripts/test-restricted-media-age-seo.mjs

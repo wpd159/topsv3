@@ -56,17 +56,27 @@ type WizardStepFotosProps = {
   onUploadUnconfirmedChange?: (value: boolean) => void
   pendingSaveNotice?: boolean
   accountScope?: string
+  actorId?: string | null
+  onAutoVideoStart?: (entry: EditPendingMedia) => boolean
 }
 
 function fileKey(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`
 }
 
-function validateSelectedMedia(file: File, photo: boolean): Promise<PhotoUploadValidationResult> {
+function videoSizeMiB(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} MiB`
+}
+
+function validateSelectedMedia(file: File, photo: boolean, maxVideoBytes?: number): Promise<PhotoUploadValidationResult> {
   if (photo) return validatePhotoUpload(file)
-  return Promise.resolve(isSupportedUploadVideo(file)
-    ? { valid: true }
-    : { valid: false, message: 'Formato de vídeo não aceito. Selecione um vídeo MP4 ou MOV.' })
+  if (!isSupportedUploadVideo(file)) return Promise.resolve({ valid: false, message: 'Formato de vídeo não aceito. Selecione um vídeo MP4 ou MOV.' })
+  if (!Number.isSafeInteger(maxVideoBytes) || !maxVideoBytes || maxVideoBytes <= 0) {
+    return Promise.resolve({ valid: false, message: 'Não foi possível confirmar o limite de vídeo deste anúncio. Atualize a página antes de enviar.' })
+  }
+  if (file.size === 0) return Promise.resolve({ valid: false, message: 'O vídeo está vazio. Selecione outro arquivo.' })
+  if (file.size > maxVideoBytes) return Promise.resolve({ valid: false, message: `O vídeo selecionado tem ${videoSizeMiB(file.size)} e excede o limite de vídeo informado pelo aplicativo: ${videoSizeMiB(maxVideoBytes)}.` })
+  return Promise.resolve({ valid: true })
 }
 
 function mensagemStatus(midia: MinhaMidiaGestao) {
@@ -102,6 +112,8 @@ export function WizardStepFotos({
   onUploadUnconfirmedChange,
   pendingSaveNotice = false,
   accountScope = '',
+  actorId,
+  onAutoVideoStart,
 }: WizardStepFotosProps) {
   const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(persistedState ?? null)
   const [loading, setLoading] = useState(Boolean(slug) && persistedState === undefined)
@@ -118,20 +130,19 @@ export function WizardStepFotos({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [uncontrolledPendingFiles, setUncontrolledPendingFiles] = useState<EditPendingMedia[]>([])
   const pendingEntries = controlledPendingFiles ?? uncontrolledPendingFiles
-  const pendingPersistedFiles = pendingEntries.map((entry) => entry.file)
   const [persistedValidation, setPersistedValidation] = useState<{
     selection: EditPendingMedia[]
     results: PhotoUploadValidationResult[]
   }>({ selection: [], results: [] })
   const [retryable, setRetryable] = useState(false)
+  const [videoRetryable, setVideoRetryable] = useState(false)
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
   const pendingFilesRef = useRef(pendingEntries)
   pendingFilesRef.current = pendingEntries
   const uploadLockRef = useRef(false)
   const selectionVersionRef = useRef(0)
   const pendingSaveNoticeRef = useRef<HTMLParagraphElement | null>(null)
   const validationReady = persistedValidation.selection === pendingEntries
-  const validationPending = pendingPersistedFiles.length > 0 && !validationReady
-  const invalidSelection = validationReady && persistedValidation.results.some((result) => !result.valid)
   // The canonical total identifies the chosen photo only when the complete
   // response has no other photo identity. Multiple candidates remain ambiguous;
   // do not reimplement eligibility from status, previews or local selections.
@@ -192,12 +203,23 @@ export function WizardStepFotos({
   useEffect(() => {
     let current = true
     const files = pendingEntries
-    void Promise.all(files.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo')))
+    void Promise.all(files.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo', persisted?.limites.maxVideoBytes)))
       .then((results) => {
         if (current) setPersistedValidation({ selection: files, results })
       })
     return () => { current = false }
-  }, [pendingEntries])
+  }, [pendingEntries, persisted?.limites.maxVideoBytes])
+
+  const selectedVideoFile = pendingEntries.find((entry) => entry.kind === 'video')?.file
+  useEffect(() => {
+    if (!selectedVideoFile) {
+      setVideoPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(selectedVideoFile)
+    setVideoPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [selectedVideoFile])
 
   const refresh = useCallback(async () => {
     if (!slug || persistedState !== undefined || terminalRef.current) return
@@ -250,10 +272,17 @@ export function WizardStepFotos({
     }
   }, [slug])
 
-  const uploadPersisted = async (entries: EditPendingMedia[]) => {
+  const uploadPersisted = async (entries: EditPendingMedia[], kind: 'photo' | 'video' = 'photo', automatic = false) => {
     const files = entries.map((entry) => entry.file)
-    if (!slug || !files.length || disabled || busy || uploadLockRef.current || !validationReady || invalidSelection
-      || entries !== pendingFilesRef.current || (errors.lote && !retryable)) return
+    if (!slug || !files.length || disabled || busy || uploadLockRef.current || !validationReady
+      || entries.some((entry) => entry.kind !== kind || !pendingFilesRef.current.includes(entry))
+      || entries.some((entry) => !persistedValidation.results[pendingEntries.indexOf(entry)]?.valid)
+      || (kind === 'photo' && errors.lote && !retryable)
+      || (kind === 'video' && errors.video && !videoRetryable)) return
+    if (kind === 'video' && !actorId) {
+      setErrors({ video: 'Entre novamente para confirmar a sessão antes de enviar o vídeo.' })
+      return
+    }
     const fotosNovas = entries.filter((entry) => entry.kind === 'photo').length
     const videosNovos = files.length - fotosNovas
     if (!uploadUnconfirmed && persisted && fotosNovas > persisted.limites.fotosDisponiveis) {
@@ -270,42 +299,61 @@ export function WizardStepFotos({
     }
     const version = selectionVersionRef.current
     if (!beginInteraction()) return
+    if (automatic && (!onAutoVideoStart || !onAutoVideoStart(entries[0]))) {
+      endInteraction()
+      return
+    }
     const generation = operationGenerationRef.current
     setBusy(true)
-    setErrors({})
+    setErrors((current) => {
+      const next: Record<string, string> = {}
+      if (kind === 'photo' && current.video) next.video = current.video
+      if (kind === 'video' && current.lote) next.lote = current.lote
+      return next
+    })
     try {
-      const results = await Promise.all(entries.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo')))
-      if (version !== selectionVersionRef.current || entries !== pendingFilesRef.current || results.some((result) => !result.valid)) return
+      const results = await Promise.all(entries.map((entry) => validateSelectedMedia(entry.file, entry.kind === 'photo', persisted?.limites.maxVideoBytes)))
+      if (version !== selectionVersionRef.current || entries.some((entry) => !pendingFilesRef.current.includes(entry))
+        || results.some((result) => !result.valid)) return
       if (uploadUnconfirmed) {
         // A prior response may have been lost after commit. Re-read the canonical
         // ad first; the same idempotency key then resolves any remaining ambiguity.
         const fresh = await listarMinhasMidias(slug)
         if (!acceptResponse(fresh, generation) || terminalRef.current) return
       }
+      const isCurrent = () => mountedRef.current && generation === operationGenerationRef.current
+        && version === selectionVersionRef.current && entries.every((entry) => pendingFilesRef.current.includes(entry))
+        && uploadLockRef.current && !terminalRef.current
       const latest = await enviarMinhasMidiasEmLote(slug, files, (value) => {
         if (mountedRef.current && generation === operationGenerationRef.current
-          && version === selectionVersionRef.current && entries === pendingFilesRef.current) {
+          && version === selectionVersionRef.current && entries.every((entry) => pendingFilesRef.current.includes(entry))) {
           setProgress((current) => Object.fromEntries([
             ...Object.entries(current),
             ...files.map((file) => [file.name, value] as const),
           ]))
         }
-      }, accountScope)
-      if (version === selectionVersionRef.current && entries === pendingFilesRef.current
-        && acceptResponse(latest, generation)) updatePendingFiles([])
+      }, accountScope, kind === 'video' ? persisted?.anuncio.id : undefined,
+      kind === 'video' ? { actorId: actorId!, isCurrent, allowUnconfirmedRetry: uploadUnconfirmed } : undefined)
+      if (isCurrent() && acceptResponse(latest, generation)) {
+        updatePendingFiles(pendingFilesRef.current.filter((entry) => !entries.includes(entry)))
+      }
     } catch (error) {
       if (!mountedRef.current || generation !== operationGenerationRef.current) return
       const ambiguous = error instanceof TypeError || (error instanceof MeusAnunciosApiError
         && (error.status === 0 || error.status === 408 || error.status >= 500
-          || error.code === 'MIDIAS_ESTADO_NAO_CONFIRMADO'))
+          || error.code === 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+        && error.code !== 'MIDIA_PREFLIGHT_FALHOU')
       if (ambiguous) onUploadUnconfirmedChange?.(true)
-      setRetryable(error instanceof TypeError || (error instanceof MeusAnunciosApiError
-        && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)))
-      setErrors({
-        lote: ambiguous
-          ? 'Não foi possível confirmar o envio. Confira o estado do anúncio e tente novamente.'
-          : meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.'),
-      })
+      const mayRetry = error instanceof TypeError || (error instanceof MeusAnunciosApiError
+        && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500))
+      if (kind === 'video') setVideoRetryable(mayRetry)
+      else setRetryable(mayRetry)
+      const message = ambiguous
+        ? 'Não foi possível confirmar o envio. Confira o estado do anúncio e tente novamente.'
+        : kind === 'video' && error instanceof MeusAnunciosApiError && error.status === 413
+          ? `O serviço recusou o vídeo (HTTP 413). O arquivo selecionado tem ${videoSizeMiB(files[0].size)}; o limite de vídeo informado pelo aplicativo é ${persisted?.limites.maxVideoBytes ? videoSizeMiB(persisted.limites.maxVideoBytes) : 'indisponível'}. A causa exata da recusa não foi confirmada.${error.requestId ? ` Request ID: ${error.requestId}.` : ''}`
+          : meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.')
+      setErrors((current) => ({ ...current, [kind === 'video' ? 'video' : 'lote']: message }))
     } finally {
       endInteraction()
       if (mountedRef.current) setBusy(false)
@@ -314,20 +362,43 @@ export function WizardStepFotos({
 
   const pendingPersistedPhotos = pendingEntries.filter((entry) => entry.kind === 'photo')
   const pendingPersistedVideos = pendingEntries.filter((entry) => entry.kind === 'video')
+  const pendingPhotoValidation = !validationReady || pendingPersistedPhotos.some((entry) =>
+    !persistedValidation.results[pendingEntries.indexOf(entry)])
+  const invalidPhotos = validationReady && pendingPersistedPhotos.some((entry) =>
+    !persistedValidation.results[pendingEntries.indexOf(entry)]?.valid)
+
+  useEffect(() => {
+    const entry = pendingEntries.find((item) => item.kind === 'video')
+    if (!entry || !slug || !persisted || !actorId || !validationReady || disabled || busy || uploadLockRef.current
+      || uploadUnconfirmed || !persisted.limites.videoAtivo || persisted.limites.videosDisponiveis < 1
+      || terminalRef.current || stateUnconfirmedRef.current || !onAutoVideoStart) return
+    const result = persistedValidation.results[pendingEntries.indexOf(entry)]
+    if (!result?.valid) return
+    void uploadPersisted([entry], 'video', true)
+  })
 
   function updatePendingFiles(files: EditPendingMedia[]) {
+    const previous = pendingFilesRef.current
+    const keepVideoError = files.some((entry) => entry.kind === 'video' && previous.includes(entry))
+    const keepPhotoError = files.some((entry) => entry.kind === 'photo' && previous.includes(entry))
     selectionVersionRef.current += 1
     pendingFilesRef.current = files
     if (onPendingFilesChange) onPendingFilesChange(files)
     else setUncontrolledPendingFiles(files)
     onUploadUnconfirmedChange?.(false)
-    setErrors({})
+    setErrors((current) => {
+      const next: Record<string, string> = {}
+      if (keepVideoError && current.video) next.video = current.video
+      if (keepPhotoError && current.lote) next.lote = current.lote
+      return next
+    })
     setProgress({})
-    setRetryable(false)
+    if (!keepPhotoError) setRetryable(false)
+    if (!keepVideoError) setVideoRetryable(false)
   }
 
   function selectPersistedFiles(files: File[], photos = true) {
-    if (busy || uploadLockRef.current || disabled || terminalRef.current) return
+    if (busy || uploadLockRef.current || disabled || terminalRef.current || uploadUnconfirmed) return
     if (photos) {
       updatePendingFiles([...pendingFilesRef.current, ...files.map((file) => ({ file, kind: 'photo' as const }))])
     } else {
@@ -339,7 +410,7 @@ export function WizardStepFotos({
   }
 
   function removePendingPersistedFile(entry: EditPendingMedia) {
-    if (busy || uploadLockRef.current || disabled || terminalRef.current) return
+    if (busy || uploadLockRef.current || disabled || terminalRef.current || uploadUnconfirmed) return
     updatePendingFiles(pendingFilesRef.current.filter((item) => item !== entry))
   }
 
@@ -563,7 +634,9 @@ export function WizardStepFotos({
             tabIndex={-1}
             className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
           >
-            Você selecionou arquivos que ainda não foram enviados. Clique em Enviar arquivos para concluir.
+            {pendingPersistedPhotos.length
+              ? 'Você selecionou fotos que ainda não foram enviadas. Clique em Enviar fotos para concluir.'
+              : 'O vídeo ainda não foi confirmado. Confira o estado do envio antes de continuar.'}
           </p>
         ) : null}
 
@@ -575,7 +648,7 @@ export function WizardStepFotos({
             accept={PHOTO_UPLOAD_ACCEPT}
             files={pendingPersistedPhotos.map((entry) => entry.file)}
             multiple
-            disabled={disabled || busy || !persisted || (persisted.limites.fotosDisponiveis === 0 && !pendingPersistedPhotos.length)}
+            disabled={disabled || busy || uploadUnconfirmed || !persisted || (persisted.limites.fotosDisponiveis === 0 && !pendingPersistedPhotos.length)}
             helperText={persisted?.limites.fotosExtrasAtivo
               ? 'Seu anúncio permite até 10 fotos com o benefício de fotos extras.'
               : 'Você pode adicionar até 4 fotos gratuitamente.'}
@@ -588,8 +661,10 @@ export function WizardStepFotos({
               buttonLabel="Selecionar vídeo"
               accept="video/mp4,video/quicktime,.mp4,.mov"
               files={pendingPersistedVideos.map((entry) => entry.file)}
-              disabled={disabled || busy || (persisted.limites.videosDisponiveis === 0 && !pendingPersistedVideos.length)}
-              helperText="Você pode adicionar 1 vídeo em MP4 ou MOV."
+              disabled={disabled || busy || uploadUnconfirmed || (persisted.limites.videosDisponiveis === 0 && !pendingPersistedVideos.length)}
+              helperText={`Você pode adicionar 1 vídeo em MP4 ou MOV. ${Number.isSafeInteger(persisted.limites.maxVideoBytes) && persisted.limites.maxVideoBytes > 0
+                ? `Limite de vídeo informado pelo aplicativo: ${videoSizeMiB(persisted.limites.maxVideoBytes)}.`
+                : 'O limite de vídeo está indisponível; atualize a página antes de enviar.'}`}
               onSelect={(files) => selectPersistedFiles(files.slice(0, 1), false)}
               onRemove={(index) => removePendingPersistedFile(pendingPersistedVideos[index])}
             />
@@ -605,6 +680,32 @@ export function WizardStepFotos({
             </div>
           )}
         </div>
+
+        {pendingPersistedVideos.length ? (
+          <div className="max-w-md rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+            {videoPreviewUrl ? (
+              <video
+                data-owner-video-local-preview
+                src={videoPreviewUrl}
+                controls
+                playsInline
+                preload="metadata"
+                className="aspect-video w-full rounded-lg bg-black object-contain"
+                aria-label={`Prévia local de ${pendingPersistedVideos[0].file.name}`}
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget
+                  if (Number.isFinite(video.duration) && video.duration > 0.1) {
+                    video.currentTime = Math.min(0.1, video.duration / 2)
+                  }
+                }}
+              />
+            ) : <p className="text-sm text-zinc-600">Preparando prévia local do vídeo…</p>}
+            <p className="mt-2 break-all text-xs text-zinc-600">{pendingPersistedVideos[0].file.name} · Prévia local; o vídeo continua pendente de moderação após o envio.</p>
+          </div>
+        ) : null}
+        {pendingPersistedVideos.length && !actorId ? (
+          <p role="alert" className="text-sm text-amber-800">Entre novamente para confirmar a sessão antes de enviar o vídeo. A seleção foi preservada.</p>
+        ) : null}
 
         {pendingEntries.map((entry, index) => {
           const file = entry.file
@@ -631,14 +732,22 @@ export function WizardStepFotos({
           <p key={key} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">{message}</p>
         ))}
 
-        {pendingEntries.length ? (
+        {pendingPersistedPhotos.length ? (
           <button
             type="button"
-            disabled={disabled || busy || !persisted || validationPending || invalidSelection || Boolean(errors.lote && !retryable)}
-            onClick={() => void uploadPersisted(pendingEntries)}
+            disabled={disabled || busy || (uploadUnconfirmed && pendingPersistedVideos.length > 0) || !persisted || pendingPhotoValidation || invalidPhotos || Boolean(errors.lote && !retryable)}
+            onClick={() => void uploadPersisted(pendingPersistedPhotos, 'photo')}
             className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 disabled:opacity-50"
           >
-            {busy ? 'Enviando...' : validationPending ? pendingPersistedVideos.length ? 'Verificando arquivos…' : 'Verificando foto…' : errors.lote && retryable ? 'Tentar enviar novamente' : 'Enviar arquivos'}
+            {busy ? 'Enviando...' : pendingPhotoValidation ? 'Verificando foto…' : errors.lote && retryable ? 'Tentar enviar fotos novamente' : 'Enviar fotos'}
+          </button>
+        ) : null}
+        {pendingPersistedVideos.length && ((errors.video && videoRetryable) || uploadUnconfirmed) ? (
+          <button type="button" disabled={disabled || busy || !persisted || !validationReady
+            || !persistedValidation.results[pendingEntries.indexOf(pendingPersistedVideos[0])]?.valid}
+            onClick={() => void uploadPersisted([pendingPersistedVideos[0]], 'video')}
+            className="min-h-11 rounded-xl border border-amber-400 bg-amber-50 px-4 text-sm font-semibold text-amber-950 disabled:opacity-50">
+            Conferir e repetir envio do vídeo
           </button>
         ) : null}
 
