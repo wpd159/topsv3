@@ -306,6 +306,7 @@ class MeusAnunciosFrontendContractTest {
                 .contains("if (kind === 'video') setVideoRetryable(mayRetry)")
                 .contains("else setRetryable(mayRetry)")
                 .contains("setErrors((current) => ({ ...current, [kind === 'video' ? 'video' : 'lote']: message }))")
+                .contains("if (kind === 'video') onVideoFailureChange?.({ entry: entries[0], message, retryable: mayRetry })")
                 .doesNotContain("setPendingPersistedFiles([])", "updatePendingFiles(", "error.status === 415");
         assertThat(atualizarSelecao)
                 .contains("selectionVersionRef.current += 1")
@@ -316,7 +317,9 @@ class MeusAnunciosFrontendContractTest {
                 .contains("if (keepPhotoError && current.lote) next.lote = current.lote")
                 .contains("setProgress({})")
                 .contains("if (!keepPhotoError) setRetryable(false)")
-                .contains("if (!keepVideoError) setVideoRetryable(false)")
+                .contains("if (!keepVideoError) {")
+                .contains("setVideoRetryable(false)")
+                .contains("onVideoFailureChange?.(null)")
                 .doesNotContain("uploadPersisted(", "enviarMinhasMidiasEmLote(");
         assertThat(selecionarERemover)
                 .contains("updatePendingFiles([...pendingFilesRef.current, ...files.map((file) => ({ file, kind: 'photo' as const }))])")
