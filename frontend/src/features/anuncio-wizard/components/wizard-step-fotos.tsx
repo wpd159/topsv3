@@ -31,6 +31,12 @@ import {
 import { StepPanel } from './wizard-ui'
 import type { EditPendingMedia } from '../types'
 
+export type EditVideoUploadFailure = {
+  entry: EditPendingMedia
+  message: string
+  retryable: boolean
+}
+
 type WizardStepFotosProps = {
   slug?: string
   initialFiles: File[]
@@ -58,6 +64,8 @@ type WizardStepFotosProps = {
   accountScope?: string
   actorId?: string | null
   onAutoVideoStart?: (entry: EditPendingMedia) => boolean
+  savedVideoFailure?: EditVideoUploadFailure | null
+  onVideoFailureChange?: (failure: EditVideoUploadFailure | null) => void
 }
 
 function fileKey(file: File) {
@@ -114,6 +122,8 @@ export function WizardStepFotos({
   accountScope = '',
   actorId,
   onAutoVideoStart,
+  savedVideoFailure,
+  onVideoFailureChange,
 }: WizardStepFotosProps) {
   const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(persistedState ?? null)
   const [loading, setLoading] = useState(Boolean(slug) && persistedState === undefined)
@@ -127,7 +137,11 @@ export function WizardStepFotos({
   const [stateUnconfirmed, setStateUnconfirmed] = useState(false)
   const stateUnconfirmedRef = useRef(false)
   const [progress, setProgress] = useState<Record<string, number>>({})
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {}
+    if (savedVideoFailure) initial.video = savedVideoFailure.message
+    return initial
+  })
   const [uncontrolledPendingFiles, setUncontrolledPendingFiles] = useState<EditPendingMedia[]>([])
   const pendingEntries = controlledPendingFiles ?? uncontrolledPendingFiles
   const [persistedValidation, setPersistedValidation] = useState<{
@@ -135,7 +149,7 @@ export function WizardStepFotos({
     results: PhotoUploadValidationResult[]
   }>({ selection: [], results: [] })
   const [retryable, setRetryable] = useState(false)
-  const [videoRetryable, setVideoRetryable] = useState(false)
+  const [videoRetryable, setVideoRetryable] = useState(savedVideoFailure?.retryable ?? false)
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
   const pendingFilesRef = useRef(pendingEntries)
   pendingFilesRef.current = pendingEntries
@@ -354,6 +368,7 @@ export function WizardStepFotos({
           ? `O serviço recusou o vídeo (HTTP 413). O arquivo selecionado tem ${videoSizeMiB(files[0].size)}; o limite de vídeo informado pelo aplicativo é ${persisted?.limites.maxVideoBytes ? videoSizeMiB(persisted.limites.maxVideoBytes) : 'indisponível'}. A causa exata da recusa não foi confirmada.${error.requestId ? ` Request ID: ${error.requestId}.` : ''}`
           : meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.')
       setErrors((current) => ({ ...current, [kind === 'video' ? 'video' : 'lote']: message }))
+      if (kind === 'video') onVideoFailureChange?.({ entry: entries[0], message, retryable: mayRetry })
     } finally {
       endInteraction()
       if (mountedRef.current) setBusy(false)
@@ -394,7 +409,10 @@ export function WizardStepFotos({
     })
     setProgress({})
     if (!keepPhotoError) setRetryable(false)
-    if (!keepVideoError) setVideoRetryable(false)
+    if (!keepVideoError) {
+      setVideoRetryable(false)
+      onVideoFailureChange?.(null)
+    }
   }
 
   function selectPersistedFiles(files: File[], photos = true) {

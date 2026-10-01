@@ -1494,9 +1494,10 @@ assert.match(picker(videoLimitRunner.tree, 'Selecionar vídeo do anúncio').prop
 videoLimitRunner.unmount()
 
 const video413Props = {
-  ...videoProps, pendingFiles: [], uploadUnconfirmed: false,
+  ...videoProps, pendingFiles: [], uploadUnconfirmed: false, savedVideoFailure: null,
   onPendingFilesChange(files) { video413Props.pendingFiles = files },
   onUploadUnconfirmedChange(value) { video413Props.uploadUnconfirmed = value },
+  onVideoFailureChange(failure) { video413Props.savedVideoFailure = failure },
   onAutoVideoStart: (() => { const attempted = new WeakSet(); return (entry) => {
     if (attempted.has(entry)) return false
     attempted.add(entry)
@@ -1515,12 +1516,25 @@ assert.equal(video413Props.pendingFiles[0].file, video, '413 mantém o arquivo p
 assert.match(text(video413Runner.tree), /causa exata da recusa não foi confirmada/i)
 assert.match(text(video413Runner.tree), /Request ID: synthetic-413-id/)
 assert.doesNotMatch(text(video413Runner.tree), /O vídeo selecionado .* excede o limite/)
+assert.equal(video413Props.savedVideoFailure.retryable, false)
+const sendsBefore413Remount = requests.filter((item) => item instanceof UploadXHR).length
 video413Runner.unmount()
+const remount413Runner = hooks()
+const remount413Step = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(remount413Runner)).WizardStepFotos
+remount413Runner.mount(remount413Step, video413Props)
+await remount413Runner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBefore413Remount,
+  'Falha 413 não dispara novo POST ao voltar para a etapa.')
+assert.doesNotMatch(text(remount413Runner.tree), /Conferir e repetir envio do vídeo/,
+  'Falha não repetível não ganha botão de retry ao voltar para a etapa.')
+assert.match(text(remount413Runner.tree), /HTTP 413/)
+remount413Runner.unmount()
 
 const video429Props = {
-  ...videoProps, pendingFiles: [], uploadUnconfirmed: false,
+  ...videoProps, pendingFiles: [], uploadUnconfirmed: false, savedVideoFailure: null,
   onPendingFilesChange(files) { video429Props.pendingFiles = files },
   onUploadUnconfirmedChange(value) { video429Props.uploadUnconfirmed = value },
+  onVideoFailureChange(failure) { video429Props.savedVideoFailure = failure },
   onAutoVideoStart: (() => { const attempted = new WeakSet(); return (entry) => {
     if (attempted.has(entry)) return false
     attempted.add(entry)
@@ -1535,12 +1549,30 @@ selectThroughFilePicker(picker(video429Runner.tree, 'Selecionar vídeo do anúnc
 video429Runner.update(video429Props)
 await video429Runner.settle()
 assert.equal(button(video429Runner.tree, 'Conferir e repetir envio do vídeo').props.disabled, false)
+assert.equal(video429Props.savedVideoFailure.retryable, true)
+const retry429Key = requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key')
 selectThroughFilePicker(picker(video429Runner.tree, 'Selecionar fotos do anúncio').props, [good])
 video429Runner.update(video429Props)
 await video429Runner.settle()
 assert.equal(button(video429Runner.tree, 'Conferir e repetir envio do vídeo').props.disabled, false,
   'Selecionar foto separada não deve apagar o retry do vídeo que falhou.')
+const sendsBefore429Remount = requests.filter((item) => item instanceof UploadXHR).length
 video429Runner.unmount()
+const remount429Runner = hooks()
+const remount429Step = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(remount429Runner)).WizardStepFotos
+remount429Runner.mount(remount429Step, video429Props)
+await remount429Runner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBefore429Remount,
+  'Retorno à etapa não pode repetir automaticamente um vídeo já tentado.')
+assert.equal(button(remount429Runner.tree, 'Conferir e repetir envio do vídeo').props.disabled, false)
+nextResponse = { status: 200, body: videoSuccessResponse }
+button(remount429Runner.tree, 'Conferir e repetir envio do vídeo').props.onClick()
+await remount429Runner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key'), retry429Key)
+assert.deepEqual(video429Props.pendingFiles.map((entry) => entry.file), [good],
+  'Retry confirmado remove apenas o vídeo e preserva a foto pendente.')
+assert.equal(video429Props.savedVideoFailure, null)
+remount429Runner.unmount()
 
 const progressWithoutCanonicalVideo = []
 const beforeMissingCanonical = requests.filter((item) => item instanceof UploadXHR).length
