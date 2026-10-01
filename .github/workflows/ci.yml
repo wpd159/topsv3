@@ -14,8 +14,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  diagnostic-localidades:
+    name: Diagnostico focal Localidades XML
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout diagnostic candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Prepare disposable PostgreSQL and Flyway images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_image in postgres:17.10-alpine flyway/flyway:12.10.0; do
+            timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
+          done
+
+      - name: Run only the initial XML factory scenario
+        working-directory: backend
+        shell: bash
+        env:
+          LOCALIDADES_POSTGRES17_ENABLED: "true"
+        run: mvn --batch-mode --no-transfer-progress '-Dtest=LocalidadesConsultaCapacidadePostgres17IntegrationTest#paginacaoRealSeparadaEncontraProvasAposTerceiraPagina' test
+
+      - name: Preserve focal timeline in job log
+        if: always()
+        shell: bash
+        run: |
+          if [ -d backend/target/surefire-reports ]; then
+            grep -h 'CAPACITY_R2_TIMELINE' backend/target/surefire-reports/*LocalidadesConsultaCapacidadePostgres17IntegrationTest*.xml || true
+          fi
+
+      - name: Confirm disposable PostgreSQL cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Owned Localidades containers remaining:'
+          docker ps -a --filter label=topsv3.localidades.owner --format '{{.ID}} {{.Status}}'
+          echo 'Owned Localidades networks remaining:'
+          docker network ls --filter label=topsv3.localidades.owner --format '{{.ID}} {{.Name}}'
+          test -z "$(docker ps -aq --filter label=topsv3.localidades.owner)"
+          test -z "$(docker network ls -q --filter label=topsv3.localidades.owner)"
+
   verify:
     name: Backend e frontend
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -236,6 +292,7 @@ jobs:
 
   verify-operation:
     name: Contratos operacionais sinteticos
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -301,6 +358,7 @@ jobs:
 
   verify-origin451:
     name: Origem 451 Spring real - recusa segura
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

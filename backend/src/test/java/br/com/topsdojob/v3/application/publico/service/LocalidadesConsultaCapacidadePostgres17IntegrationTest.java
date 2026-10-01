@@ -35,6 +35,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -64,6 +66,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -1002,6 +1005,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         void report(Throwable failure) {
             Run run = current.getAndSet(null);
             if (run == null) return;
+            run.stopSampler();
             try { System.out.println(run.line(failure)); }
             catch (RuntimeException | Error diagnosticFailure) {
                 // Diagnostic formatting must never replace the functional test failure.
@@ -1011,10 +1015,34 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
 
         private static final class Run {
             private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
+            private static final String[] CONFIG_PHASES = {
+                    "config_namespace", "config_secure_processing", "config_disallow_doctype",
+                    "config_external_general", "config_external_parameter", "config_access_dtd",
+                    "config_access_schema", "config_max_depth", "config_xinclude", "factory_ready"};
+            private static final String[] CONFIG_NAMES = {
+                    "namespace", "secureProcessing", "disallowDoctype", "externalGeneral",
+                    "externalParameter", "accessDtd", "accessSchema", "maxDepth", "xinclude",
+                    "expandEntities"};
             private final String scenario;
             private final long[] gcBefore = gcTotals();
             private final long started = System.nanoTime();
+            private final long pid = ProcessHandle.current().pid();
+            private final long processCpuBefore = processCpuTime();
+            private final Field budgetDeadlineField;
+            private final Thread sampler;
             private long[] gcAfter;
+            private long processCpuAfter = -1;
+            private long configProcessCpuBefore = -1;
+            private long configProcessCpuAfter = -1;
+            private long markerOverheadNanos;
+            private int markerCount;
+            private int threadSamples;
+            private String budgetCapture = "not_observed";
+            private String samplerError = "none";
+            private final Map<String, Integer> threadStates = new java.util.TreeMap<>();
+            private volatile boolean samplerStopped;
+            private volatile long sampledThreadId = -1;
+            private volatile String sampledStep;
             private String operationId = "none";
             private int maxPage;
             private final Map<String, Long> times = new HashMap<>();
@@ -1022,8 +1050,22 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             private final Map<String, Long> threadIds = new HashMap<>();
             private final Map<String, Integer> values = new HashMap<>();
 
-            private Run(String scenario) { this.scenario = scenario; }
+            private Run(String scenario) {
+                this.scenario = scenario;
+                Field field = null;
+                try {
+                    field = LocalidadesConsultaOrcamento.class.getDeclaredField("prazoNanos");
+                    field.setAccessible(true);
+                } catch (ReflectiveOperationException | RuntimeException exception) {
+                    budgetCapture = "unavailable_" + exception.getClass().getSimpleName();
+                }
+                budgetDeadlineField = field;
+                sampler = new Thread(this::sampleThread, "localidades-parser-diagnostic");
+                sampler.setDaemon(true);
+                sampler.start();
+            }
             private synchronized void mark(String id, int page, String phase, long at, int value) {
+                long diagnosticStart = System.nanoTime();
                 if (id != null) operationId = id;
                 maxPage = Math.max(maxPage, page);
                 String key = page + "." + phase;
@@ -1034,18 +1076,113 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                     threadIds.putIfAbsent(key, Thread.currentThread().getId());
                 }
                 values.put(key, value);
+                if (page == 0 && "list_start".equals(phase)) captureBudget();
+                if (page == 1) trackInitialConfiguration(phase);
+                markerCount++;
+                markerOverheadNanos += System.nanoTime() - diagnosticStart;
             }
             private void done() {
                 mark(null, 0, "operation_done", System.nanoTime(), 0);
                 gcAfter = gcTotals();
+                processCpuAfter = processCpuTime();
+                stopSampler();
+            }
+            private void captureBudget() {
+                if (budgetDeadlineField == null) return;
+                LocalidadesConsultaOrcamento budget = LocalidadesConsultaOrcamento.atualOuNulo();
+                if (budget == null) {
+                    budgetCapture = "not_installed";
+                    return;
+                }
+                try {
+                    long deadline = budgetDeadlineField.getLong(budget);
+                    times.put("0.budget_start", deadline - LocalidadesConsultaCoordenador.PRAZO.toNanos());
+                    times.put("0.budget_deadline", deadline);
+                    budgetCapture = "captured";
+                } catch (ReflectiveOperationException | RuntimeException exception) {
+                    budgetCapture = "unavailable_" + exception.getClass().getSimpleName();
+                }
+            }
+            private void trackInitialConfiguration(String phase) {
+                if ("factory_created".equals(phase)) {
+                    sampledThreadId = Thread.currentThread().getId();
+                    sampledStep = CONFIG_NAMES[0];
+                    configProcessCpuBefore = processCpuTime();
+                } else if ("factory_ready".equals(phase)) {
+                    configProcessCpuAfter = processCpuTime();
+                    sampledStep = null;
+                    sampledThreadId = -1;
+                } else {
+                    for (int index = 0; index < CONFIG_PHASES.length - 1; index++) {
+                        if (CONFIG_PHASES[index].equals(phase)) {
+                            sampledStep = CONFIG_NAMES[index + 1];
+                            break;
+                        }
+                    }
+                }
+            }
+            private void sampleThread() {
+                while (!samplerStopped) {
+                    long threadId = sampledThreadId;
+                    String step = sampledStep;
+                    if (threadId > 0 && step != null) {
+                        try {
+                            ThreadInfo info = THREADS.getThreadInfo(threadId, 1);
+                            if (info != null) {
+                                String frame = info.getStackTrace().length == 0 ? "unknown"
+                                        : info.getStackTrace()[0].getClassName() + "#"
+                                                + info.getStackTrace()[0].getMethodName();
+                                synchronized (this) {
+                                    threadSamples++;
+                                    threadStates.merge(step + "/" + info.getThreadState() + "/" + frame,
+                                            1, Integer::sum);
+                                }
+                            }
+                        } catch (RuntimeException exception) {
+                            synchronized (this) {
+                                samplerError = exception.getClass().getSimpleName();
+                            }
+                            break;
+                        }
+                    }
+                    LockSupport.parkNanos(10_000_000L);
+                }
+            }
+            private void stopSampler() {
+                samplerStopped = true;
+                LockSupport.unpark(sampler);
+                try {
+                    sampler.join(1_000);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            private static long processCpuTime() {
+                var os = ManagementFactory.getOperatingSystemMXBean();
+                return os instanceof com.sun.management.OperatingSystemMXBean supported
+                        ? supported.getProcessCpuTime() : -1;
             }
             private synchronized String line(Throwable failure) {
                 StringBuilder out = new StringBuilder("CAPACITY_R2_TIMELINE scenario=").append(scenario)
                         .append(" result=").append(failure == null ? "PASS" : failure.getClass().getSimpleName())
                         .append(" operation=").append(operationId)
+                        .append(" pid=").append(pid)
+                        .append(" budgetCapture=").append(budgetCapture)
+                        .append(" budgetStartMs=").append(offset(0, "budget_start"))
+                        .append(" budgetDeadlineMs=").append(offset(0, "budget_deadline"))
+                        .append(" responseAfterDeadlineMs=").append(between(0, "budget_deadline", 0, "operation_done"))
                         .append(" setupMs=").append(offset(0, "list_start"))
                         .append(" requested=").append(value(0, "list_start"))
-                        .append(" elapsedMs=").append(offset(0, "operation_done"));
+                        .append(" elapsedMs=").append(offset(0, "operation_done"))
+                        .append(" processCpuMs=").append(processCpuDelta(processCpuBefore, processCpuAfter))
+                        .append(" initialConfigProcessCpuMs=")
+                        .append(processCpuDelta(configProcessCpuBefore, configProcessCpuAfter))
+                        .append(" observerMarks=").append(markerCount)
+                        .append(" observerMarkWallMs=").append(ms(markerOverheadNanos))
+                        .append(" threadSamples=").append(threadSamples)
+                        .append(" threadStates=").append(threadStates)
+                        .append(" samplerError=").append(samplerError)
+                        .append(" samplerAlive=").append(sampler.isAlive());
                 long[] after = gcAfter == null ? gcTotals() : gcAfter;
                 out.append(" gcCount=").append(after[0] - gcBefore[0])
                         .append(" gcTimeMs=").append(after[1] - gcBefore[1]);
@@ -1068,8 +1205,17 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                             .append(",newInstanceCpu=").append(cpuDelta(page, "factory_start", "factory_created"))
                             .append(",factoryConfigWall=").append(delta(page, "factory_created", "factory_ready"))
                             .append(",factoryConfigCpu=").append(cpuDelta(page, "factory_created", "factory_ready"))
-                            .append(",factoryWall=").append(delta(page, "parse_start", "factory_ready"))
-                            .append(",factoryCpu=").append(cpuDelta(page, "parse_start", "factory_ready"))
+                            .append(",factoryWall=").append(delta(page, "parse_start", "factory_ready"));
+                    String previous = "factory_created";
+                    for (int index = 0; index < CONFIG_PHASES.length; index++) {
+                        String current = CONFIG_PHASES[index];
+                        out.append(",cfg_").append(CONFIG_NAMES[index]).append("Wall=")
+                                .append(delta(page, previous, current))
+                                .append(",cfg_").append(CONFIG_NAMES[index]).append("Cpu=")
+                                .append(cpuDelta(page, previous, current));
+                        previous = current;
+                    }
+                    out.append(",factoryCpu=").append(cpuDelta(page, "parse_start", "factory_ready"))
                             .append(",builderWall=").append(delta(page, "factory_ready", "builder_ready"))
                             .append(",builderCpu=").append(cpuDelta(page, "factory_ready", "builder_ready"))
                             .append(",domWall=").append(delta(page, "builder_ready", "dom_ready"))
@@ -1104,6 +1250,9 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                 Long end = cpuTimes.get(last);
                 if (start == null || end == null || !threadIds.get(first).equals(threadIds.get(last))) return "-";
                 return ms(end - start);
+            }
+            private static String processCpuDelta(long start, long end) {
+                return start < 0 || end < 0 ? "-" : ms(end - start);
             }
             private static long currentThreadCpuTime() {
                 try {
