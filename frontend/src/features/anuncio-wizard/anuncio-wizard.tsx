@@ -53,12 +53,13 @@ import {
 import {
   initialWizardFormState,
   initialWizardKycState,
+  type EditPendingMedia,
   type WizardFormState,
   type WizardStepId,
 } from './types'
 import { WizardFinalReview } from './components/wizard-final-review'
 import { WizardPreview } from './components/wizard-preview'
-import { WizardStepFotos } from './components/wizard-step-fotos'
+import { WizardStepFotos, type EditVideoUploadFailure } from './components/wizard-step-fotos'
 import { WizardStepKyc } from './components/wizard-step-kyc'
 import { WizardStepLocalizacao } from './components/wizard-step-localizacao'
 import { WizardStepPerfil } from './components/wizard-step-perfil'
@@ -221,6 +222,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [editAnuncio, setEditAnuncio] = useState<MeuAnuncio | null>(null)
   const previousAnuncioRef = useRef<MeuAnuncio | null>(null)
   const [editMedia, setEditMedia] = useState<MinhasMidiasResponse | null>(null)
+  const editVideoAutoStartedRef = useRef<{ scope: string; entry: EditPendingMedia } | null>(null)
+  const [editVideoFailure, setEditVideoFailure] = useState<{ scope: string; failure: EditVideoUploadFailure } | null>(null)
   const mediaPreviewRefreshRef = useRef<Promise<void> | null>(null)
   const [mediaBusy, setMediaBusy] = useState(false)
   const mediaBusyRef = useRef(false)
@@ -283,6 +286,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     terminalAnuncioRef.current = null
     setTerminalAnuncio(null)
     setEditMedia(null)
+    setEditVideoFailure(null)
     mediaPreviewRefreshRef.current = null
     previousAnuncioRef.current = null
     mediaBusyRef.current = false
@@ -1169,6 +1173,22 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           }}
           pendingSaveNotice={pendingSaveNotice}
           accountScope={progressScope}
+          actorId={cacheUserId}
+          onAutoVideoStart={(entry) => {
+            if (publishLockRef.current || !mediaBusyRef.current || terminalAnuncioRef.current
+              || !mountedRef.current || progressScopeRef.current !== progressScope) return false
+            const previous = editVideoAutoStartedRef.current
+            if (previous?.scope === progressScope && previous.entry === entry) return false
+            editVideoAutoStartedRef.current = { scope: progressScope, entry }
+            return true
+          }}
+          savedVideoFailure={editVideoFailure?.scope === progressScope
+            && editPendingMedia.includes(editVideoFailure.failure.entry) ? editVideoFailure.failure : null}
+          onVideoFailureChange={(failure) => {
+            if (progressScopeRef.current === progressScope) {
+              setEditVideoFailure(failure ? { scope: progressScope, failure } : null)
+            }
+          }}
           onPersistedChange={acceptMediaResponse}
           onInteractionStart={beginMediaInteraction}
           onInteractionEnd={endMediaInteraction}

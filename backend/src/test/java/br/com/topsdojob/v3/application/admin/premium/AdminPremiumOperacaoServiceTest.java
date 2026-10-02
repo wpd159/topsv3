@@ -37,6 +37,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -45,17 +47,22 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class AdminPremiumOperacaoServiceTest {
+
+    private ch.qos.logback.classic.Logger logger;
+    private ListAppender<ILoggingEvent> logs;
 
     private final AtivacaoBeneficioRepository ativacaoRepository = mock(AtivacaoBeneficioRepository.class);
     private final MovimentoCreditoRepository movimentoRepository = mock(MovimentoCreditoRepository.class);
@@ -84,8 +91,18 @@ class AdminPremiumOperacaoServiceTest {
 
     @BeforeEach
     void salvarEntidadesSemAlterarArgumentos() {
+        logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(AdminPremiumOperacaoService.class);
+        logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
         when(grupoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(ativacaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @AfterEach
+    void removerCapturaDeLog() {
+        logger.detachAppender(logs);
+        logs.stop();
     }
 
     @Test
@@ -130,6 +147,14 @@ class AdminPremiumOperacaoServiceTest {
                 "req-premium-admin");
 
         assertThat(response.status()).isEqualTo("ATIVA");
+        List<String> fases = mensagens().stream()
+                .filter(mensagem -> mensagem.contains("requestId=req-premium-admin ")).toList();
+        assertThat(fases).anySatisfy(mensagem -> assertThat(mensagem)
+                .contains("modalidade=SINGLE", "fase=ARQUIVO_TOTAL", "resultado=OK"));
+        String operacaoLog = fases.get(0).replaceAll(".*operacaoId=([a-f0-9-]+).*", "$1");
+        assertThat(fases).allSatisfy(mensagem -> assertThat(mensagem)
+                .contains("operacaoId=" + operacaoLog).matches(".*duracaoMs=[0-9]+.*")
+                .doesNotContain("Cortesia administrativa autorizada"));
         assertThat(response.creditosEstornados()).isZero();
         assertThat(response.idempotente()).isFalse();
         ArgumentCaptor<GrupoAtivacaoBeneficioEntity> grupo =
@@ -746,12 +771,22 @@ class AdminPremiumOperacaoServiceTest {
         assertThat(primeiraExecucao.idempotente()).isFalse();
         assertThat(retry.ativacoes()).hasSize(2).allMatch(item -> item.idempotente());
         assertThat(retry.idempotente()).isTrue();
+        assertThat(mensagens()).anySatisfy(mensagem -> assertThat(mensagem)
+                .contains("requestId=req-lote ", "modalidade=LOTE", "fase=ARQUIVO_TOTAL", "resultado=OK"));
+        List<String> fasesRetry = mensagens().stream()
+                .filter(mensagem -> mensagem.contains("requestId=req-lote-retry ")).toList();
+        assertThat(fasesRetry).isNotEmpty().allSatisfy(mensagem -> assertThat(mensagem)
+                .doesNotContain("fase=ARQUIVO_TOTAL"));
         verify(grupoRepository, times(2)).save(any());
         verify(ativacaoRepository, times(2)).save(any());
         verify(creditoService, times(2)).auditar(
                 any(), eq("PREMIUM_ATIVACAO_ADMINISTRATIVA"), eq("ATIVACAO_BENEFICIO"),
                 any(), any(), any(), eq("req-lote"));
         verifyNoInteractions(movimentoRepository);
+    }
+
+    private List<String> mensagens() {
+        return logs.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 
     private AnuncioEntity anuncioElegivel(UUID anuncioId) {

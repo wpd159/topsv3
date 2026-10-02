@@ -1,4 +1,5 @@
 import { publicApiUrl, resolveUnsupportedPhotoUploadMessage } from '@/lib/api-contract'
+import { getPublicSession } from '@/lib/public-auth-api'
 import { isSupportedUploadVideo, validatePhotoUpload } from '@/lib/photo-upload-validation'
 import {
   parseVisualizacoesCanonicas,
@@ -671,10 +672,61 @@ export async function enviarMinhasMidiasEmLote(
   onProgress?: (percentual: number) => void,
   accountScope = '',
   expectedAnuncioId?: string,
+  context?: { actorId: string; isCurrent: () => boolean; allowUnconfirmedRetry?: boolean },
 ) {
   if (!arquivos.length) throw new MeusAnunciosApiError('Selecione ao menos um arquivo.', 400)
   await validateMediaUploadPhotos(arquivos)
-  const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  const selectedVideos = arquivos.filter(isSupportedUploadVideo)
+  const contextChanged = () => new MeusAnunciosApiError(
+    'O contexto do anúncio mudou antes do envio. Confira sua sessão e o anúncio antes de tentar novamente.',
+    409,
+    'MIDIA_CONTEXT_CHANGED',
+  )
+  if (context && !context.isCurrent()) throw contextChanged()
+  let csrfValue: string | null
+  try {
+    csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  } catch (error) {
+    if (!context) throw error
+    if (!context.isCurrent()) throw contextChanged()
+    throw new MeusAnunciosApiError('Não foi possível preparar a sessão antes do envio. Tente novamente.', 503, 'MIDIA_PREFLIGHT_FALHOU')
+  }
+  if (context) {
+    if (!context.isCurrent()) throw contextChanged()
+    if (!context.actorId || !expectedAnuncioId) throw contextChanged()
+    let session: Awaited<ReturnType<typeof getPublicSession>>
+    let current: MinhasMidiasResponse
+    try {
+      [session, current] = await Promise.all([getPublicSession(), listarMinhasMidias(slug)])
+    } catch {
+      if (!context.isCurrent()) throw contextChanged()
+      throw new MeusAnunciosApiError(
+        'Não foi possível conferir a sessão e o anúncio antes do envio. Tente novamente sem trocar o arquivo.',
+        503,
+        'MIDIA_PREFLIGHT_FALHOU',
+      )
+    }
+    if (!context.isCurrent()) throw contextChanged()
+    if (!session || String(session.id) !== context.actorId || session.status !== 'ATIVO') {
+      throw new MeusAnunciosApiError('A sessão do proprietário mudou antes do envio.', 401, 'MIDIA_SESSION_CHANGED')
+    }
+    if (current.anuncio.id !== expectedAnuncioId || current.anuncio.slug !== slug
+      || ['REMOVIDO', 'BLOQUEADO'].includes(current.anuncio.status)) {
+      throw contextChanged()
+    }
+    if (selectedVideos.length) {
+      const maxVideoBytes = current.limites.maxVideoBytes
+      if (!Number.isSafeInteger(maxVideoBytes) || maxVideoBytes <= 0) {
+        throw new MeusAnunciosApiError('Não foi possível confirmar o limite de vídeo deste anúncio.', 400, 'VIDEO_LIMIT_UNKNOWN')
+      }
+      if (selectedVideos.some((file) => file.size === 0 || file.size > maxVideoBytes)) {
+        throw new MeusAnunciosApiError('O vídeo está vazio ou excede o limite deste anúncio.', 400, 'VIDEO_LIMIT_INVALID')
+      }
+      if (!context.allowUnconfirmedRetry && (!current.limites.videoAtivo || current.limites.videosDisponiveis < selectedVideos.length)) {
+        throw new MeusAnunciosApiError('O benefício ou o limite de vídeo não permite este envio.', 409, 'VIDEO_NOT_AVAILABLE')
+      }
+    }
+  }
   const signature = mediaBatchSignature(arquivos, slug, accountScope)
   const idempotencyKey = mediaBatchIdempotencyKeys.get(signature) || crypto.randomUUID()
   mediaBatchIdempotencyKeys.set(signature, idempotencyKey)
@@ -716,6 +768,12 @@ export async function enviarMinhasMidiasEmLote(
         if (expectedAnuncioId && result.anuncio.id !== expectedAnuncioId) {
           throw new MeusAnunciosApiError('A resposta não corresponde à identidade do anúncio. Verifique a tentativa antes de continuar.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO')
         }
+        // The owner response excludes REMOVIDA, and the current backend allows
+        // one video slot. A fresh preflight requires that slot free; an explicit
+        // retry retains the same idempotency key after an uncertain response.
+        if (context && selectedVideos.length && !result.midias.some((item) => item.tipo === 'VIDEO')) {
+          throw new MeusAnunciosApiError('O serviço não confirmou o vídeo no anúncio. Confira o estado antes de repetir.', 502, 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+        }
         onProgress?.(100)
         mediaBatchIdempotencyKeys.delete(signature)
         resolve(result)
@@ -725,6 +783,10 @@ export async function enviarMinhasMidiasEmLote(
     }
     const form = new FormData()
     arquivos.forEach((arquivo) => form.append('arquivos', arquivo))
+    if (context && !context.isCurrent()) {
+      reject(contextChanged())
+      return
+    }
     xhr.send(form)
   })
 }

@@ -138,6 +138,18 @@ assert.ok(credit.includes('Saldo atual') && credit.includes('Historico'), 'Modal
 assert.ok(credit.includes('Adicionar') && credit.includes('Remover'), 'Modal deve oferecer as duas operacoes administrativas.')
 assert.ok(credit.includes('window.confirm'), 'Ajuste de credito deve exigir confirmacao.')
 assert.ok(credit.includes('actionLock.current'), 'Ajuste de credito deve bloquear duplo clique.')
+assert.ok(credit.includes("new ApiContractError('Informe uma quantidade positiva de créditos.', 'INVALID_REQUEST', null)"),
+  'Quantidade local invalida deve ser preenchimento incorreto, nao falha de rede ou resposta HTTP.')
+assert.ok(credit.includes("new ApiContractError('Informe um motivo de 5 a 500 caracteres.', 'INVALID_REQUEST', null)"),
+  'Motivo local invalido deve mostrar erro de preenchimento, nao falha de conexao.')
+assert.ok(credit.includes('reason.trim().length < 5 || reason.trim().length > 500'),
+  'O motivo deve respeitar os mesmos limites de 5 a 500 caracteres do ledger.')
+assert.ok(credit.includes('required') && credit.includes('minLength={5}') && credit.includes('maxLength={500}'),
+  'O formulario deve informar e sinalizar a obrigatoriedade do motivo.')
+assert.ok(credit.indexOf('reason.trim().length < 5') < credit.indexOf('window.confirm')
+  && credit.indexOf('window.confirm') < credit.indexOf('await AdminCreditosApi.ajustar('),
+  'Validacao local e confirmacao devem ocorrer antes de qualquer ajuste no ledger.')
+assert.ok(!credit.includes('setError(new Error('), 'Validacoes locais nao devem cair no fallback NETWORK_FAILURE.')
 assert.ok(creditApi.includes('Idempotency-Key') && creditApi.includes('idempotencyKey'), 'Retry deve reutilizar a chave idempotente.')
 
 assert.ok(openapi.includes('/api/admin/usuarios/indicadores:'), 'OpenAPI deve documentar os indicadores.')

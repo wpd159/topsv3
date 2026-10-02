@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ApiContractError } from '@/lib/api-contract'
 import {
   AdminCreditosApi,
   type AdminCreditoMovimento,
@@ -79,11 +80,11 @@ export function AdminUsuarioCreditDialog({
     if (actionLock.current) return
     const amount = Number(quantity)
     if (!Number.isInteger(amount) || amount <= 0) {
-      setError(new Error('Informe uma quantidade positiva de creditos.'))
+      setError(new ApiContractError('Informe uma quantidade positiva de créditos.', 'INVALID_REQUEST', null))
       return
     }
-    if (reason.trim().length < 5) {
-      setError(new Error('Informe um motivo com pelo menos cinco caracteres.'))
+    if (reason.trim().length < 5 || reason.trim().length > 500) {
+      setError(new ApiContractError('Informe um motivo de 5 a 500 caracteres.', 'INVALID_REQUEST', null))
       return
     }
     const action = mode === 'CREDITO' ? 'adicionar' : 'remover'
@@ -162,9 +163,15 @@ export function AdminUsuarioCreditDialog({
                     id="admin-user-credit-reason"
                     value={reason}
                     onChange={(event) => setReason(event.target.value)}
+                    aria-describedby="admin-user-credit-reason-help"
+                    required
+                    minLength={5}
                     maxLength={500}
                     disabled={busy}
                   />
+                  <p id="admin-user-credit-reason-help" className="text-xs text-zinc-500">
+                    Obrigatório: de 5 a 500 caracteres.
+                  </p>
                 </div>
               </div>
               <Button type="button" disabled={busy} onClick={() => void adjust()}>

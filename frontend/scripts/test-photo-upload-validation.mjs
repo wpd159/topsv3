@@ -252,13 +252,14 @@ console.log('PHOTO_HELPER_RESULT=OK syntheticEncodedFixtures=true browserDecoder
 
 const mediaResponse = {
   midias: [],
-  limites: { fotosDisponiveis: 10, videosDisponiveis: 1, fotosAtivas: 0, maxFotos: 10, videosAtivos: 0, maxVideos: 1, videoAtivo: true },
+  limites: { fotosDisponiveis: 10, videosDisponiveis: 1, fotosAtivas: 0, maxFotos: 10, videosAtivos: 0, maxVideos: 1, videoAtivo: true, maxVideoBytes: 1024 },
   fotosValidasAtivasTotal: 0,
   anuncio: { id: 'created', slug: 'local', status: 'PENDENTE_REVISAO', statusModeracao: 'PENDENTE', atualizadoEm: null,
     acoesPermitidas: { pausar: false, reativar: false, remover: true, corrigirEReenviar: false } },
 }
 const requests = []
 let nextResponse = { status: 200, body: mediaResponse }
+let holdUploadResponse = false
 class UploadXHR {
   upload = {}
   headers = new Map()
@@ -270,7 +271,7 @@ class UploadXHR {
     this.status = nextResponse.status
     this.responseText = JSON.stringify(nextResponse.body)
     requests.push(this)
-    queueMicrotask(() => this.status === 0 ? this.onerror() : this.onload())
+    if (!holdUploadResponse) queueMicrotask(() => this.status === 0 ? this.onerror() : this.onload())
   }
 }
 globalThis.document = { cookie: 'XSRF-TOKEN=CHANGE_ME; ' }
@@ -281,6 +282,7 @@ globalThis.fetch = async (url, options) => {
 }
 const advertiserApi = moduleFromSource('lib/meus-anuncios-api.ts', {
   '@/lib/api-contract': apiContract,
+  '@/lib/public-auth-api': { getPublicSession: async () => ({ id: 'synthetic-owner', status: 'ATIVO' }) },
   '@/lib/photo-upload-validation': photo,
   '@/lib/visualizacoes-canonicas': { parseVisualizacoesCanonicas: (value) => value },
 })
@@ -1233,7 +1235,7 @@ assert.equal(editorRefs.filter((ref) => ref.current instanceof WeakSet).length, 
   'A classificação foto/vídeo acompanha cada File na seleção, sem estado fraco restrito à etapa.')
 const editorPhotos = () => picker(editorRunner.tree, 'Selecionar fotos do anúncio')
 const editorVideos = () => picker(editorRunner.tree, 'Selecionar vídeo do anúncio')
-const editorSubmit = () => find(editorRunner.tree, (node) => node.type === 'button' && /Enviar arquivos|Verificando|Tentar enviar novamente|Enviando/.test(text(node)), 'Enviar arquivos')
+const editorSubmit = () => find(editorRunner.tree, (node) => node.type === 'button' && /Enviar fotos|Verificando foto|Tentar enviar fotos novamente|Enviando/.test(text(node)), 'Enviar fotos')
 assert.match(text(editorRunner.tree), /20 MiB/)
 assert.match(editorVideos().props.accept, /video\/mp4.*\.mov/)
 selectThroughFilePicker(editorPhotos().props, [good, bad], true)
@@ -1247,7 +1249,7 @@ assert.deepEqual(editorPhotos().props.files, [good, bad])
 assert.deepEqual(editorPhotos().props.files, [good, bad])
 assert.match(text(editorRunner.tree), /trailer.jpeg/)
 assert.equal(editorSubmit().props.disabled, true)
-assert.doesNotMatch(text(editorRunner.tree), /Tentar enviar novamente/)
+assert.doesNotMatch(text(editorRunner.tree), /Tentar enviar fotos novamente/)
 assert.equal(editorUploads.length, 0)
 assert.equal(requests.length, beforeEditorRequests)
 selectThroughFilePicker(editorVideos().props, [video])
@@ -1260,18 +1262,21 @@ assert.deepEqual(editorPhotos().props.files, [good])
 assert.deepEqual(editorVideos().props.files, [video], 'Remoção de foto não altera vídeo pendente.')
 assert.equal(editorSubmit().props.disabled, false)
 assert.equal(editorUploads.length, 0, 'Remover inválida não deve disparar upload parcial automático.')
+editorVideos().props.onRemove(0)
+await editorRunner.settle()
+assert.deepEqual(editorVideos().props.files, [])
 const previouslyValidEditorSubmit = editorSubmit()
 nextResponse = { status: 503, body: { message: 'Serviço temporariamente indisponível.' } }
 editorSubmit().props.onClick()
 await editorRunner.settle()
-assert.deepEqual(editorUploads.at(-1)[1], [good, video])
+assert.deepEqual(editorUploads.at(-1)[1], [good])
 assert.deepEqual(editorPhotos().props.files, [good])
 const editorRetryKey = requests.at(-1).headers.get('idempotency-key')
-button(editorRunner.tree, 'Tentar enviar novamente').props.onClick()
+button(editorRunner.tree, 'Tentar enviar fotos novamente').props.onClick()
 await editorRunner.settle()
 assert.equal(requests.at(-1).headers.get('idempotency-key'), editorRetryKey)
 nextResponse = { status: 200, body: mediaResponse }
-button(editorRunner.tree, 'Tentar enviar novamente').props.onClick()
+button(editorRunner.tree, 'Tentar enviar fotos novamente').props.onClick()
 await editorRunner.settle()
 assert.equal(editorPhotos().props.files.length, 0)
 assert.equal(editorVideos().props.files.length, 0)
@@ -1296,11 +1301,11 @@ await editorRunner.settle()
 assert.equal(failedCsrfRequests, 1)
 assert.equal(requests.length, requestsBeforeCsrfFailure, 'Falha de bootstrap deve ocorrer antes do XHR de upload.')
 assert.deepEqual(editorPhotos().props.files, [bootstrapPhoto])
-assert.equal(button(editorRunner.tree, 'Tentar enviar novamente').props.disabled, false, 'Falha de rede antes do XHR também permite retry.')
+assert.equal(button(editorRunner.tree, 'Tentar enviar fotos novamente').props.disabled, false, 'Falha de rede antes do XHR também permite retry.')
 globalThis.fetch = originalFetch
 globalThis.document.cookie = originalCookie
 nextResponse = { status: 200, body: mediaResponse }
-button(editorRunner.tree, 'Tentar enviar novamente').props.onClick()
+button(editorRunner.tree, 'Tentar enviar fotos novamente').props.onClick()
 await editorRunner.settle()
 assert.equal(requests.length, requestsBeforeCsrfFailure + 1)
 assert.deepEqual(editorUploads.at(-1)[1], [bootstrapPhoto])
@@ -1339,12 +1344,268 @@ assert.equal(editorSubmit().props.disabled, false)
 nextResponse = { status: 415, body: { message: 'Formato de arquivo não permitido.', code: 'MIDIA_FORMATO_INVALIDO', requestId: 'safe-415-id' } }
 editorSubmit().props.onClick()
 await editorRunner.settle()
-assert.doesNotMatch(text(editorRunner.tree), /Tentar enviar novamente/)
+assert.doesNotMatch(text(editorRunner.tree), /Tentar enviar fotos novamente/)
 assert.equal(editorSubmit().props.disabled, true)
 assert.match(text(editorRunner.tree), /salve uma nova cópia/)
 assert.doesNotMatch(text(editorRunner.tree), /safe-415-id|MIDIA_FORMATO_INVALIDO|Código:|Request ID:/)
 editorRunner.unmount()
 console.log('PHOTO_EDITOR_COMPONENT_RESULT=OK mixedPreserved=true explicitSubmission=true staleResultsBlocked=true transientRetry=true')
+
+const videoSuccessResponse = {
+  ...mediaResponse,
+  midias: [{ id: 'synthetic-video', tipo: 'VIDEO', status: 'PENDENTE', previewUrl: null }],
+  limites: { ...mediaResponse.limites, videosAtivos: 1, videosDisponiveis: 0 },
+}
+const videoAttempted = new WeakSet()
+const videoRunner = hooks()
+const videoStep = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(videoRunner)).WizardStepFotos
+const videoProps = {
+  slug: 'synthetic', initialFiles: [], fotoNomes: [], videosNovos: [], onChange() {}, onChangeVideosNovos() {},
+  persistedState: mediaResponse, pendingFiles: [], actorId: 'synthetic-owner', accountScope: 'synthetic-owner:edit:synthetic',
+  uploadUnconfirmed: false,
+  onPendingFilesChange(files) { videoProps.pendingFiles = files },
+  onUploadUnconfirmedChange(value) { videoProps.uploadUnconfirmed = value },
+  onAutoVideoStart(entry) {
+    if (videoAttempted.has(entry)) return false
+    videoAttempted.add(entry)
+    return true
+  },
+}
+const videoFetch = globalThis.fetch
+globalThis.fetch = async (url, options) => {
+  requests.push({ url, ...options })
+  return new Response(JSON.stringify(mediaResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+}
+nextResponse = { status: 200, body: videoSuccessResponse }
+holdUploadResponse = true
+videoRunner.mount(videoStep, videoProps)
+selectThroughFilePicker(picker(videoRunner.tree, 'Selecionar fotos do anúncio').props, [bad])
+videoRunner.update(videoProps)
+selectThroughFilePicker(picker(videoRunner.tree, 'Selecionar vídeo do anúncio').props, [video])
+videoRunner.update(videoProps)
+await videoRunner.settle()
+const videoUploads = editorUploads.filter((args) => args[1].length === 1 && args[1][0] === video)
+assert.equal(videoUploads.length, 1, 'Selecionar vídeo válido deve iniciar exatamente um POST automático.')
+assert.deepEqual(videoUploads[0][1], [video], 'Fotos pendentes ou persistidas não devem acompanhar o vídeo.')
+assert.equal(videoUploads[0][4], mediaResponse.anuncio.id, 'Resposta deve ser vinculada ao anúncio esperado.')
+assert.equal(videoUploads[0][5].actorId, 'synthetic-owner')
+assert.equal(videoProps.pendingFiles.length, 2, 'Seleção permanece até resposta canônica.')
+const localVideo = find(videoRunner.tree, (node) => node.type === 'video' && node.props['data-owner-video-local-preview'], 'prévia local do vídeo')
+assert.match(localVideo.props.src, /^blob:/)
+assert.equal(localVideo.props.autoPlay, undefined, 'Prévia não reproduz automaticamente.')
+assert.equal(localVideo.props.preload, 'metadata')
+assert.doesNotMatch(text(videoRunner.tree), /Enviar arquivos/)
+const pendingVideoXhr = requests.filter((item) => item instanceof UploadXHR).at(-1)
+const uploadProgress = []
+const originalProgress = pendingVideoXhr.upload.onprogress
+pendingVideoXhr.upload.onprogress = (event) => { uploadProgress.push(Math.min(99, Math.round(event.loaded / event.total * 100))); originalProgress(event) }
+pendingVideoXhr.upload.onprogress({ lengthComputable: true, loaded: 2, total: 2 })
+assert.deepEqual(uploadProgress, [99], 'Bytes enviados não significam confirmação do processamento.')
+holdUploadResponse = false
+pendingVideoXhr.onload()
+await videoRunner.settle()
+assert.deepEqual(videoProps.pendingFiles.map((entry) => entry.file), [bad], 'Confirmação do vídeo limpa somente o vídeo, preservando foto pendente.')
+assert.equal(videoProps.uploadUnconfirmed, false)
+videoRunner.unmount()
+globalThis.fetch = videoFetch
+console.log('OWNER_VIDEO_AUTO_UPLOAD_RESULT=OK isolatedVideo=true localPreview=true confirmedOnlyCleanup=true photoManual=true')
+
+const retryVideoAttempts = new WeakSet()
+const retryProps = {
+  slug: 'synthetic', initialFiles: [], fotoNomes: [], videosNovos: [], onChange() {}, onChangeVideosNovos() {},
+  persistedState: mediaResponse, pendingFiles: [], actorId: 'synthetic-owner', accountScope: 'synthetic-owner:edit:synthetic',
+  uploadUnconfirmed: false,
+  onPendingFilesChange(files) { retryProps.pendingFiles = files },
+  onUploadUnconfirmedChange(value) { retryProps.uploadUnconfirmed = value },
+  onAutoVideoStart(entry) {
+    if (retryVideoAttempts.has(entry)) return false
+    retryVideoAttempts.add(entry)
+    return true
+  },
+}
+globalThis.fetch = async (url, options) => {
+  requests.push({ url, ...options })
+  return new Response(JSON.stringify(mediaResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+}
+const retryRunner = hooks()
+const retryStep = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(retryRunner)).WizardStepFotos
+retryRunner.mount(retryStep, retryProps)
+nextResponse = { status: 503, body: { message: 'Falha sintética após o envio.' } }
+selectThroughFilePicker(picker(retryRunner.tree, 'Selecionar vídeo do anúncio').props, [video])
+retryRunner.update(retryProps)
+await retryRunner.settle()
+assert.equal(retryProps.uploadUnconfirmed, true, 'Resposta perdida exige reconciliação explícita.')
+assert.equal(retryProps.pendingFiles[0].file, video, 'Arquivo e contexto permanecem na falha ambígua.')
+const firstVideoXhr = requests.filter((item) => item instanceof UploadXHR).at(-1)
+const retryKey = firstVideoXhr.headers.get('idempotency-key')
+const sendsBeforeRemount = requests.filter((item) => item instanceof UploadXHR).length
+retryRunner.unmount()
+const remountRunner = hooks()
+const remountStep = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(remountRunner)).WizardStepFotos
+remountRunner.mount(remountStep, retryProps)
+await remountRunner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBeforeRemount,
+  'Retorno à etapa não repete automaticamente operação de resultado incerto.')
+nextResponse = { status: 200, body: videoSuccessResponse }
+button(remountRunner.tree, 'Conferir e repetir envio do vídeo').props.onClick()
+await remountRunner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key'), retryKey,
+  'Reconciliação explícita usa a chave da tentativa original.')
+assert.equal(retryProps.pendingFiles.length, 0)
+assert.equal(retryProps.uploadUnconfirmed, false)
+remountRunner.unmount()
+globalThis.fetch = videoFetch
+console.log('OWNER_VIDEO_AMBIGUOUS_RESULT=OK noAutoRetryOnRemount=true sameKey=true explicitRecovery=true')
+
+const videoGuardProps = {
+  ...videoProps, pendingFiles: [], actorId: undefined, uploadUnconfirmed: false,
+  onPendingFilesChange(files) { videoGuardProps.pendingFiles = files },
+  onUploadUnconfirmedChange(value) { videoGuardProps.uploadUnconfirmed = value },
+  onAutoVideoStart() { throw Error('Autoenvio não pode consumir a marca sem sessão.') },
+}
+const videoGuardRunner = hooks()
+const videoGuardStep = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(videoGuardRunner)).WizardStepFotos
+videoGuardRunner.mount(videoGuardStep, videoGuardProps)
+const sendsBeforeMissingActor = requests.filter((item) => item instanceof UploadXHR).length
+selectThroughFilePicker(picker(videoGuardRunner.tree, 'Selecionar vídeo do anúncio').props, [video])
+videoGuardRunner.update(videoGuardProps)
+await videoGuardRunner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBeforeMissingActor)
+assert.match(text(videoGuardRunner.tree), /Entre novamente para confirmar a sessão/)
+videoGuardRunner.unmount()
+
+const videoLimitProps = {
+  ...videoProps, pendingFiles: [], uploadUnconfirmed: false,
+  persistedState: { ...mediaResponse, limites: { ...mediaResponse.limites, maxVideoBytes: 8 } },
+  onPendingFilesChange(files) { videoLimitProps.pendingFiles = files },
+  onUploadUnconfirmedChange(value) { videoLimitProps.uploadUnconfirmed = value },
+  onAutoVideoStart() { throw Error('Vídeo acima do limite não pode iniciar envio.') },
+}
+const videoLimitRunner = hooks()
+const videoLimitStep = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(videoLimitRunner)).WizardStepFotos
+videoLimitRunner.mount(videoLimitStep, videoLimitProps)
+const sendsBeforeLocalLimit = requests.filter((item) => item instanceof UploadXHR).length
+selectThroughFilePicker(picker(videoLimitRunner.tree, 'Selecionar vídeo do anúncio').props, [video])
+videoLimitRunner.update(videoLimitProps)
+await videoLimitRunner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBeforeLocalLimit)
+assert.match(text(videoLimitRunner.tree), /excede o limite de vídeo informado pelo aplicativo/)
+assert.match(picker(videoLimitRunner.tree, 'Selecionar vídeo do anúncio').props.helperText, /Limite de vídeo informado pelo aplicativo/)
+videoLimitRunner.unmount()
+
+const video413Props = {
+  ...videoProps, pendingFiles: [], uploadUnconfirmed: false, savedVideoFailure: null,
+  onPendingFilesChange(files) { video413Props.pendingFiles = files },
+  onUploadUnconfirmedChange(value) { video413Props.uploadUnconfirmed = value },
+  onVideoFailureChange(failure) { video413Props.savedVideoFailure = failure },
+  onAutoVideoStart: (() => { const attempted = new WeakSet(); return (entry) => {
+    if (attempted.has(entry)) return false
+    attempted.add(entry)
+    return true
+  } })(),
+}
+const video413Runner = hooks()
+const video413Step = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(video413Runner)).WizardStepFotos
+video413Runner.mount(video413Step, video413Props)
+globalThis.fetch = async () => new Response(JSON.stringify(mediaResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+nextResponse = { status: 413, body: { message: 'Payload too large', code: 'PAYLOAD_TOO_LARGE', requestId: 'synthetic-413-id' } }
+selectThroughFilePicker(picker(video413Runner.tree, 'Selecionar vídeo do anúncio').props, [video])
+video413Runner.update(video413Props)
+await video413Runner.settle()
+assert.equal(video413Props.pendingFiles[0].file, video, '413 mantém o arquivo para diagnóstico e nova escolha.')
+assert.match(text(video413Runner.tree), /causa exata da recusa não foi confirmada/i)
+assert.match(text(video413Runner.tree), /Request ID: synthetic-413-id/)
+assert.doesNotMatch(text(video413Runner.tree), /O vídeo selecionado .* excede o limite/)
+assert.equal(video413Props.savedVideoFailure.retryable, false)
+const sendsBefore413Remount = requests.filter((item) => item instanceof UploadXHR).length
+video413Runner.unmount()
+const remount413Runner = hooks()
+const remount413Step = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(remount413Runner)).WizardStepFotos
+remount413Runner.mount(remount413Step, video413Props)
+await remount413Runner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBefore413Remount,
+  'Falha 413 não dispara novo POST ao voltar para a etapa.')
+assert.doesNotMatch(text(remount413Runner.tree), /Conferir e repetir envio do vídeo/,
+  'Falha não repetível não ganha botão de retry ao voltar para a etapa.')
+assert.match(text(remount413Runner.tree), /HTTP 413/)
+remount413Runner.unmount()
+
+const video429Props = {
+  ...videoProps, pendingFiles: [], uploadUnconfirmed: false, savedVideoFailure: null,
+  onPendingFilesChange(files) { video429Props.pendingFiles = files },
+  onUploadUnconfirmedChange(value) { video429Props.uploadUnconfirmed = value },
+  onVideoFailureChange(failure) { video429Props.savedVideoFailure = failure },
+  onAutoVideoStart: (() => { const attempted = new WeakSet(); return (entry) => {
+    if (attempted.has(entry)) return false
+    attempted.add(entry)
+    return true
+  } })(),
+}
+const video429Runner = hooks()
+const video429Step = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(video429Runner)).WizardStepFotos
+video429Runner.mount(video429Step, video429Props)
+nextResponse = { status: 429, body: { message: 'Limite temporário de solicitações.' } }
+selectThroughFilePicker(picker(video429Runner.tree, 'Selecionar vídeo do anúncio').props, [video])
+video429Runner.update(video429Props)
+await video429Runner.settle()
+assert.equal(button(video429Runner.tree, 'Conferir e repetir envio do vídeo').props.disabled, false)
+assert.equal(video429Props.savedVideoFailure.retryable, true)
+const retry429Key = requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key')
+selectThroughFilePicker(picker(video429Runner.tree, 'Selecionar fotos do anúncio').props, [good])
+video429Runner.update(video429Props)
+await video429Runner.settle()
+assert.equal(button(video429Runner.tree, 'Conferir e repetir envio do vídeo').props.disabled, false,
+  'Selecionar foto separada não deve apagar o retry do vídeo que falhou.')
+const sendsBefore429Remount = requests.filter((item) => item instanceof UploadXHR).length
+video429Runner.unmount()
+const remount429Runner = hooks()
+const remount429Step = moduleFromSource('features/anuncio-wizard/components/wizard-step-fotos.tsx', photoStepImports(remount429Runner)).WizardStepFotos
+remount429Runner.mount(remount429Step, video429Props)
+await remount429Runner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, sendsBefore429Remount,
+  'Retorno à etapa não pode repetir automaticamente um vídeo já tentado.')
+assert.equal(button(remount429Runner.tree, 'Conferir e repetir envio do vídeo').props.disabled, false)
+nextResponse = { status: 200, body: videoSuccessResponse }
+button(remount429Runner.tree, 'Conferir e repetir envio do vídeo').props.onClick()
+await remount429Runner.settle()
+assert.equal(requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key'), retry429Key)
+assert.deepEqual(video429Props.pendingFiles.map((entry) => entry.file), [good],
+  'Retry confirmado remove apenas o vídeo e preserva a foto pendente.')
+assert.equal(video429Props.savedVideoFailure, null)
+remount429Runner.unmount()
+
+const progressWithoutCanonicalVideo = []
+const beforeMissingCanonical = requests.filter((item) => item instanceof UploadXHR).length
+nextResponse = { status: 200, body: mediaResponse }
+await assert.rejects(advertiserApi.enviarMinhasMidiasEmLote('synthetic', [video], (value) => progressWithoutCanonicalVideo.push(value),
+  'synthetic-owner:edit:canonical-missing', mediaResponse.anuncio.id,
+  { actorId: 'synthetic-owner', isCurrent: () => true }), (error) => error.code === 'MIDIAS_ESTADO_NAO_CONFIRMADO')
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, beforeMissingCanonical + 1)
+assert.doesNotMatch(progressWithoutCanonicalVideo.join(','), /100/, 'Resposta 2xx sem vídeo não confirma salvamento.')
+const unconfirmedVideoKey = requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key')
+nextResponse = { status: 200, body: videoSuccessResponse }
+await advertiserApi.enviarMinhasMidiasEmLote('synthetic', [video], undefined,
+  'synthetic-owner:edit:canonical-missing', mediaResponse.anuncio.id,
+  { actorId: 'synthetic-owner', isCurrent: () => true, allowUnconfirmedRetry: true })
+assert.equal(requests.filter((item) => item instanceof UploadXHR).at(-1).headers.get('idempotency-key'), unconfirmedVideoKey)
+
+const beforeContextAbort = requests.filter((item) => item instanceof UploadXHR).length
+let releaseCsrf
+const pendingCsrf = new Promise((resolve) => { releaseCsrf = resolve })
+globalThis.document.cookie = ''
+globalThis.fetch = async () => pendingCsrf
+let contextStillCurrent = true
+const guardedRequest = advertiserApi.enviarMinhasMidiasEmLote('synthetic', [video], undefined, 'synthetic-owner:edit:synthetic',
+  mediaResponse.anuncio.id, { actorId: 'synthetic-owner', isCurrent: () => contextStillCurrent })
+await tick()
+contextStillCurrent = false
+releaseCsrf(new Response('{}', { status: 200 }))
+await assert.rejects(guardedRequest, (error) => error.code === 'MIDIA_CONTEXT_CHANGED')
+assert.equal(requests.filter((item) => item instanceof UploadXHR).length, beforeContextAbort,
+  'Navegação/conta alterada durante CSRF não pode iniciar POST.')
+globalThis.document.cookie = originalCookie
+globalThis.fetch = videoFetch
+console.log('OWNER_VIDEO_GUARDS_RESULT=OK noActorNoPost=true localLimit=true honest413=true canonicalRequired=true csrfContextAbort=true')
 
 // Execute the creation selector itself as well as its parent's publication
 // callbacks above, driving both native input/drop entry paths.

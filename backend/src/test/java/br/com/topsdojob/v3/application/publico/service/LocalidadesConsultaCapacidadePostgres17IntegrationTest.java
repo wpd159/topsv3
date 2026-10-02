@@ -400,7 +400,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     void paginacaoRealSeparadaEncontraProvasAposTerceiraPagina() {
         Inventory fixture = seed(715, 1311);
         List<UUID> files = previewFiles();
-        REMOTE.configure(fixture.keys(), 2358, 1250, 800, 800);
+        REMOTE.configure(fixture.keys(), 2358, 250, 250, 250);
         TIMELINE.begin("three_pages_1311");
         Throwable failure = null;
         try {

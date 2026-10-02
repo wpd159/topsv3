@@ -284,6 +284,7 @@ const transpiledAdapter = ts.transpileModule(api, {
   },
 }).outputText
 const apiContractImport = "import { publicApiUrl, resolveUnsupportedPhotoUploadMessage } from '@/lib/api-contract';"
+const publicAuthImport = "import { getPublicSession } from '@/lib/public-auth-api';"
 const visualizacoesImport = "import { parseVisualizacoesCanonicas, } from '@/lib/visualizacoes-canonicas';"
 const photoValidationImport = "import { isSupportedUploadVideo, validatePhotoUpload } from '@/lib/photo-upload-validation';"
 const transpiledPhotoValidation = ts.transpileModule(source('lib/photo-upload-validation.ts'), {
@@ -291,6 +292,7 @@ const transpiledPhotoValidation = ts.transpileModule(source('lib/photo-upload-va
 }).outputText
 const photoValidationUrl = `data:text/javascript;base64,${Buffer.from(transpiledPhotoValidation).toString('base64')}`
 assert.ok(transpiledAdapter.includes(apiContractImport), 'Import do contrato da API não localizado no adapter transpilado.')
+assert.ok(transpiledAdapter.includes(publicAuthImport), 'Import da sessão pública não localizado no adapter transpilado.')
 assert.ok(transpiledAdapter.includes(visualizacoesImport), 'Import de visualizações não localizado no adapter transpilado.')
 const adapterRuntimeSource = transpiledAdapter
   .replace(apiContractImport, `
@@ -305,6 +307,7 @@ const adapterRuntimeSource = transpiledAdapter
     }
   `)
   .replace(visualizacoesImport, 'const parseVisualizacoesCanonicas = (value) => value;')
+  .replace(publicAuthImport, "const getPublicSession = async () => ({ id: 'synthetic-owner', status: 'ATIVO' });")
   .replace(photoValidationImport, `import { isSupportedUploadVideo, validatePhotoUpload } from ${JSON.stringify(photoValidationUrl)};`)
 assert.doesNotMatch(adapterRuntimeSource, /from ['"]@\//, 'O harness deve substituir todos os aliases usados pelo adapter.')
 
@@ -566,10 +569,12 @@ assert.match(wizardPhotos, /meusAnunciosErrorMessage\(error, 'Falha ao enviar os
 assert.match(wizardPhotos, /const pendingEntries = controlledPendingFiles \?\? uncontrolledPendingFiles/)
 assert.match(wizardPhotos, /onPendingFilesChange\(files\)/,
   'A seleção da edição deve subir ao formulário para sobreviver às etapas.')
-assert.ok(persistedUpload.indexOf('await enviarMinhasMidiasEmLote') < persistedUpload.indexOf('updatePendingFiles([])'), 'Edicao deve limpar a selecao apenas depois do 2xx.')
+assert.ok(persistedUpload.indexOf('await enviarMinhasMidiasEmLote') < persistedUpload.indexOf('updatePendingFiles(pendingFilesRef.current.filter((entry) => !entries.includes(entry)))'), 'Edicao deve limpar somente os arquivos confirmados depois do 2xx.')
 const persistedFailure = persistedUpload.slice(persistedUpload.indexOf('} catch (error)'), persistedUpload.indexOf('} finally'))
 assert.doesNotMatch(persistedFailure, /setUncontrolledPendingFiles\(\[\]\)|updatePendingFiles\(\[\]\)/)
-assert.match(wizardPhotos, /onClick=\{\(\) => void uploadPersisted\(pendingEntries\)\}/)
-assert.match(normalized(wizardPhotos), /Tentar enviar novamente/)
+assert.match(wizardPhotos, /onClick=\{\(\) => void uploadPersisted\(pendingPersistedPhotos, 'photo'\)\}/)
+assert.match(wizardPhotos, /void uploadPersisted\(\[entry\], 'video', true\)/)
+assert.match(wizard, /if \(publishLockRef\.current \|\| !mediaBusyRef\.current \|\| terminalAnuncioRef\.current\s*\|\| !mountedRef\.current \|\| progressScopeRef\.current !== progressScope\) return false/, 'O autoenvio marca a tentativa só após obter o bloqueio de mídia.')
+assert.match(normalized(wizardPhotos), /Tentar enviar fotos novamente/)
 
 console.log('PAINEL_ANUNCIANTE_FASE_1B_RESULT=OK')

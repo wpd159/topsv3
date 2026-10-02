@@ -30,6 +30,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
+import br.com.topsdojob.v3.platform.request.RequestIdFilter;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -39,15 +40,23 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AdminPremiumOperacaoService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AdminPremiumOperacaoService.class);
 
     private final AtivacaoBeneficioRepository ativacaoRepository;
     private final MovimentoCreditoRepository movimentoRepository;
@@ -119,6 +128,9 @@ public class AdminPremiumOperacaoService {
             String idempotencyKey,
             AdminUserPrincipal administrador,
             String requestId) {
+        long inicioOperacao = System.nanoTime();
+        UUID operacaoId = UUID.randomUUID();
+        observarConclusaoTransacional(requestId, operacaoId, "SINGLE", inicioOperacao);
         validarAdministrador(administrador);
         if (request == null || request.beneficioId() == null || request.duracaoDias() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "beneficio e duracao obrigatorios");
@@ -126,28 +138,33 @@ public class AdminPremiumOperacaoService {
         String observacao = observacaoOpcional(request.observacao());
         String chave = "premium-admin:" + administrador.usuarioId() + ":"
                 + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
-        var repetido = grupoRepository.findByIdempotencyKey(chave);
+        var repetido = observarFase(requestId, operacaoId, "SINGLE", "IDEMPOTENCIA_INICIAL",
+                () -> grupoRepository.findByIdempotencyKey(chave));
         if (repetido.isPresent()) {
             return resultadoRepetido(repetido.get(), anuncioId, request, observacao);
         }
 
-        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
-                .filter(item -> item.getRemovidoEm() == null)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        AnuncioEntity anuncio = observarFase(requestId, operacaoId, "SINGLE", "CONTEXTO_LOCK_SQL",
+                () -> anuncioRepository.findByIdForModeration(anuncioId)
+                        .filter(item -> item.getRemovidoEm() == null)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado")));
         validarElegibilidadeJuridica(anuncio);
-        var repetidoAposLock = grupoRepository.findByIdempotencyKey(chave);
+        var repetidoAposLock = observarFase(requestId, operacaoId, "SINGLE", "IDEMPOTENCIA_APOS_LOCK",
+                () -> grupoRepository.findByIdempotencyKey(chave));
         if (repetidoAposLock.isPresent()) {
             return resultadoRepetido(repetidoAposLock.get(), anuncioId, request, observacao);
         }
 
-        BeneficioPremiumEntity beneficio = beneficioAdministravel(request.beneficioId());
+        BeneficioPremiumEntity beneficio = observarFase(requestId, operacaoId, "SINGLE", "CATALOGO",
+                () -> beneficioAdministravel(request.beneficioId()));
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        BeneficioPremiumOpcaoEntity opcao = opcaoRepository
-                .findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
-                        beneficio.getId(), request.duracaoDias())
-                .filter(item -> item.vigente(agora))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
-        boolean duplicadoAtivo = beneficioConsultaService.consultarCalculados(anuncioId).stream()
+        BeneficioPremiumOpcaoEntity opcao = observarFase(requestId, operacaoId, "SINGLE", "OPCAO",
+                () -> opcaoRepository.findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
+                                beneficio.getId(), request.duracaoDias())
+                        .filter(item -> item.vigente(agora))
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada")));
+        boolean duplicadoAtivo = observarFase(requestId, operacaoId, "SINGLE", "CONSULTA_ATIVACOES",
+                () -> beneficioConsultaService.consultarCalculados(anuncioId)).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
                         || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
                         || item.status() == PremiumBeneficioStatusCalculado.PENDENTE)
@@ -157,6 +174,7 @@ public class AdminPremiumOperacaoService {
         }
 
         OffsetDateTime fim = agora.plusDays(opcao.getDuracaoDias());
+        long inicioPersistencia = System.nanoTime();
         GrupoAtivacaoBeneficioEntity grupo = grupoRepository.save(
                 GrupoAtivacaoBeneficioEntity.criarAdministrativa(
                         UUID.randomUUID(),
@@ -206,7 +224,10 @@ public class AdminPremiumOperacaoService {
                         "creditosDebitados", 0,
                         "observacaoRegistrada", observacao != null),
                 requestId);
-        arquivoPublicidade.registrarEstado(anuncioId, "PREMIUM_ATIVACAO_ADMINISTRATIVA", requestId, agora);
+        registrarFase(requestId, operacaoId, "SINGLE", "PERSISTENCIA_AUDITORIA", inicioPersistencia, "OK");
+        observarAcao(requestId, operacaoId, "SINGLE", "ARQUIVO_TOTAL",
+                () -> arquivoPublicidade.registrarEstado(
+                        anuncioId, "PREMIUM_ATIVACAO_ADMINISTRATIVA", requestId, agora));
         return toDto(ativacao, 0, false);
     }
 
@@ -217,30 +238,41 @@ public class AdminPremiumOperacaoService {
             String idempotencyKey,
             AdminUserPrincipal administrador,
             String requestId) {
+        long inicioOperacao = System.nanoTime();
+        UUID operacaoId = UUID.randomUUID();
+        observarConclusaoTransacional(requestId, operacaoId, "LOTE", inicioOperacao);
         validarAdministrador(administrador);
         List<AdminPremiumAtivarLoteItemRequest> itens = validarLote(request);
         String observacao = observacaoOpcional(request.observacao());
         String chaveRaiz = "premium-admin-lote:" + administrador.usuarioId() + ":"
                 + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
-        Map<UUID, GrupoAtivacaoBeneficioEntity> repetidos = localizarGruposDoLote(itens, chaveRaiz);
+        Map<UUID, GrupoAtivacaoBeneficioEntity> repetidos = observarFase(
+                requestId, operacaoId, "LOTE", "IDEMPOTENCIA_INICIAL",
+                () -> localizarGruposDoLote(itens, chaveRaiz));
         if (!repetidos.isEmpty()) {
             return resultadoLoteRepetido(repetidos, anuncioId, itens, observacao);
         }
 
-        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
-                .filter(item -> item.getRemovidoEm() == null)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        AnuncioEntity anuncio = observarFase(requestId, operacaoId, "LOTE", "CONTEXTO_LOCK_SQL",
+                () -> anuncioRepository.findByIdForModeration(anuncioId)
+                        .filter(item -> item.getRemovidoEm() == null)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado")));
         validarElegibilidadeJuridica(anuncio);
-        Map<UUID, GrupoAtivacaoBeneficioEntity> repetidosAposLock = localizarGruposDoLote(itens, chaveRaiz);
+        Map<UUID, GrupoAtivacaoBeneficioEntity> repetidosAposLock = observarFase(
+                requestId, operacaoId, "LOTE", "IDEMPOTENCIA_APOS_LOCK",
+                () -> localizarGruposDoLote(itens, chaveRaiz));
         if (!repetidosAposLock.isEmpty()) {
             return resultadoLoteRepetido(repetidosAposLock, anuncioId, itens, observacao);
         }
 
+        long inicioCatalogo = System.nanoTime();
         Map<UUID, BeneficioPremiumEntity> beneficios = new LinkedHashMap<>();
         for (AdminPremiumAtivarLoteItemRequest item : itens) {
             beneficios.computeIfAbsent(item.beneficioId(), this::beneficioAdministravel);
         }
-        Set<UUID> ativos = beneficioConsultaService.consultarCalculados(anuncioId).stream()
+        registrarFase(requestId, operacaoId, "LOTE", "CATALOGO", inicioCatalogo, "OK");
+        Set<UUID> ativos = observarFase(requestId, operacaoId, "LOTE", "CONSULTA_ATIVACOES",
+                () -> beneficioConsultaService.consultarCalculados(anuncioId)).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
                         || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
                         || item.status() == PremiumBeneficioStatusCalculado.PENDENTE)
@@ -250,6 +282,7 @@ public class AdminPremiumOperacaoService {
                 .collect(Collectors.toSet());
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         List<AdminPremiumAtivacaoOperacaoDto> resultado = new java.util.ArrayList<>();
+        long inicioPersistencia = System.nanoTime();
         for (AdminPremiumAtivarLoteItemRequest item : itens) {
             BeneficioPremiumEntity beneficio = beneficios.get(item.beneficioId());
 
@@ -314,8 +347,59 @@ public class AdminPremiumOperacaoService {
                     requestId);
             resultado.add(toDto(ativacao, 0, false));
         }
-        arquivoPublicidade.registrarEstado(anuncioId, "PREMIUM_ATIVACAO_ADMINISTRATIVA_LOTE", requestId, agora);
+        registrarFase(requestId, operacaoId, "LOTE", "PERSISTENCIA_AUDITORIA", inicioPersistencia, "OK");
+        observarAcao(requestId, operacaoId, "LOTE", "ARQUIVO_TOTAL",
+                () -> arquivoPublicidade.registrarEstado(
+                        anuncioId, "PREMIUM_ATIVACAO_ADMINISTRATIVA_LOTE", requestId, agora));
         return new AdminPremiumAtivacaoLoteDto(List.copyOf(resultado), false);
+    }
+
+    private <T> T observarFase(
+            String requestId, UUID operacaoId, String modalidade, String fase, Supplier<T> acao) {
+        long inicio = System.nanoTime();
+        try {
+            T resultado = acao.get();
+            registrarFase(requestId, operacaoId, modalidade, fase, inicio, "OK");
+            return resultado;
+        } catch (RuntimeException | Error exception) {
+            registrarFase(requestId, operacaoId, modalidade, fase, inicio, "ERRO");
+            throw exception;
+        }
+    }
+
+    private void observarAcao(
+            String requestId, UUID operacaoId, String modalidade, String fase, Runnable acao) {
+        observarFase(requestId, operacaoId, modalidade, fase, () -> {
+            acao.run();
+            return null;
+        });
+    }
+
+    private void registrarFase(
+            String requestId, UUID operacaoId, String modalidade, String fase, long inicio, String resultado) {
+        String idSeguro = RequestIdFilter.isValidRequestId(requestId) ? requestId.trim() : "AUSENTE";
+        LOG.info("premium_ativacao_fase requestId={} operacaoId={} modalidade={} fase={} duracaoMs={} resultado={}",
+                idSeguro, operacaoId, modalidade, fase,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicio), resultado);
+    }
+
+    private void observarConclusaoTransacional(
+            String requestId, UUID operacaoId, String modalidade, long inicio) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                String resultado = switch (status) {
+                    case STATUS_COMMITTED -> "TRANSACAO_COMMIT";
+                    case STATUS_ROLLED_BACK -> "TRANSACAO_ROLLBACK";
+                    default -> "TRANSACAO_INDETERMINADA";
+                };
+                registrarFase(requestId, operacaoId, modalidade, "CONCLUSAO_TRANSACAO", inicio, resultado);
+            }
+        });
     }
 
     private BeneficioPremiumEntity beneficioAdministravel(UUID beneficioId) {

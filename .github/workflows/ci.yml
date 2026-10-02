@@ -189,6 +189,8 @@ jobs:
           node scripts/test-admin-anuncios-fotos-lote.mjs
           node scripts/test-admin-anuncios-moderacao-v3.mjs
           node scripts/test-admin-anuncios-video-upload.mjs
+          node scripts/test-admin-usuarios-v3.mjs
+          node scripts/test-admin-credit-validation.mjs
           node scripts/test-admin-registros.mjs --browser
           node scripts/test-admin-stories-management-filters.mjs
           node scripts/test-restricted-media-age-seo.mjs
@@ -199,6 +201,7 @@ jobs:
           node scripts/test-sensitive-image-authorization.mjs
           node scripts/test-ultima-foto-encerramento.mjs
           node scripts/test-owner-photo-preview.mjs
+          node scripts/test-owner-video-local-preview-visual.mjs
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           node scripts/test-indexnow-v3.mjs
