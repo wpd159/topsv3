@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService;
+import br.com.topsdojob.v3.application.admin.stories.AdminStoriesGestaoService;
 import br.com.topsdojob.v3.application.admin.stories.dto.AdminStoryConfiguracaoRequest;
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
@@ -21,6 +22,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryAti
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto;
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthenticationService;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicProfileUpdateRequestDto;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorageInventory;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
@@ -33,6 +35,9 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -52,6 +57,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +67,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -100,12 +108,16 @@ import org.springframework.web.server.ResponseStatusException;
 class StoriesPublicacaoArquivoPostgres17IntegrationTest {
   private static final UltimaFotoPostgres17Fixture POSTGRES = UltimaFotoPostgres17Fixture.start();
   private static final AtomicInteger PHONE_SEQUENCE = new AtomicInteger(930000000);
+  private static final Pattern FASE_LOG = Pattern.compile("^story_publicacao_fase requestId=([^ ]+) "
+      + "operacaoId=([0-9a-f-]{36}) fase=([A-Z_]+) abrangencia=(INCLUSIVA|SEGMENTO) "
+      + "duracaoMs=[0-9]+ resultado=([A-Z_]+)$");
   private static TestContext testContext;
 
   @Autowired private MinhaContaStoriesPublicacaoService publicacao;
   @Autowired private MinhaContaStoriesDireitoService direitos;
   @Autowired private StoryEncerramentoService encerramento;
   @Autowired private AdminStoryConfiguracaoService configuracao;
+  @Autowired private AdminStoriesGestaoService adminStories;
   @Autowired private ArquivoPublicidadeStoryRegistroService arquivo;
   @Autowired private CreditoLedgerOperacaoService ledger;
   @Autowired private AdminAnuncioAtualizacaoService adUpdates;
@@ -537,6 +549,94 @@ class StoriesPublicacaoArquivoPostgres17IntegrationTest {
     assertThat(archiveWrites).hasValue(1);
     assertArchived(story, "ORIGEM_INDETERMINADA");
   }
+
+  @Test @Order(13)
+  void publicacaoAdminCorrelacionaFasesReaisComCommitERollbackSemExporRequestInvalido() throws Exception {
+    Ad commitAd = ad();
+    photo(commitAd);
+    Ad rollbackAd = ad();
+    photo(rollbackAd);
+    AdminUserPrincipal actor = admin();
+    var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(
+        StoryPublicacaoObservabilidade.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> logs = new ListAppender<>();
+    logs.start();
+    logger.addAppender(logs);
+    logger.setLevel(Level.INFO);
+    try {
+      MinhaContaStoryDto committed = adminStories.publicar(
+          commitAd.id(), "obs-admin-commit", actor, "story-observability-commit");
+      List<PhaseLog> commit = phaseLogs(logs, 0);
+      assertArchived(committed, "ADMINISTRATIVA");
+      assertCorrelated(commit, "story-observability-commit", "TRANSACAO_COMMIT");
+      assertThat(commit).extracting(PhaseLog::fase).contains(
+          "PUBLICACAO_SERVICO", "CONTEXTO_PROPRIETARIO_SQL", "DIREITO_TOTAL",
+          "PERSISTENCIA_SAVE_FLUSH", "ARQUIVO_TOTAL", "ARQUIVO_COPIAS_TOTAL",
+          "ARQUIVO_GET_ORIGEM", "ARQUIVO_PUT_PRIVADO", "ARQUIVO_GET_CONFIRMACAO");
+      assertThat(commit).extracting(PhaseLog::fase).doesNotContain("ARQUIVO_DELETE_ROLLBACK");
+      assertThat(commit).filteredOn(log -> log.fase().equals("PUBLICACAO_SERVICO"))
+          .singleElement().satisfies(log -> assertThat(log.resultado()).isEqualTo("OK"));
+      assertThat(archiveWrites).hasValue(1);
+
+      int rollbackStart = logs.list.size();
+      String marcador = "CHANGE_ME";
+      failArchiveConfirmation.set(true);
+      try {
+        assertThatThrownBy(() -> adminStories.publicar(
+            rollbackAd.id(), "obs-admin-rollback", actor, "Bearer " + marcador))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("falha sintetica na confirmacao da copia privada");
+      } finally {
+        failArchiveConfirmation.set(false);
+      }
+      List<PhaseLog> rollback = phaseLogs(logs, rollbackStart);
+      assertCorrelated(rollback, "AUSENTE", "TRANSACAO_ROLLBACK");
+      assertThat(rollback.get(0).operacaoId()).isNotEqualTo(commit.get(0).operacaoId());
+      assertThat(rollback).extracting(PhaseLog::fase).contains(
+          "PUBLICACAO_SERVICO", "CONTEXTO_PROPRIETARIO_SQL", "DIREITO_TOTAL",
+          "ARQUIVO_TOTAL", "ARQUIVO_COPIAS_TOTAL", "ARQUIVO_GET_ORIGEM",
+          "ARQUIVO_PUT_PRIVADO", "ARQUIVO_GET_CONFIRMACAO", "ARQUIVO_DELETE_ROLLBACK");
+      assertThat(rollback).filteredOn(log -> log.fase().equals("ARQUIVO_GET_CONFIRMACAO"))
+          .singleElement().satisfies(log -> assertThat(log.resultado()).isEqualTo("ERRO"));
+      assertThat(rollback).filteredOn(log -> log.fase().equals("PUBLICACAO_SERVICO"))
+          .singleElement().satisfies(log -> assertThat(log.resultado()).isEqualTo("ERRO"));
+      assertThat(rollback).extracting(PhaseLog::mensagem).allSatisfy(message ->
+          assertThat(message).doesNotContain(marcador, "Bearer"));
+      assertThat(count("select count(*) from story_anuncio where anuncio_id=?", rollbackAd.id())).isZero();
+      assertThat(archiveWrites).hasValue(2);
+      assertThat(deleted).isNotEmpty();
+    } finally {
+      logger.detachAppender(logs);
+      logger.setLevel(previousLevel);
+      logs.stop();
+    }
+  }
+
+  private List<PhaseLog> phaseLogs(ListAppender<ILoggingEvent> logs, int from) {
+    return logs.list.subList(from, logs.list.size()).stream()
+        .map(ILoggingEvent::getFormattedMessage)
+        .filter(message -> message.startsWith("story_publicacao_fase "))
+        .map(message -> {
+          Matcher match = FASE_LOG.matcher(message);
+          assertThat(match.matches()).as(message).isTrue();
+          return new PhaseLog(match.group(1), match.group(2), match.group(3),
+              match.group(5), message);
+        }).toList();
+  }
+
+  private void assertCorrelated(List<PhaseLog> logs, String requestId, String outcome) {
+    assertThat(logs).isNotEmpty();
+    assertThat(logs).extracting(PhaseLog::requestId).containsOnly(requestId);
+    assertThat(logs).extracting(PhaseLog::operacaoId).containsOnly(logs.get(0).operacaoId());
+    for (String phase : List.of("POS_CORPO_TRANSACAO", "TOTAL_ATE_CONCLUSAO")) {
+      assertThat(logs).filteredOn(log -> log.fase().equals(phase))
+          .singleElement().satisfies(log -> assertThat(log.resultado()).isEqualTo(outcome));
+    }
+  }
+
+  private record PhaseLog(String requestId, String operacaoId, String fase,
+      String resultado, String mensagem) { }
 
   private ActiveStory activeStory(String key) throws Exception {
     Ad ad = ad();

@@ -6,6 +6,8 @@ import br.com.topsdojob.v3.application.publico.anunciante.MeusStoriesConsultaSer
 import br.com.topsdojob.v3.application.publico.anunciante.MinhaContaStoriesPublicacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuStoryGerenciadoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.Fase;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
@@ -104,8 +106,11 @@ public class AdminStoriesGestaoService {
       String idempotencyKey,
       AdminUserPrincipal administrador,
       String requestId) {
-    return publicacaoService.publicarAdministrativamente(
-        anuncioId, idempotencyKey, administrador, requestId);
+    try (var observacao = StoryPublicacaoObservabilidade.abrir(requestId)) {
+      return StoryPublicacaoObservabilidade.medir(Fase.PUBLICACAO_SERVICO,
+          () -> publicacaoService.publicarAdministrativamente(
+              anuncioId, idempotencyKey, administrador, requestId));
+    }
   }
 
   private String buscaSegura(String valor) {
