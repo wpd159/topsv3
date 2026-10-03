@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.arquivo;
 
+import static br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.medir;
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_BASE;
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
 
@@ -8,6 +9,8 @@ import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.SelecaoMidiasPublicas;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.Fase;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -91,7 +94,7 @@ public class ArquivoPublicidadeStoryRegistroService {
   @Transactional(propagation = Propagation.MANDATORY)
   public void registrarEstado(UUID storyId, String motivo, String requestId, OffsetDateTime instante) {
     validarEntrada(storyId, motivo, instante);
-    entityManager.flush();
+    medir(Fase.ARQUIVO_FLUSH_SQL, entityManager::flush);
     registrarEstadoInterno(storyId, motivo, requestId, instante);
   }
 
@@ -100,7 +103,7 @@ public class ArquivoPublicidadeStoryRegistroService {
       UUID anuncioId, String motivo, String requestId, OffsetDateTime instante) {
     validarEntrada(anuncioId, motivo, instante);
     entityManager.flush();
-    List<UUID> ids = jdbc.queryForList("""
+    List<UUID> ids = consultar("""
         SELECT s.id FROM story_anuncio s
         WHERE s.anuncio_id = :id AND s.modo_conteudo = 'ANUNCIO'
           AND (s.status = 'PUBLICADO' OR EXISTS (
@@ -118,7 +121,7 @@ public class ArquivoPublicidadeStoryRegistroService {
   public List<UUID> midiasSemCopiaParaRetiradaPorAnuncio(UUID anuncioId) {
     Objects.requireNonNull(anuncioId, "anuncioId");
     entityManager.flush();
-    List<Map<String, Object>> stories = jdbc.queryForList("""
+    List<Map<String, Object>> stories = consultar("""
         SELECT s.id, j.id AS veiculacao_id
           FROM story_anuncio s
           JOIN anuncio a ON a.id = s.anuncio_id
@@ -165,7 +168,7 @@ public class ArquivoPublicidadeStoryRegistroService {
       UUID usuarioId, String motivo, String requestId, OffsetDateTime instante) {
     validarEntrada(usuarioId, motivo, instante);
     entityManager.flush();
-    List<UUID> ids = jdbc.queryForList("""
+    List<UUID> ids = consultar("""
         SELECT s.id FROM story_anuncio s
         WHERE s.criado_por = :id AND s.modo_conteudo IN ('ANUNCIO', 'MIDIA_UPLOAD')
           AND (s.status = 'PUBLICADO' OR EXISTS (
@@ -368,7 +371,7 @@ public class ArquivoPublicidadeStoryRegistroService {
     p.put("cobertura", classe.cobertura());
     p.put("inicio", instante);
     p.put("fim", fim);
-    jdbc.update("""
+    atualizar("""
         INSERT INTO arquivo_publicidade_story_veiculacao (
           id, story_id, anuncio_id, contratante_usuario_id, ativacao_beneficio_id,
           grupo_ativacao_id, movimento_credito_id, pagamento_id, modo_conteudo,
@@ -403,11 +406,11 @@ public class ArquivoPublicidadeStoryRegistroService {
       return;
     }
     Map<String, Object> p = Map.of("id", janela.get("id"), "fim", fim, "motivo", motivo);
-    jdbc.update("""
+    atualizar("""
         UPDATE arquivo_publicidade_story_versao SET vigente_ate = :fim
         WHERE veiculacao_id = :id AND vigente_ate > :fim
         """, p);
-    jdbc.update("""
+    atualizar("""
         UPDATE arquivo_publicidade_story_veiculacao
         SET fim_em = :fim, retencao_ate = :fim + INTERVAL '1 year',
             encerramento_motivo = :motivo, atualizado_em = :fim
@@ -453,10 +456,10 @@ public class ArquivoPublicidadeStoryRegistroService {
       apresentacao.put("preco", story.get("preco"));
       apresentacao.put("resumo", resumoStory((String) story.get("descricao")));
       conteudo.put("apresentacaoStory", apresentacao);
-      conteudo.put("servicos", jdbc.queryForList(
+      conteudo.put("servicos", consultar(
           "SELECT servico FROM anuncio_servicos WHERE anuncio_id = :id ORDER BY servico",
           Map.of("id", anuncioId), String.class));
-      conteudo.put("locaisAtendimento", jdbc.queryForList(
+      conteudo.put("locaisAtendimento", consultar(
           "SELECT local_atendimento FROM anuncio_local_atendimento WHERE anuncio_id = :id ORDER BY local_atendimento",
           Map.of("id", anuncioId), String.class));
     } else {
@@ -495,13 +498,14 @@ public class ArquivoPublicidadeStoryRegistroService {
     comercial.put("vinculoPagamento", "SALDO_FUNGIVEL_SEM_ALOCACAO_EXATA");
     Map<String, Object> segmentacao = Map.of("estado", "NAO_AFERIDA_NA_CAPTURA");
     Map<String, Object> alcance = Map.of("estado", "NAO_MENSURADO", "destinatariosUnicos", "DESCONHECIDO");
-    String conteudoJson = json(conteudo);
-    String contratanteJson = json(contratante);
-    String comercialJson = json(comercial);
-    String segmentacaoJson = json(segmentacao);
-    String alcanceJson = json(alcance);
-    String hash = sha256((conteudoJson + contratanteJson + comercialJson
-        + segmentacaoJson + alcanceJson).getBytes(StandardCharsets.UTF_8));
+    ConteudoSerializado serializado = medir(Fase.ARQUIVO_PREPARACAO_JSON_HASH,
+        () -> serializar(conteudo, contratante, comercial, segmentacao, alcance));
+    String conteudoJson = serializado.conteudo();
+    String contratanteJson = serializado.contratante();
+    String comercialJson = serializado.comercial();
+    String segmentacaoJson = serializado.segmentacao();
+    String alcanceJson = serializado.alcance();
+    String hash = serializado.hash();
     Map<String, Object> anterior = unico("""
         SELECT id, numero, conteudo_sha256 FROM arquivo_publicidade_story_versao
         WHERE veiculacao_id = :id AND vigente_ate > :instante
@@ -519,9 +523,10 @@ public class ArquivoPublicidadeStoryRegistroService {
         && "ANUNCIO".equals(story.get("modo_conteudo"))
         ? origensReutilizaveis(story, janela, (UUID) anterior.get("id")) : Map.of();
     List<MidiaCopiada> copias = retirada ? List.of()
-        : copiarMidias(versaoId, midias, origens, referencias);
+        : medir(Fase.ARQUIVO_COPIAS_TOTAL,
+            () -> copiarMidias(versaoId, midias, origens, referencias));
     if (anterior != null) {
-      jdbc.update("UPDATE arquivo_publicidade_story_versao SET vigente_ate = :instante WHERE id = :id",
+      atualizar("UPDATE arquivo_publicidade_story_versao SET vigente_ate = :instante WHERE id = :id",
           Map.of("instante", instante, "id", anterior.get("id")));
     }
     Map<String, Object> p = new HashMap<>();
@@ -538,7 +543,7 @@ public class ArquivoPublicidadeStoryRegistroService {
     p.put("segmentacao", segmentacaoJson);
     p.put("alcance", alcanceJson);
     p.put("hash", hash);
-    jdbc.update("""
+    atualizar("""
         INSERT INTO arquivo_publicidade_story_versao (
           id, veiculacao_id, numero, vigente_desde, vigente_ate, capturado_em,
           motivo, request_id, conteudo_json, contratante_json, comercial_json,
@@ -561,7 +566,7 @@ public class ArquivoPublicidadeStoryRegistroService {
       mp.put("mimeType", midia.mimeType());
       mp.put("bytes", midia.bytes());
       mp.put("ordem", midia.ordem());
-      jdbc.update("""
+      atualizar("""
           INSERT INTO arquivo_publicidade_story_midia (
             id, versao_id, anuncio_midia_id, arquivo_midia_id, variante,
             storage_provider, bucket, chave_privada, sha256, mime_type,
@@ -571,7 +576,7 @@ public class ArquivoPublicidadeStoryRegistroService {
           """, mp);
     }
     for (MidiaReferencia referencia : referencias) {
-      jdbc.update("""
+      atualizar("""
           INSERT INTO arquivo_publicidade_story_midia_referencia (
             id, versao_id, origem_midia_id, arquivo_midia_id, variante, ordem)
           VALUES (:id, :versaoId, :origemId, :arquivoId, :variante, :ordem)
@@ -683,7 +688,7 @@ public class ArquivoPublicidadeStoryRegistroService {
   }
 
   private Map<ChaveMidia, Map<String, Object>> origensDaVersao(UUID versaoId) {
-    List<Map<String, Object>> linhas = jdbc.queryForList("""
+    List<Map<String, Object>> linhas = consultar("""
         SELECT m.id AS origem_midia_id, m.versao_id AS origem_versao_id,
                m.anuncio_midia_id, m.arquivo_midia_id, m.variante,
                m.storage_provider, m.bucket, m.chave_privada, m.sha256,
@@ -753,7 +758,7 @@ public class ArquivoPublicidadeStoryRegistroService {
     if (exibidas.isEmpty()) {
       return List.of();
     }
-    List<Map<String, Object>> dados = jdbc.queryForList("""
+    List<Map<String, Object>> dados = consultar("""
         SELECT am.id AS anuncio_midia_id, am.arquivo_midia_id, am.tipo,
                am.ordem, am.visibilidade_midia, ar.storage_provider,
                ar.bucket, ar.chave_objeto, ar.sha256, ar.mime_type,
@@ -859,19 +864,20 @@ public class ArquivoPublicidadeStoryRegistroService {
       String chaveOrigem,
       Map<ChaveMidia, Map<String, Object>> origens,
       List<MidiaReferencia> referencias) {
-    StoredObject original = storage.get(origem, chaveOrigem);
+    StoredObject original = medir(Fase.ARQUIVO_GET_ORIGEM, () -> storage.get(origem, chaveOrigem));
     if (original == null || original.content() == null || original.content().length == 0
         || original.contentType() == null) {
       throw new IllegalStateException("bytes do Story indisponiveis: " + midia.get("arquivo_midia_id"));
     }
-    String hash = sha256(original.content());
+    String hash = medir(Fase.ARQUIVO_HASH_ORIGEM, () -> sha256(original.content()));
     if ("ORIGINAL".equals(variante) && midia.get("sha256") != null
         && !hash.equals(midia.get("sha256"))) {
       throw new IllegalStateException("hash da fonte de Story divergente: " + midia.get("arquivo_midia_id"));
     }
     Map<String, Object> anterior = origens.get(new ChaveMidia(
         (UUID) midia.get("anuncio_midia_id"), (UUID) midia.get("arquivo_midia_id"), variante));
-    if (copiaReutilizavel(storage, anterior, original, hash)) {
+    if (medir(Fase.ARQUIVO_REUSO_TOTAL,
+        () -> copiaReutilizavel(storage, anterior, original, hash))) {
       referencias.add(referencia(midia, variante, origens));
       return null; // The physical copy remains owned by its original version.
     }
@@ -880,15 +886,18 @@ public class ArquivoPublicidadeStoryRegistroService {
         + (midia.get("anuncio_midia_id") == null ? "direta" : midia.get("anuncio_midia_id"))
         + "/" + midia.get("arquivo_midia_id")
         + "/" + variante.toLowerCase(java.util.Locale.ROOT);
-    ObjectWriteResult resultado = storage.putIfAbsent(
-        StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado, original.content(), original.contentType());
+    ObjectWriteResult resultado = medir(Fase.ARQUIVO_PUT_PRIVADO,
+        () -> storage.putIfAbsent(
+            StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado, original.content(), original.contentType()));
     if (resultado == ObjectWriteResult.CREATED) {
+      StoryPublicacaoObservabilidade.Captura observacao = StoryPublicacaoObservabilidade.capturar();
       TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
         @Override
         public void afterCompletion(int status) {
           if (status == STATUS_ROLLED_BACK) {
             try {
-              storage.delete(StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado);
+              medir(observacao, Fase.ARQUIVO_DELETE_ROLLBACK,
+                  () -> storage.delete(StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado));
             } catch (RuntimeException exception) {
               LOG.error("Falha ao limpar copia privada de Story apos rollback: versao={}, arquivo={}, variante={}",
                   versaoId, midia.get("arquivo_midia_id"), variante, exception);
@@ -897,9 +906,11 @@ public class ArquivoPublicidadeStoryRegistroService {
         }
       });
     }
-    StoredObject confirmada = storage.get(StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado);
+    StoredObject confirmada = medir(Fase.ARQUIVO_GET_CONFIRMACAO,
+        () -> storage.get(StorageArea.PRIVATE_MEDIA, caminhoArquivoPrivado));
     if (confirmada == null || confirmada.content() == null
-        || !hash.equals(sha256(confirmada.content()))
+        || !hash.equals(medir(Fase.ARQUIVO_HASH_CONFIRMACAO,
+            () -> sha256(confirmada.content())))
         || !Objects.equals(original.contentType(), confirmada.contentType())) {
       throw new IllegalStateException("copia privada do Story nao confirmou integridade: " + midia.get("arquivo_midia_id"));
     }
@@ -921,19 +932,37 @@ public class ArquivoPublicidadeStoryRegistroService {
     // Withdrawal continues through its existing path without storage I/O.
     StoredObject retida;
     try {
-      retida = storage.get(StorageArea.PRIVATE_MEDIA, (String) origem.get("chave_privada"));
+      retida = medir(Fase.ARQUIVO_GET_REUSO,
+          () -> storage.get(StorageArea.PRIVATE_MEDIA, (String) origem.get("chave_privada")));
     } catch (RuntimeException exception) {
       return false;
     }
     return retida != null && retida.content() != null
         && retida.content().length == atual.content().length
-        && hash.equals(sha256(retida.content()))
+        && hash.equals(medir(Fase.ARQUIVO_HASH_REUSO, () -> sha256(retida.content())))
         && Objects.equals(atual.contentType(), retida.contentType());
   }
 
   private Map<String, Object> unico(String sql, Map<String, ?> parametros) {
-    List<Map<String, Object>> linhas = jdbc.queryForList(sql, parametros);
+    List<Map<String, Object>> linhas = consultar(sql, parametros);
     return linhas.isEmpty() ? null : linhas.get(0);
+  }
+
+  private List<Map<String, Object>> consultar(String sql, Map<String, ?> parametros) {
+    return medir(faseLeitura(sql), () -> jdbc.queryForList(sql, parametros));
+  }
+
+  private <T> List<T> consultar(String sql, Map<String, ?> parametros, Class<T> tipo) {
+    return medir(faseLeitura(sql), () -> jdbc.queryForList(sql, parametros, tipo));
+  }
+
+  private Fase faseLeitura(String sql) {
+    // A FOR UPDATE query can include execution and lock time; this is not lock-wait telemetry.
+    return sql.contains("FOR UPDATE") ? Fase.ARQUIVO_SQL_FOR_UPDATE : Fase.ARQUIVO_SQL_LEITURA;
+  }
+
+  private int atualizar(String sql, Map<String, ?> parametros) {
+    return medir(Fase.ARQUIVO_SQL_ESCRITA, () -> jdbc.update(sql, parametros));
   }
 
   private Map<String, Object> nullable(String a, Object av, String b, Object bv) {
@@ -973,6 +1002,23 @@ public class ArquivoPublicidadeStoryRegistroService {
     }
   }
 
+  private ConteudoSerializado serializar(
+      Map<String, Object> conteudo,
+      Map<String, Object> contratante,
+      Map<String, Object> comercial,
+      Map<String, Object> segmentacao,
+      Map<String, Object> alcance) {
+    String conteudoJson = json(conteudo);
+    String contratanteJson = json(contratante);
+    String comercialJson = json(comercial);
+    String segmentacaoJson = json(segmentacao);
+    String alcanceJson = json(alcance);
+    String hash = sha256((conteudoJson + contratanteJson + comercialJson
+        + segmentacaoJson + alcanceJson).getBytes(StandardCharsets.UTF_8));
+    return new ConteudoSerializado(
+        conteudoJson, contratanteJson, comercialJson, segmentacaoJson, alcanceJson, hash);
+  }
+
   private String resumoStory(String descricao) {
     if (descricao == null) {
       return null;
@@ -1005,6 +1051,11 @@ public class ArquivoPublicidadeStoryRegistroService {
       // Debiting fungible credit does not identify a particular confirmed payment.
       return new Classificacao("ORIGEM_INDETERMINADA", "DESCONHECIDA", "PREVENTIVA");
     }
+  }
+
+  private record ConteudoSerializado(
+      String conteudo, String contratante, String comercial,
+      String segmentacao, String alcance, String hash) {
   }
 
   private record MidiaCopiada(UUID id, UUID anuncioMidiaId, UUID arquivoMidiaId,

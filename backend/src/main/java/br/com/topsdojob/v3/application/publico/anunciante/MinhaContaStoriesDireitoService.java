@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 
 import static br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService.DURACAO_HORAS;
 import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.STORIES;
+import static br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.medir;
 
 import br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
@@ -9,6 +10,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryAti
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryAtivacaoRequest;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDireitoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryOfertaDto;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.Fase;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
@@ -266,12 +268,12 @@ public class MinhaContaStoriesDireitoService {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "contexto administrativo de Story invalido");
     }
-    var beneficio = storyConfiguracaoService.garantirIdentidadeTecnica(agora);
+    var beneficio = medir(Fase.DIREITO_CATALOGO_TOTAL,
+        () -> storyConfiguracaoService.garantirIdentidadeTecnica(agora));
     String chaveGrupo = "story-admin-direito:" + chavePublicacao;
     String chaveAtivacao = chaveGrupo + ":ativacao";
-    GrupoAtivacaoBeneficioEntity repetido = grupoRepository
-        .findByIdempotencyKey(chaveGrupo)
-        .orElse(null);
+    GrupoAtivacaoBeneficioEntity repetido = medir(Fase.DIREITO_SQL_LEITURA,
+        () -> grupoRepository.findByIdempotencyKey(chaveGrupo).orElse(null));
     if (repetido != null) {
       return direitoAdministrativoRepetido(
           repetido,
@@ -280,28 +282,16 @@ public class MinhaContaStoriesDireitoService {
           administradorId,
           chaveAtivacao);
     }
-    GrupoAtivacaoBeneficioEntity grupo = grupoRepository.save(
-        GrupoAtivacaoBeneficioEntity.criarAdministrativa(
-            UUID.randomUUID(),
-            anuncio.getUsuarioId(),
-            anuncio.getId(),
-            administradorId,
-            agora,
-            agora.plusHours(DURACAO_HORAS),
-            chaveGrupo,
-            "Publicacao administrativa de Story",
-            agora));
-    AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
-        AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
-            UUID.randomUUID(),
-            beneficio.getId(),
-            null,
-            anuncio.getUsuarioId(),
-            anuncio.getId(),
-            grupo.getId(),
-            administradorId,
-            chaveAtivacao,
-            agora));
+    GrupoAtivacaoBeneficioEntity novoGrupo = GrupoAtivacaoBeneficioEntity.criarAdministrativa(
+        UUID.randomUUID(), anuncio.getUsuarioId(), anuncio.getId(), administradorId, agora,
+        agora.plusHours(DURACAO_HORAS), chaveGrupo, "Publicacao administrativa de Story", agora);
+    GrupoAtivacaoBeneficioEntity grupo = medir(Fase.DIREITO_REPOSITORIO_SAVE,
+        () -> grupoRepository.save(novoGrupo));
+    AtivacaoBeneficioEntity novaAtivacao = AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
+        UUID.randomUUID(), beneficio.getId(), null, anuncio.getUsuarioId(), anuncio.getId(),
+        grupo.getId(), administradorId, chaveAtivacao, agora);
+    AtivacaoBeneficioEntity ativacao = medir(Fase.DIREITO_REPOSITORIO_SAVE,
+        () -> ativacaoRepository.save(novaAtivacao));
     return new DireitoPublicacao(ativacao, grupo);
   }
 
@@ -311,7 +301,8 @@ public class MinhaContaStoriesDireitoService {
       AnuncioEntity anuncio,
       UUID administradorId,
       String chaveAtivacao) {
-    List<AtivacaoBeneficioEntity> ativacoes = ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
+    List<AtivacaoBeneficioEntity> ativacoes = medir(Fase.DIREITO_SQL_LEITURA,
+        () -> ativacaoRepository.findByGrupoAtivacaoId(grupo.getId()));
     if (grupo.getOrigem() != OrigemBeneficio.ADMIN
         || !Objects.equals(grupo.getUsuarioId(), anuncio.getUsuarioId())
         || !Objects.equals(grupo.getAnuncioId(), anuncio.getId())
@@ -342,8 +333,10 @@ public class MinhaContaStoriesDireitoService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "direito de Story indisponivel");
     }
     direito.grupo().estenderValidadeAte(fimEm, publicadoEm);
-    ativacaoRepository.save(direito.ativacao());
-    grupoRepository.save(direito.grupo());
+    medir(Fase.DIREITO_REPOSITORIO_SAVE, () -> {
+      ativacaoRepository.save(direito.ativacao());
+      grupoRepository.save(direito.grupo());
+    });
     return fimEm;
   }
 

@@ -1,6 +1,9 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import static br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.medir;
+
 import br.com.topsdojob.v3.application.arquivo.ArquivoPublicidadeStoryRegistroService;
+import br.com.topsdojob.v3.application.stories.StoryPublicacaoObservabilidade.Fase;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
@@ -173,17 +176,20 @@ public class MinhaContaStoriesPublicacaoService {
     if (anuncioId == null) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncioId obrigatorio");
     }
-    UUID proprietarioId = anuncioRepository.findUsuarioIdById(anuncioId).orElse(null);
+    UUID proprietarioId = medir(Fase.CONTEXTO_PROPRIETARIO_SQL,
+        () -> anuncioRepository.findUsuarioIdById(anuncioId).orElse(null));
     if (proprietarioId == null) {
-      if (!anuncioRepository.existsById(anuncioId)) {
+      if (!medir(Fase.CONTEXTO_PROPRIETARIO_SQL, () -> anuncioRepository.existsById(anuncioId))) {
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
       }
       throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente");
     }
-    UsuarioEntity proprietario = usuarioRepository.findByIdForUpdate(proprietarioId)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente"));
-    AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+    UsuarioEntity proprietario = medir(Fase.CONTEXTO_USUARIO_FOR_UPDATE_SQL,
+        () -> usuarioRepository.findByIdForUpdate(proprietarioId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente")));
+    AnuncioEntity anuncio = medir(Fase.CONTEXTO_ANUNCIO_FOR_UPDATE_SQL,
+        () -> anuncioRepository.findByIdForModeration(anuncioId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado")));
     if (!Objects.equals(anuncio.getUsuarioId(), proprietarioId)) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario do anuncio alterado");
     }
@@ -217,18 +223,17 @@ public class MinhaContaStoriesPublicacaoService {
     validarContrato(modo, anuncioId, arquivos);
     MultipartFile arquivo = modo == ModoConteudoStory.MIDIA_UPLOAD ? arquivos.get(0) : null;
     String chave = chaveEscopada(modo, anuncioId, idempotencyKey);
-    String fingerprint = fingerprint(modo, anuncioId, arquivo);
+    String fingerprint = medir(Fase.IDEMPOTENCIA_HASH, () -> fingerprint(modo, anuncioId, arquivo));
 
-    StoryAnuncioEntity repetido = (modo == ModoConteudoStory.ANUNCIO
-        ? storyRepository.findByCriadoPorAndModoConteudoAndAnuncioIdAndIdempotencyKey(
-            usuarioId, modo, anuncioId, chave)
-        : storyRepository
-            .findByCriadoPorAndModoConteudoAndAnuncioIdIsNullAndIdempotencyKey(
-                usuarioId, modo, chave))
-            .orElse(null);
+    StoryAnuncioEntity repetido = medir(Fase.IDEMPOTENCIA_SQL, () ->
+        (modo == ModoConteudoStory.ANUNCIO
+            ? storyRepository.findByCriadoPorAndModoConteudoAndAnuncioIdAndIdempotencyKey(
+                usuarioId, modo, anuncioId, chave)
+            : storyRepository.findByCriadoPorAndModoConteudoAndAnuncioIdIsNullAndIdempotencyKey(
+                usuarioId, modo, chave)).orElse(null));
     if (repetido != null) {
       validarRepeticao(repetido, modo, anuncioId, fingerprint);
-      return consultaService.consultar(repetido);
+      return medir(Fase.CONSULTA_RESULTADO_TOTAL, () -> consultaService.consultar(repetido));
     }
 
     OffsetDateTime agora = agoraUtc();
@@ -236,16 +241,17 @@ public class MinhaContaStoriesPublicacaoService {
         ? (anuncioBloqueado == null ? anuncioParaPublicacao(anuncioId, usuarioId) : anuncioBloqueado)
         : null;
     if (anuncio != null) {
-      List<StoryAnuncioEntity> existentes = storyRepository.findByAnuncioIdForUpdate(anuncioId);
+      List<StoryAnuncioEntity> existentes = medir(Fase.STORY_ATIVO_FOR_UPDATE_SQL,
+          () -> storyRepository.findByAnuncioIdForUpdate(anuncioId));
       boolean expirou = existentes.stream()
           .map(item -> item.expirarSeVencido(agora))
           .reduce(false, Boolean::logicalOr);
       if (expirou) {
-        storyRepository.flush();
+        medir(Fase.PERSISTENCIA_SAVE_FLUSH, storyRepository::flush);
         for (StoryAnuncioEntity existente : existentes) {
           if (existente.getStatus() == StatusStoryAnuncio.EXPIRADO) {
-            arquivoPublicidadeStory.registrarEstado(
-                existente.getId(), "STORY_EXPIRADO_POR_LIMITE", requestId, agora);
+            medir(Fase.ARQUIVO_TOTAL, () -> arquivoPublicidadeStory.registrarEstado(
+                existente.getId(), "STORY_EXPIRADO_POR_LIMITE", requestId, agora));
           }
         }
       }
@@ -254,23 +260,24 @@ public class MinhaContaStoriesPublicacaoService {
           .findFirst()
           .orElse(null);
       if (ativo != null && retornarAtivoExistente) {
-        return consultaService.consultar(ativo);
+        return medir(Fase.CONSULTA_RESULTADO_TOTAL, () -> consultaService.consultar(ativo));
       }
       if (ativo != null) {
         throw new StoryJaAtivoException();
       }
     }
 
-    var direito = atorAdministrativo == null
+    var direito = medir(Fase.DIREITO_TOTAL, () -> atorAdministrativo == null
         ? direitoService.reservarParaPublicacao(modo, anuncio, usuarioId, agora)
         : direitoService.criarDireitoAdministrativoParaPublicacao(
-            anuncio, atorAdministrativo, chave, agora);
+            anuncio, atorAdministrativo, chave, agora));
     UUID storyId = uuidDeterministico("story", usuarioId, modo, anuncioId, chave);
     UUID arquivoId = modo == ModoConteudoStory.MIDIA_UPLOAD
         ? processarMidia(storyId, arquivo, usuarioId, chave, agora, requestId)
         : null;
     OffsetDateTime publicadoEm = agoraUtc();
-    OffsetDateTime fimEm = direitoService.iniciarVigencia(direito, publicadoEm);
+    OffsetDateTime fimEm = medir(Fase.DIREITO_VIGENCIA_TOTAL,
+        () -> direitoService.iniciarVigencia(direito, publicadoEm));
     StoryAnuncioEntity story = modo == ModoConteudoStory.ANUNCIO
         ? StoryAnuncioEntity.criarAnuncio(
             storyId,
@@ -290,33 +297,36 @@ public class MinhaContaStoriesPublicacaoService {
             publicadoEm,
             fimEm,
             usuarioId);
-    storyRepository.save(story);
     String depoisJson = "{\"modoConteudo\":\"" + modo.name()
         + "\",\"status\":\"PUBLICADO\"}";
-    auditoriaRepository.save(atorAdministrativo == null
-        ? AuditoriaEventoEntity.registrarSistema(
-            uuidDeterministico("auditoria", usuarioId, modo, anuncioId, chave),
-            usuarioId,
-            "STORY_PUBLICADO",
-            "STORY_ANUNCIO",
-            storyId,
-            null,
-            depoisJson,
-            requestId,
-            publicadoEm)
-        : AuditoriaEventoEntity.registrar(
-            uuidDeterministico("auditoria-admin", usuarioId, modo, anuncioId, chave),
-            atorAdministrativo,
-            "STORY_PUBLICADO_ADMINISTRATIVAMENTE",
-            "STORY_ANUNCIO",
-            storyId,
-            null,
-            depoisJson,
-            requestId,
-            publicadoEm));
-    storyRepository.flush();
-    arquivoPublicidadeStory.registrarEstado(storyId, "STORY_PUBLICADO", requestId, publicadoEm);
-    return consultaService.consultar(story);
+    medir(Fase.PERSISTENCIA_SAVE_FLUSH, () -> {
+      storyRepository.save(story);
+      auditoriaRepository.save(atorAdministrativo == null
+          ? AuditoriaEventoEntity.registrarSistema(
+              uuidDeterministico("auditoria", usuarioId, modo, anuncioId, chave),
+              usuarioId,
+              "STORY_PUBLICADO",
+              "STORY_ANUNCIO",
+              storyId,
+              null,
+              depoisJson,
+              requestId,
+              publicadoEm)
+          : AuditoriaEventoEntity.registrar(
+              uuidDeterministico("auditoria-admin", usuarioId, modo, anuncioId, chave),
+              atorAdministrativo,
+              "STORY_PUBLICADO_ADMINISTRATIVAMENTE",
+              "STORY_ANUNCIO",
+              storyId,
+              null,
+              depoisJson,
+              requestId,
+              publicadoEm));
+      storyRepository.flush();
+    });
+    medir(Fase.ARQUIVO_TOTAL,
+        () -> arquivoPublicidadeStory.registrarEstado(storyId, "STORY_PUBLICADO", requestId, publicadoEm));
+    return medir(Fase.CONSULTA_RESULTADO_TOTAL, () -> consultaService.consultar(story));
   }
 
   private AnuncioEntity anuncioParaPublicacao(UUID anuncioId, UUID usuarioId) {
